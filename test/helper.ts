@@ -1,6 +1,6 @@
 import fastify, { LightMyRequestResponse } from "fastify";
 import { TestContext } from "node:test";
-import serviceApp, { options as serverOptions } from "../src/app.js";
+import serviceApp from "../src/app.js";
 import assert from "node:assert";
 import fp from 'fastify-plugin'
 
