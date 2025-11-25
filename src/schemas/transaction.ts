@@ -1,12 +1,18 @@
-import { Static, Type } from '@sinclair/typebox'
-import { StringSchema } from './common.js'
-import { QubicTransactionSchema, QubicTransaction } from './qubic-transaction.js'
-import { SolanaTransactionSchema, SolanaTransaction } from './solana-transaction.js'
+import { Static, Type } from "@sinclair/typebox";
+import { StringSchema } from "./common.js";
+import {
+  QubicTransactionSchema,
+  QubicTransaction,
+} from "./qubic-transaction.js";
+import {
+  SolanaTransactionSchema,
+  SolanaTransaction,
+} from "./solana-transaction.js";
 
 export const OracleChain = Type.Union([
-  Type.Literal('qubic'),
-  Type.Literal('solana')
-])
+  Type.Literal("qubic"),
+  Type.Literal("solana"),
+]);
 
 export const OracleTransactionSchema = Type.Object({
   source: OracleChain,
@@ -14,17 +20,14 @@ export const OracleTransactionSchema = Type.Object({
   from: StringSchema,
   to: StringSchema,
   amount: Type.Number(),
-  raw: Type.Union([
-    QubicTransactionSchema,
-    SolanaTransactionSchema
-  ])
-})
+  raw: Type.Union([QubicTransactionSchema, SolanaTransactionSchema]),
+});
 
-export interface OracleTransaction extends Static<typeof OracleTransactionSchema> {}
+export type OracleTransaction = Static<typeof OracleTransactionSchema>;
 
 export function assertValidOracleTransaction(o: OracleTransaction) {
   if (o.source === o.dest) {
-    throw new Error('OracleTransaction: source and dest must differ')
+    throw new Error("OracleTransaction: source and dest must differ");
   }
 }
 
@@ -33,39 +36,40 @@ export function trxFromQubic(
   dest: Static<typeof OracleChain>
 ): OracleTransaction {
   const o: OracleTransaction = {
-    source: 'qubic',
+    source: "qubic",
     dest,
     from: tx.sender,
     to: tx.recipient,
     amount: tx.amount,
-    raw: tx
-  }
-  assertValidOracleTransaction(o)
-  return o
+    raw: tx,
+  };
+  assertValidOracleTransaction(o);
+  return o;
 }
 
 export function trxFromSolana(
   tx: SolanaTransaction,
   dest: Static<typeof OracleChain>
 ): OracleTransaction {
-  const ix = tx.instructions[0]
-  const decoded = decodeBridgeInstruction(ix.data)
+  const ix = tx.instructions[0];
+  const decoded = decodeBridgeInstruction(ix.data);
   const o: OracleTransaction = {
-    source: 'solana',
+    source: "solana",
     dest,
     from: decoded.from,
     to: decoded.to,
     amount: decoded.amount,
-    raw: tx
-  }
-  assertValidOracleTransaction(o)
-  return o
+    raw: tx,
+  };
+  assertValidOracleTransaction(o);
+  return o;
 }
 
-export function decodeBridgeInstruction(data: string): {
-  from: string
-  to: string
-  amount: number
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function decodeBridgeInstruction(_data: string): {
+  from: string;
+  to: string;
+  amount: number;
 } {
-  throw new Error('decodeBridgeInstruction not implemented')
+  throw new Error("decodeBridgeInstruction not implemented");
 }

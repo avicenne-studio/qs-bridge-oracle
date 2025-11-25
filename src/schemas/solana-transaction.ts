@@ -1,18 +1,18 @@
-import { Static, Type } from '@sinclair/typebox'
-import { StringSchema } from './common.js'
+import { Static, Type } from "@sinclair/typebox";
+import { StringSchema } from "./common.js";
 
 export const SolanaInstructionSchema = Type.Object({
-  programId: StringSchema,                   
-  accounts: Type.Array(StringSchema),        
-  data: StringSchema                          
-})
+  programId: StringSchema,
+  accounts: Type.Array(StringSchema),
+  data: StringSchema,
+});
 
 export const SolanaTransactionSchema = Type.Object({
-  recentBlockhash: StringSchema,             
-  feePayer: StringSchema,                    
+  recentBlockhash: StringSchema,
+  feePayer: StringSchema,
   instructions: Type.Array(SolanaInstructionSchema),
-  signatures: Type.Array(StringSchema)       
-})
+  signatures: Type.Array(StringSchema),
+});
 
-export interface SolanaTransaction extends Static<typeof SolanaTransactionSchema> {}
-export interface SolanaInstruction extends Static<typeof SolanaInstructionSchema> {}
+export type SolanaTransaction = Static<typeof SolanaTransactionSchema>;
+export type SolanaInstruction = Static<typeof SolanaInstructionSchema>;
