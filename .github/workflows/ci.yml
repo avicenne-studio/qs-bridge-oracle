@@ -32,8 +32,6 @@ jobs:
       matrix:
         node-version: [24]
 
-    services:
-
     steps:
       - uses: actions/checkout@v5
         with:
