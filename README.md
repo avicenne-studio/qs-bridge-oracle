@@ -1,101 +1,64 @@
-# Fastify Official Demo
+# Qubic Solana Bridge Oracle
 
-[![CI](https://github.com/fastify/demo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fastify/demo/actions/workflows/ci.yml)
+This is the repository hosts the oracle validating Solana - Qubic bridge transactions.
 
-The aim of this repository is to provide a concrete example of a Fastify application using what are considered best practices by the Fastify community.
+Built with Fastify and TypeScript, the service favors predictable behavior, complete test coverage, and transparent operations so integrators can audit and extend it easily.
 
-**Prerequisites:** You need to have Node.js version 22 or higher installed.
+## Prerequisites
+- Node.js 24+
 
-## About the Application
-
-This demo is a simple task management API. 
-It allows users to create, retrieve, update, and delete tasks.
-Additional features include file uploads, CSV downloads, task assignment, and role-based access control.
-
-## Getting started
-Install the dependencies:
+## Getting Started
+Install project dependencies:
 ```bash
 npm install
 ```
 
-### Database
-You can run a MySQL instance with Docker:
-```bash
-docker compose up
-```
+### Environment
+Copy `.env.example` to `.env`.
 
-To run it in the background:
-```bash
-docker compose up -d
-```
+## Development Workflow
 
-To create the database, run:
-```bash
-npm run db:create
-```
-
-To create and update the database schema, run the migrations:
-```bash
-npm run db:migrate
-```
-
-To populate the database with initial data, run:
-```bash
-npm run db:seed
-```
-
-To drop the database, run:
-```bash
-npm run db:drop
-```
-
-### TypeScript
-To build the project:
+Build the TypeScript sources:
 ```bash
 npm run build
 ```
 
-### Start the server
-In dev mode:
+Start Fastify with hot reload:
 ```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+Visit http://localhost:3000 to confirm the API is reachable.
 
-In production mode:
+Run the production server:
 ```bash
 npm run start
 ```
 
-### API Documentation
-
-The application exposes interactive API documentation using Swagger UI.
-
-Once the server is running, visit: http://localhost:3000/api/docs
-
-### Testing
-To run the tests:
-```bash
-npm run test
-```
-
-### Standalone
-`dev` and `start` leverage [fastify-cli](https://github.com/fastify/fastify-cli),
-but you can run the demo as a standalone executable (see [server.ts](./src/server.ts)):
+Run the standalone binary (see `src/server.ts`):
 ```bash
 npm run standalone
 ```
 
-### Linting
-To check for linting errors:
+## API Documentation
+Swagger UI is available at http://localhost:3000/api/docs after the server boots.
+
+## Testing and Coverage
+Execute the full test suite:
+```bash
+npm run test
+```
+
+## Linting
+Check lint rules:
 ```bash
 npm run lint
 ```
 
-To check and automatically fix linting errors:
+Autofix:
 ```bash
 npm run lint:fix
 ```
 
-## Learn More
-To learn more about Fastify, check out the [Fastify documentation](https://www.fastify.io/docs/latest/).
+## Contributing
+Bug reports and pull requests are welcome.
+Please describe the use case, add tests that keep coverage at 100%.
