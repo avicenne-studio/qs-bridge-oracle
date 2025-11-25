@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - next
+      - "v*"
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "*.example"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+
+# This allows a subsequently queued workflow run to interrupt previous runs
+concurrency:
+    group: "${{ github.workflow }}-${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
+    cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [24]
+
+    services:
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          check-latest: true
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: npm i --ignore-scripts
+
+      - name: Build
+        run: npm run build -- --noEmit
+
+      - name: Lint Code
+        run: npm run lint
+
+      - name: Generate dummy .env for scripts using -env-file=.env flag
+        run: touch .env
+
+      - name: Test
+        env:
+          RATE_LIMIT_MAX: 4
+        run: npm run test
