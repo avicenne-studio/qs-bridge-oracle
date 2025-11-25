@@ -46,7 +46,7 @@
     "close-with-grace": "^2.2.0",
     "concurrently": "^9.2.1",
     "fastify": "^5.6.0",
-    "fastify-cli": "^7.4.0",
+    "fastify-cli": "^7.4.1",
     "fastify-plugin": "^5.0.1"
   },
   "devDependencies": {
