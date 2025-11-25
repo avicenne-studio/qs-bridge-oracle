@@ -39,9 +39,6 @@ Run the standalone binary (see `src/server.ts`):
 npm run standalone
 ```
 
-## API Documentation
-Swagger UI is available at http://localhost:3000/api/docs after the server boots.
-
 ## Testing and Coverage
 Execute the full test suite:
 ```bash
