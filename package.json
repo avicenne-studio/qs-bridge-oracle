@@ -1,5 +1,5 @@
 {
-  "name": "fastify-demo",
+  "name": "qs-bridge-oracle",
   "version": "0.0.0",
   "description": "Oracle server for the Qubic <-> Solana bridge",
   "main": "app.js",

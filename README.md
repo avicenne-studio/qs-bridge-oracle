@@ -66,8 +66,11 @@ Install dependencies:
 npm install
 ```
 
-> This project uses better-sqlite3, which includes a native module that must be compiled during installation.
-> .npmrc
+This project uses better-sqlite3, which includes a native module that must be compiled during installation:
+
+```bash
+npm rebuild better-sqlite3 --ignore-scripts=false
+```
 
 Build TypeScript sources:
 
