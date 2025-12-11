@@ -1,10 +1,12 @@
 import env from '@fastify/env'
+import fp from 'fastify-plugin'
 
 declare module 'fastify' {
   export interface FastifyInstance {
     config: {
       PORT: number;
       RATE_LIMIT_MAX: number;
+      SQLITE_DB_FILE: string;
     };
   }
 }
@@ -12,11 +14,19 @@ declare module 'fastify' {
 const schema = {
   type: 'object',
   required: [
+    'SQLITE_DB_FILE',
+    'PORT'
   ],
   properties: {
     RATE_LIMIT_MAX: {
       type: 'number',
       default: 100 // Put it to 4 in your .env file for tests
+    },
+    SQLITE_DB_FILE: {
+      type: 'string',
+    },
+    PORT: {
+      type: 'number',
     },
   }
 }
@@ -47,4 +57,4 @@ export const autoConfig = {
  *
  * @see {@link https://github.com/fastify/fastify-env}
  */
-export default env
+export default fp(env, { name: 'env' })

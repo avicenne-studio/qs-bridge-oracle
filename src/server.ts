@@ -67,7 +67,7 @@ async function init () {
 
   try {
     // Start listening.
-    await app.listen({ port: process.env.PORT ?? 3000 })
+    await app.listen({ port: app.config.PORT, host: '0000' })
   } catch (err) {
     app.log.error(err)
     process.exit(1)

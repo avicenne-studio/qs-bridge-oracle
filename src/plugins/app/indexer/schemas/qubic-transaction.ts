@@ -1,5 +1,5 @@
 import { Static, Type } from "@sinclair/typebox";
-import { StringSchema } from "./common.js";
+import { StringSchema } from "../../common/schemas/common.js";
 
 export const QubicTransactionSchema = Type.Object({
   sender: StringSchema,
