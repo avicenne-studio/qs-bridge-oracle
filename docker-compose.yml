@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
+      target: production
     env_file:
       - .env.local
     environment:
