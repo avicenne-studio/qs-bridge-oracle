@@ -11,7 +11,6 @@ export const SolanaTransactionSchema = Type.Object({
   recentBlockhash: StringSchema,
   feePayer: StringSchema,
   instructions: Type.Array(SolanaInstructionSchema),
-  signatures: Type.Array(StringSchema),
 });
 
 export type SolanaTransaction = Static<typeof SolanaTransactionSchema>;

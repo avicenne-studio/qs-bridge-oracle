@@ -1,19 +1,19 @@
 {
   "name": "fastify-demo",
   "version": "0.0.0",
-  "description": "The official Fastify demo!",
+  "description": "Oracle server for the Qubic <-> Solana bridge",
   "main": "app.js",
   "type": "module",
   "directories": {
     "test": "test"
   },
-  "scripts": {    
+  "scripts": {
     "start": "npm run build && node dist/server.js",
     "build": "tsc",
     "watch": "tsc -w",
     "dev": "tsx --env-file=.env ./src/server.ts",
     "test": "c8 npm run test:run",
-    "test:run": "glob -c \"tsx --test\" \"./test/**/*.ts\"",
+    "test:run": "glob -c \"tsx --env-file=.env.test --test\" \"./test/**/*.ts\"",
     "lint": "eslint --ignore-pattern=dist",
     "lint:fix": "npm run lint -- --fix"
   },

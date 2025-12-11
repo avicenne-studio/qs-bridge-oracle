@@ -3,7 +3,7 @@ import { FastifyInstance } from "fastify";
 
 import { OracleOrder } from "./schemas/order.js";
 
-const TABLE_NAME = "orders";
+export const ORDERS_TABLE_NAME = "orders";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -33,7 +33,7 @@ function createRepository(fastify: FastifyInstance) {
     async paginate(q: OrderQuery) {
       const offset = (q.page - 1) * q.limit;
 
-      const query = knex<PersistedOrder>(TABLE_NAME)
+      const query = knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .select(knex.raw("rowid as id"), "*")
         .select(knex.raw("count(*) OVER() as total"));
 
@@ -63,7 +63,7 @@ function createRepository(fastify: FastifyInstance) {
     },
 
     async findById(id: number) {
-      const row = await knex<PersistedOrder>(TABLE_NAME)
+      const row = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .select(knex.raw("rowid as id"), "*")
         .where("rowid", id)
         .first();
@@ -71,16 +71,12 @@ function createRepository(fastify: FastifyInstance) {
     },
 
     async create(newOrder: CreateOrder) {
-      const [id] = await knex<PersistedOrder>(TABLE_NAME).insert(newOrder);
+      const [id] = await knex<PersistedOrder>(ORDERS_TABLE_NAME).insert(newOrder);
       return this.findById(Number(id));
     },
 
     async update(id: number, changes: UpdateOrder) {
-      if (Object.keys(changes).length === 0) {
-        return this.findById(id);
-      }
-
-      const affectedRows = await knex<PersistedOrder>(TABLE_NAME)
+      const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("rowid", id)
         .update(changes);
 
@@ -92,15 +88,11 @@ function createRepository(fastify: FastifyInstance) {
     },
 
     async delete(id: number) {
-      const affectedRows = await knex<PersistedOrder>(TABLE_NAME)
+      const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("rowid", id)
         .delete();
 
       return affectedRows > 0;
-    },
-
-    createStream() {
-      return knex<PersistedOrder>(TABLE_NAME).select("*").stream();
     },
   };
 }

@@ -26,10 +26,10 @@ export default async function serviceApp(
   // This loads all your application plugins defined in plugins/app
   // those should be support plugins that are reused
   // through your application
-  // fastify.register(fastifyAutoload, {
-  //   dir: path.join(import.meta.dirname, 'plugins/app'),
-  //   options: { ...opts }
-  // })
+  fastify.register(fastifyAutoload, {
+    dir: path.join(import.meta.dirname, "plugins/app"),
+    options: { ...opts },
+  });
 
   // This loads all plugins defined in routes
   // define your routes in one of these

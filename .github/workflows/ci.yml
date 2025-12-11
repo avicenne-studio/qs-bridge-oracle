@@ -2,10 +2,7 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-      - next
-      - "v*"
+    branches: [ main, next, "v*" ]
     paths-ignore:
       - "docs/**"
       - "*.md"
@@ -15,49 +12,45 @@ on:
       - "docs/**"
       - "*.md"
 
-# This allows a subsequently queued workflow run to interrupt previous runs
 concurrency:
-    group: "${{ github.workflow }}-${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
-    cancel-in-progress: true
+  group: "${{ github.workflow }}-${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   build-and-test:
-    permissions:
-      contents: read
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
-        node-version: [24]
+        node-version: [ 24 ]
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
         with:
-          persist-credentials: false
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
-        with:
-          check-latest: true
           node-version: ${{ matrix.node-version }}
+          check-latest: true
+
+      - name: Install build tools for better-sqlite3
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3
 
       - name: Install dependencies
-        run: npm i --ignore-scripts
+        run: npm ci --ignore-scripts
 
-      - name: Build
+      - name: Build TypeScript
         run: npm run build -- --noEmit
 
       - name: Lint Code
         run: npm run lint
 
-      - name: Generate dummy .env for scripts using -env-file=.env flag
-        run: touch .env
-
-      - name: Test
+      - name: Test (in-memory SQLite)
         env:
-          RATE_LIMIT_MAX: 4
-          PORT: 3000
-          HOST: '0000'
-          SQLITE_DB_FILE: "./data/oracle.sqlite3"
-        run: npm run test
+          SQLITE_DB_FILE: ":memory:"
+          PORT: "3000"
+          HOST: "0.0.0.0"
+        run: npm test

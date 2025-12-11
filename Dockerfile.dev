@@ -1,15 +1,15 @@
 FROM node:24-slim
+
+# Required to compile better-sqlite3
+RUN apt-get update && apt-get install -y build-essential python3 && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy full project
 COPY . .
 
-# Expose port
 EXPOSE 3000
 
-# Use nodemon or ts-node for hot reload
 CMD ["npm", "run", "dev"]
