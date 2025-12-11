@@ -1,12 +1,13 @@
 FROM node:24-slim
 
-# Required to compile better-sqlite3
-RUN apt-get update && apt-get install -y build-essential python3 && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
+RUN printf "ignore-scripts=true\n" > .npmrc
+
 COPY package*.json ./
-RUN npm install
+
+RUN npm install --save-dev @lavamoat/allow-scripts
+RUN npx allow-scripts run npm ci
 
 COPY . .
 

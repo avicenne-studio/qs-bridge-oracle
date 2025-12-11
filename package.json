@@ -11,7 +11,7 @@
     "start": "npm run build && node dist/server.js",
     "build": "tsc",
     "watch": "tsc -w",
-    "dev": "tsx --env-file=.env ./src/server.ts",
+    "dev": "tsx --env-file=.env.local ./src/server.ts",
     "test": "c8 npm run test:run",
     "test:run": "glob -c \"tsx --env-file=.env.test --test\" \"./test/**/*.ts\"",
     "lint": "eslint --ignore-pattern=dist",
@@ -51,6 +51,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@lavamoat/allow-scripts": "^3.4.1",
+    "@lavamoat/preinstall-always-fail": "^2.1.1",
     "@types/node": "^24.5.2",
     "c8": "^10.1.3",
     "eslint": "^9.39.1",
@@ -58,5 +60,12 @@
     "tsx": "^4.20.5",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.48.0"
+  },
+  "lavamoat": {
+    "allowScripts": {
+      "@lavamoat/preinstall-always-fail": false,
+      "better-sqlite3": true,
+      "tsx>esbuild": false
+    }
   }
 }

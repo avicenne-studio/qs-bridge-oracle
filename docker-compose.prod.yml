@@ -4,8 +4,6 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
-    env_file:
-      - .env
     environment:
       SQLITE_DB_FILE: /data/oracle.sqlite3
     volumes:

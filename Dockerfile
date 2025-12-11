@@ -2,8 +2,12 @@
 FROM node:24-slim AS build
 WORKDIR /app
 
+RUN printf "ignore-scripts=true\n" > .npmrc
+
 COPY package*.json ./
-RUN npm ci
+
+RUN npm install --save-dev @lavamoat/allow-scripts
+RUN npx allow-scripts run npm ci
 
 COPY . .
 RUN npm run build
