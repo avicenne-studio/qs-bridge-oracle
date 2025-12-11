@@ -4,13 +4,11 @@ This repository hosts the Oracle responsible for validating Solana <-> Qubic bri
 
 ## Prerequisites
 
-For most users, **Docker** is the recommended and default way to run the Oracle.
+Using **Docker** is the default way to run the Oracle.
 
 If you prefer running it directly on your machine (optional), you need:
 
 * Node.js 24+
-
----
 
 ## Environment Configuration
 
@@ -27,14 +25,12 @@ Set `SQLITE_DB_FILE` to the database path.
 
 The Oracle creates the SQLite database automatically on first launch.
 
----
 
-# Development Workflow (Docker-first)
+# Development
 
 ## Run the Oracle in development mode
 
-This uses `docker-compose.yml`, mounts the local source tree, and runs the service with hot reload:
-
+Run:
 ```bash
 docker compose up --build
 ```
@@ -48,9 +44,8 @@ http://localhost:3000
 The SQLite database is stored in the `oracle-sqlite` Docker volume at `/data/oracle.sqlite3`.
 Any changes to local `.ts` files reload automatically inside the container.
 
----
 
-# Production Workflow
+# Production
 
 Use the production-optimized multi-stage image with the dedicated compose file:
 
@@ -64,16 +59,8 @@ Stop the production service:
 docker compose -f docker-compose.prod.yml down
 ```
 
-This mode:
 
-* uses the optimized production Dockerfile
-* runs with `NODE_ENV=production`
-* persists the SQLite DB via a Docker volume
-* exposes port `3000`
-
----
-
-# Optional: Local Node.js Execution (without Docker)
+# Local Node.js Execution (without Docker)
 
 Install dependencies:
 
@@ -99,14 +86,6 @@ Run the production server:
 npm start
 ```
 
-Run the standalone binary (see `src/server.ts`):
-
-```bash
-npm run standalone
-```
-
----
-
 # Testing and Coverage
 
 Run the full test suite:
@@ -130,10 +109,3 @@ Autofix:
 ```bash
 npm run lint:fix
 ```
-
----
-
-# Contributing
-
-Contributions, bug reports, and pull requests are welcome.
-Please describe your use case and include tests to maintain full coverage.
