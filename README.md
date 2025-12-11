@@ -26,9 +26,9 @@ Set `SQLITE_DB_FILE` to the database path.
 The Oracle creates the SQLite database automatically on first launch.
 
 
-# Development
+## Development
 
-## Run the Oracle in development mode
+### Run the Oracle in development mode
 
 Run:
 ```bash
@@ -44,8 +44,7 @@ http://localhost:3000
 The SQLite database is stored in the `oracle-sqlite` Docker volume at `/data/oracle.sqlite3`.
 Any changes to local `.ts` files reload automatically inside the container.
 
-
-# Production
+## Production
 
 Use the production-optimized multi-stage image with the dedicated compose file:
 
@@ -59,8 +58,7 @@ Stop the production service:
 docker compose -f docker-compose.prod.yml down
 ```
 
-
-# Local Node.js Execution (without Docker)
+## Node.js without Docker
 
 Install dependencies:
 
@@ -86,7 +84,7 @@ Run the production server:
 npm start
 ```
 
-# Testing and Coverage
+## Testing and Coverage
 
 Run the full test suite:
 
@@ -94,9 +92,7 @@ Run the full test suite:
 npm run test
 ```
 
----
-
-# Linting
+## Linting
 
 Check lint rules:
 
