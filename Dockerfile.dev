@@ -6,11 +6,12 @@ RUN printf "ignore-scripts=true\n" > .npmrc
 
 COPY package*.json ./
 
-RUN npm install --save-dev @lavamoat/allow-scripts
-RUN npx allow-scripts run npm ci
+RUN npm ci
+
+# run allowed scripts only (better-sqlite3)
+RUN npx allow-scripts run
 
 COPY . .
 
 EXPOSE 3000
-
 CMD ["npm", "run", "dev"]
