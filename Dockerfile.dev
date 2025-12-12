@@ -1,15 +1,17 @@
 FROM node:24-slim
+
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-RUN npm install
+RUN printf "ignore-scripts=true\n" > .npmrc
 
-# Copy full project
+COPY package*.json ./
+
+RUN npm ci
+
+# run allowed scripts only (better-sqlite3)
+RUN npx allow-scripts run
+
 COPY . .
 
-# Expose port
 EXPOSE 3000
-
-# Use nodemon or ts-node for hot reload
 CMD ["npm", "run", "dev"]

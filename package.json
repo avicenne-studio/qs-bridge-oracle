@@ -1,32 +1,31 @@
 {
-  "name": "fastify-demo",
+  "name": "qs-bridge-oracle",
   "version": "0.0.0",
-  "description": "The official Fastify demo!",
+  "description": "Oracle server for the Qubic <-> Solana bridge",
   "main": "app.js",
   "type": "module",
   "directories": {
     "test": "test"
   },
-  "scripts": {    
+  "scripts": {
     "start": "npm run build && node dist/server.js",
     "build": "tsc",
     "watch": "tsc -w",
-    "dev": "tsx --env-file=.env ./src/server.ts",
+    "dev": "tsx --env-file=.env.local ./src/server.ts",
     "test": "c8 npm run test:run",
-    "test:run": "glob -c \"tsx --test\" \"./test/**/*.ts\"",
+    "test:run": "glob -c \"tsx --env-file=.env.test --test\" \"./test/**/*.ts\"",
     "lint": "eslint --ignore-pattern=dist",
     "lint:fix": "npm run lint -- --fix"
   },
   "keywords": [],
   "author": "Michelet Jean <jean.antoine.michelet@gmail.com>",
-  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fastify/demo.git"
+    "url": "git+https://github.com/avicenne-studio/qs-bridge-oracle.git"
   },
-  "homepage": "https://github.com/fastify/demo#readme",
+  "homepage": "https://github.com/avicenne-studio/qs-bridge-oracle#readme",
   "bugs": {
-    "url": "https://github.com/fastify/demo/issues"
+    "url": "https://github.com/avicenne-studio/qs-bridge-oracle/issues"
   },
   "dependencies": {
     "@fastify/autoload": "^6.3.1",
@@ -51,6 +50,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@lavamoat/allow-scripts": "^3.4.1",
+    "@lavamoat/preinstall-always-fail": "^2.1.1",
     "@types/node": "^24.5.2",
     "c8": "^10.1.3",
     "eslint": "^9.39.1",
@@ -58,5 +59,12 @@
     "tsx": "^4.20.5",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.48.0"
+  },
+  "lavamoat": {
+    "allowScripts": {
+      "@lavamoat/preinstall-always-fail": false,
+      "better-sqlite3": true,
+      "tsx>esbuild": false
+    }
   }
 }

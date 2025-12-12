@@ -66,6 +66,19 @@ Install dependencies:
 npm install
 ```
 
+Then run the script that pre-built for better-sqlite3:
+```bash
+npx allow-scripts run
+```
+
+> More info about `allow-scripts`: https://lavamoat.github.io/guides/allow-scripts/
+
+This project uses better-sqlite3, which includes a native module that must be compiled during installation:
+
+```bash
+npm rebuild better-sqlite3 --ignore-scripts=false
+```
+
 Build TypeScript sources:
 
 ```bash

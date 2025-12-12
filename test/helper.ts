@@ -27,6 +27,8 @@ export async function build(t?: TestContext) {
   const app = fastify();
   app.register(fp(serviceApp));
 
+  await app.ready()
+
   // This is after start, so we can't decorate the instance using `.decorate`
 
   // If we pass the test contest, it will close the app after we are done
