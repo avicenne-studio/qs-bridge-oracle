@@ -19,14 +19,13 @@
   },
   "keywords": [],
   "author": "Michelet Jean <jean.antoine.michelet@gmail.com>",
-  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fastify/demo.git"
+    "url": "git+https://github.com/avicenne-studio/qs-bridge-oracle.git"
   },
-  "homepage": "https://github.com/fastify/demo#readme",
+  "homepage": "https://github.com/avicenne-studio/qs-bridge-oracle#readme",
   "bugs": {
-    "url": "https://github.com/fastify/demo/issues"
+    "url": "https://github.com/avicenne-studio/qs-bridge-oracle/issues"
   },
   "dependencies": {
     "@fastify/autoload": "^6.3.1",
