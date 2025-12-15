@@ -20,7 +20,7 @@ const schema = {
   properties: {
     RATE_LIMIT_MAX: {
       type: 'number',
-      default: 100 // Put it to 4 in your .env file for tests
+      default: 100 // Lower it to 4 in your .env.test file for tests if needed
     },
     SQLITE_DB_FILE: {
       type: 'string',

@@ -1,6 +1,7 @@
 import path from "node:path";
 import fastifyAutoload from "@fastify/autoload";
 import { FastifyError, FastifyInstance, FastifyPluginOptions } from "fastify";
+import { STATUS_CODES } from "node:http";
 
 export const options = {
   ajv: {
@@ -40,7 +41,7 @@ export default async function serviceApp(
     options: { ...opts },
   });
 
-  fastify.setErrorHandler((err: FastifyError, request, reply) => {
+  fastify.setErrorHandler<FastifyError>((err, request, reply) => {
     fastify.log.error(
       {
         err,
@@ -54,18 +55,20 @@ export default async function serviceApp(
       "Unhandled error occurred"
     );
 
-    reply.code(err.statusCode ?? 500);
+    const status = err.statusCode ?? 500;
+    reply.code(status);
 
-    let message = "Internal Server Error";
-    if (err.statusCode && err.statusCode < 500) {
+    let message = STATUS_CODES[status] /* c8 ignore next */ ?? "Unknown Error";
+
+    if (status < 500 && err.message) {
       message = err.message;
     }
 
     return { message };
   });
 
-  // An attacker could search for valid URLs if your 404 error handling is not rate limited.
   fastify.setNotFoundHandler(
+    // An attacker could search for valid URLs if your 404 error handling is not rate limited.
     {
       preHandler: fastify.rateLimit({
         max: 3,
