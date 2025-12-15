@@ -1,4 +1,3 @@
-# ---------- BUILD STAGE ----------
 FROM node:24.12.0-trixie-slim AS build
 WORKDIR /app
 
@@ -15,7 +14,6 @@ COPY @types ./@types
 
 RUN npm ci
 
-# run allowed scripts only (better-sqlite3)
 RUN npx allow-scripts run
 
 RUN npm run build
