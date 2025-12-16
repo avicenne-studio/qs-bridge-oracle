@@ -1,6 +1,7 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import knex, { Knex } from "knex";
+import { SIGNATURE_MAX_LENGTH } from "../app/common/schemas/common.js";
 import { ORDERS_TABLE_NAME } from "../app/indexer/orders.repository.js";
 
 declare module "fastify" {
@@ -41,6 +42,7 @@ export default fp(
           table.string("from").notNullable();
           table.string("to").notNullable();
           table.float("amount").notNullable();
+          table.string("signature", SIGNATURE_MAX_LENGTH).notNullable();
         });
       }
     });

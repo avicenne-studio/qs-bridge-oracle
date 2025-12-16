@@ -5,7 +5,7 @@ import {
 import {
   SolanaTransaction,
 } from "./solana-transaction.js";
-import { StringSchema } from "../../common/schemas/common.js";
+import { SignatureSchema, StringSchema } from "../../common/schemas/common.js";
 
 export const OracleChain = Type.Union([
   Type.Literal("qubic"),
@@ -18,6 +18,7 @@ export const OracleOrderSchema = Type.Object({
   from: StringSchema,
   to: StringSchema,
   amount: Type.Number(),
+  signature: SignatureSchema,
 });
 
 export type OracleOrder = Static<typeof OracleOrderSchema>;
@@ -30,7 +31,8 @@ export function assertValidOracleOrder(order: OracleOrder) {
 
 export function orderFromQubic(
   tx: QubicTransaction,
-  dest: Static<typeof OracleChain>
+  dest: Static<typeof OracleChain>,
+  signature: string
 ): OracleOrder {
   const order: OracleOrder = {
     source: "qubic",
@@ -38,6 +40,7 @@ export function orderFromQubic(
     from: tx.sender,
     to: tx.recipient,
     amount: tx.amount,
+    signature,
   };
   assertValidOracleOrder(order);
   return order;
@@ -45,7 +48,8 @@ export function orderFromQubic(
 
 export function orderFromSolana(
   tx: SolanaTransaction,
-  dest: Static<typeof OracleChain>
+  dest: Static<typeof OracleChain>,
+  signature: string
 ): OracleOrder {
   const ix = tx.instructions[0];
   const decoded = normalizeBridgeInstruction(ix.data);
@@ -55,6 +59,7 @@ export function orderFromSolana(
     from: decoded.from,
     to: decoded.to,
     amount: decoded.amount,
+    signature,
   };
   assertValidOracleOrder(order);
   return order;
