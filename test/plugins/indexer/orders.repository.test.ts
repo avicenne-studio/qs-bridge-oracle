@@ -18,6 +18,7 @@ describe("ordersRepository", () => {
       from: "Alice",
       to: "Bob",
       amount: 123,
+      signature: "sig-solana-1",
     });
 
     assert.ok(created);
@@ -27,6 +28,7 @@ describe("ordersRepository", () => {
     assert.strictEqual(created?.from, "Alice");
     assert.strictEqual(created?.to, "Bob");
     assert.strictEqual(created?.amount, 123);
+    assert.strictEqual(created?.signature, "sig-solana-1");
 
     const fetched = await repo.findById(created!.id);
     assert.deepStrictEqual(fetched, created);
@@ -51,6 +53,7 @@ describe("ordersRepository", () => {
       from: "A",
       to: "B",
       amount: 10,
+      signature: "sig-a",
     });
     await repo.create({
       source: "solana",
@@ -58,6 +61,7 @@ describe("ordersRepository", () => {
       from: "C",
       to: "D",
       amount: 20,
+      signature: "sig-b",
     });
     await repo.create({
       source: "qubic",
@@ -65,6 +69,7 @@ describe("ordersRepository", () => {
       from: "E",
       to: "F",
       amount: 30,
+      signature: "sig-c",
     });
 
     const page1 = await repo.paginate({
@@ -98,6 +103,7 @@ describe("ordersRepository", () => {
       from: "X",
       to: "Y",
       amount: 1,
+      signature: "sig-x",
     });
     await repo.create({
       source: "qubic",
@@ -105,6 +111,7 @@ describe("ordersRepository", () => {
       from: "Z",
       to: "T",
       amount: 2,
+      signature: "sig-z",
     });
 
     const solToQubic = await repo.paginate({
@@ -140,6 +147,7 @@ describe("ordersRepository", () => {
       from: "A",
       to: "B",
       amount: 50,
+      signature: "sig-update",
     });
 
     const updated = await repo.update(created!.id, { amount: 42 });
@@ -169,6 +177,7 @@ describe("ordersRepository", () => {
       from: "DeleteA",
       to: "DeleteB",
       amount: 7,
+      signature: "sig-delete",
     });
 
     const removed = await repo.delete(created!.id);

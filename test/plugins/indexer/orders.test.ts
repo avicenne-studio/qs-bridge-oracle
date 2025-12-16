@@ -38,6 +38,7 @@ describe("OracleOrder utilities", () => {
       from: "A",
       to: "B",
       amount: 10,
+      signature: "SOLANA_SIGNATURE_EXAMPLE",
     };
 
     assert.doesNotThrow(() => assertValidOracleOrder(order));
@@ -50,6 +51,7 @@ describe("OracleOrder utilities", () => {
       from: "A",
       to: "B",
       amount: 1,
+      signature: "QUBIC_SIGNATURE_EXAMPLE",
     };
 
     assert.throws(
@@ -59,25 +61,30 @@ describe("OracleOrder utilities", () => {
   });
 
   it("should construct an order from a Qubic transaction", () => {
-    const order = orderFromQubic(mockQubicTx, "solana");
+    const order = orderFromQubic(
+      mockQubicTx,
+      "solana",
+      "QUBIC_SIGNATURE_1"
+    );
 
     assert.strictEqual(order.source, "qubic");
     assert.strictEqual(order.dest, "solana");
     assert.strictEqual(order.from, mockQubicTx.sender);
     assert.strictEqual(order.to, mockQubicTx.recipient);
     assert.strictEqual(order.amount, mockQubicTx.amount);
+    assert.strictEqual(order.signature, "QUBIC_SIGNATURE_1");
   });
 
   it("should throw when Qubic order has identical source and dest", () => {
     assert.throws(
-      () => orderFromQubic(mockQubicTx, "qubic"),
+      () => orderFromQubic(mockQubicTx, "qubic", "SIG"),
       /source and dest must differ/
     );
   });
 
   it("should throw because normalizeBridgeInstruction is not implemented", () => {
     assert.throws(
-      () => orderFromSolana(mockSolanaTx, "qubic"),
+      () => orderFromSolana(mockSolanaTx, "qubic", "SIG"),
       /not implemented/
     );
   });
