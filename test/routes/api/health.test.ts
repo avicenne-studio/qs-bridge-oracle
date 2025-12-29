@@ -22,7 +22,6 @@ test("GET /api/health success", async (t) => {
 test("GET /api/health handles knex failure", async (t) => {
   const app = await build(t);
 
-  // Mock fastify.knex.select().first() to throw
   const { mock: mockLog } = t.mock.method(app.log, "error");
   const { mock: mockSelect } = t.mock.method(app.knex, "select");
   mockSelect.mockImplementation(

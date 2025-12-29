@@ -58,9 +58,10 @@ test("GET /api/orders handles repository errors", async (t) => {
   });
 
   assert.strictEqual(res.statusCode, 500);
-  const [logPayload, logMsg] = logMock.calls[0].arguments;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [logPayload, logMsg] = logMock.calls[0].arguments as any
   assert.strictEqual(logMsg, "Failed to list orders");
-  assert.strictEqual(logPayload.err.message, "db down");
+  assert.deepStrictEqual(logPayload.err.message, "db down");
 
   const body = JSON.parse(res.payload);
   assert.strictEqual(body.message, "Internal Server Error");

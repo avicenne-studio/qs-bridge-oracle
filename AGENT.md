@@ -1,0 +1,46 @@
+# Qubic ↔ Solana Oracle – Agent Notes
+
+## Mission & Context
+- This Fastify service is one Oracle node in a replicated oracle network that feeds a Hub service with order signatures and liveness signals for Qubic ↔ Solana bridge transfers.
+- Every node must be deterministic, auditable, and tamper-resistant: all blockchain transactions are validated locally and only sanitized data leaves the server (e.g., to the Hub).
+- Keys for both chains are mounted as JSON files that hold signing material (`SOLANA_KEYS`, `QUBIC_KEYS`). File paths are sanitized to prevent directory traversal.
+
+## Runtime Architecture
+- Entry point: `src/server.ts` creates a Fastify instance with opinionated logging/AJV settings and registers `src/app.ts`.
+- `src/app.ts` autoloads three plugin layers:
+  1. `src/plugins/infra`: cross-cutting concerns (env validation, helmet/cors/rate limit, sqlite, sensible errors, file manager).
+  2. `src/plugins/app`: domain services such as the signer service, common schemas, and the on-disk orders repository.
+  3. `src/routes`: HTTP routes grouped by feature (home + `/api` tree).
+- Database: SQLite via `better-sqlite3` and `knex`. The `orders` table (id, source/dest, from/to, amount, signature) is auto-created in the Knex plugin (`src/plugins/infra/@knex.ts`) using the `SQLITE_DB_FILE` path from the environment.
+- Order ingestion helpers live in `src/plugins/app/indexer/schemas/*`. They provide typed validators and conversion helpers (`orderFromQubic`, `orderFromSolana`) for transactions pulled from chain RPCs. `normalizeBridgeInstruction` is still a stub—fill it carefully once the Solana instruction format is finalized.
+- Signing: `src/plugins/app/signer/signer.service.ts` reads both Solana and Qubic key JSON files, validates their schemas, and decorates the Fastify instance with `signerService` so future routes/plugins can sign bridge attestations.
+- Routes:
+  - `src/routes/home.ts` – static welcome message.
+  - `src/routes/api/health/index.ts` – verifies database connectivity and returns an RFC 3339 timestamp (used by the Hub to track oracle heartbeat).
+  - `src/routes/api/orders/index.ts` – paginated listing of persisted orders with optional `source`/`dest` filters and stable ordering.
+
+## Database & Persistence
+- Storage: SQLite file defined by `SQLITE_DB_FILE`. Docker compose mounts `/data/oracle.sqlite3`; local dev can use `./data/oracle.sqlite3`.
+- Access layer: `ordersRepository` (Fastify decorator) wraps Knex to provide `paginate`, `findById`, `create`, `update`, and `delete`.
+- When modifying persistence, keep schema migrations idempotent—the plugin currently auto-creates the table during `onReady`. For multi-node deployments, keep migrations deterministic to avoid drift.
+
+## Testing Layout
+- Harness: TypeScript tests executed via `tsx` + `c8` (`npm run test`).
+- Structure mirrors the runtime:
+  - `test/app/*` – framework-level behavior (CORS headers, error handler, 404s, rate limiting).
+  - `test/plugins/indexer/*` – repository logic and order transformations.
+  - `test/plugins/signer/*` – signer service validation, including fixture key files under `test/fixtures/signer`.
+  - `test/routes/*` – HTTP endpoints (current focus on `/` home, `/api/health`, `/api/orders`).
+- Tests load `.env.test` (not committed) to point at an ephemeral SQLite file and throttle rate limits for deterministic runs.
+
+## Operational Notes
+- Required env vars: `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`; optional `RATE_LIMIT_MAX`. Keep secrets outside the repo and mount read-only wherever possible.
+- Docker is the default orchestration. `docker-compose.yml` targets development; `docker-compose.prod.yml` uses the multi-stage production image. Both expose port `3000` and mount the SQLite database volume.
+- Builds compile TypeScript (`npm run build`) into `dist/`; production start script runs `node dist/server.js`.
+- Because the oracle interacts with two blockchains, keep serialization/deserialization code constant-time wherever feasible, validate every inbound structure against the TypeBox schemas, and never assume external RPC responses are trusted.
+
+## Next Steps & Security Reminders
+- Implement `normalizeBridgeInstruction` backed by audited Solana BPF instruction decoding once the bridge program ABI is finalized.
+- Add authenticated endpoints (or outbound hooks) that let the Hub collect signed attestations and to-be-broadcast transactions.
+- When extending this service, prefer Fastify decorators + plugins so state is scoped and testable; ensure every new route declares JSON schemas to maintain input/output validation.
+- Store signer key files through secure secret management (e.g., Docker secrets or KMS mounts) and restrict filesystem access; the `file-manager` plugin already rejects traversal and non-JSON payloads—extend it if new formats appear.
