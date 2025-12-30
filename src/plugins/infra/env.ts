@@ -44,8 +44,8 @@ export const autoConfig = {
   // Schema to validate
   schema,
 
-  // Needed to read .env in root folder
-  dotenv: true,
+  // Keep env loading explicit; rely on process.env or --env-file.
+  dotenv: false,
   // or, pass config options available on dotenv module
   // dotenv: {
   //   path: `${import.meta.dirname}/.env`,
