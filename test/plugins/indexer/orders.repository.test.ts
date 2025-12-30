@@ -1,16 +1,11 @@
 import { it, describe } from "node:test";
 import assert from "node:assert";
 import { build } from "../../helper.js";
-import { ORDERS_TABLE_NAME } from "../../../src/plugins/app/indexer/orders.repository.js";
 
 describe("ordersRepository", () => {
   it("should create and retrieve an order by id", async (t) => {
     const app = await build(t);
     const repo = app.ordersRepository;
-
-    const hasTable = await app.knex.schema.hasTable(ORDERS_TABLE_NAME);
-
-    console.log("rhas table test", hasTable);
 
     const created = await repo.create({
       source: "solana",

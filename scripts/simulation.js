@@ -16,14 +16,15 @@ const baseEnv = {
   RATE_LIMIT_MAX: 100,
   SOLANA_KEYS: "./test/fixtures/signer/solana.keys.json",
   QUBIC_KEYS: "./test/fixtures/signer/qubic.keys.json",
+  HUB_URLS: "http://127.0.0.1:3010,http://127.0.0.1:3011",
 };
 
 const oracles = [
   { id: "oracle-1", port: 3001, up: true },
-  { id: "oracle-2", port: 3002, up: false },
+  { id: "oracle-2", port: 3002, up: true },
   { id: "oracle-3", port: 3003, up: true },
   { id: "oracle-4", port: 3004, up: true },
-  { id: "oracle-5", port: 3005, up: false },
+  { id: "oracle-5", port: 3005, up: true },
 ];
 
 const children = [];
