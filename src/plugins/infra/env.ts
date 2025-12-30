@@ -9,7 +9,6 @@ declare module "fastify" {
       SQLITE_DB_FILE: string;
       SOLANA_KEYS: string;
       QUBIC_KEYS: string;
-      ORACLE_ID?: string;
     };
   }
 }
@@ -32,9 +31,6 @@ const schema = {
       type: "string",
     },
     QUBIC_KEYS: {
-      type: "string",
-    },
-    ORACLE_ID: {
       type: "string",
     },
   },
