@@ -36,7 +36,6 @@ function startOracle(oracle) {
     env: {
       ...process.env,
       ...baseEnv,
-      ORACLE_ID: oracle.id,
       PORT: String(oracle.port),
       SQLITE_DB_FILE: dbFile,
     },
