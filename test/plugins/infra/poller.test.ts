@@ -53,7 +53,10 @@ describe("poller plugin", () => {
     poller.start();
     await completion;
 
-    assert.deepStrictEqual(pollResults, ["primary-r1", "primary-r2"]);
+    assert.deepStrictEqual(pollResults, [
+      "primary-r1",
+      "primary-r2",
+    ]);
     assert.deepStrictEqual(calls, ["primary", "primary"]);
     assert.strictEqual(poller.isRunning(), false);
   });
@@ -97,8 +100,8 @@ describe("poller plugin", () => {
           poller.stop().then(() => done?.(), noop);
         });
       },
-      intervalMs: 5,
-      requestTimeoutMs: 10,
+      intervalMs: 10,
+      requestTimeoutMs: 50,
       jitterMs: 0,
     });
 
@@ -139,7 +142,9 @@ describe("poller plugin", () => {
     const fastServer = createServer((req, res) => {
       fastState.count += 1;
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ server: "fast", round: fastState.count }));
+      res.end(
+        JSON.stringify({ server: "fast", round: fastState.count })
+      );
     });
 
     const failingServer = createServer((req, res) => {
@@ -175,6 +180,7 @@ describe("poller plugin", () => {
       fetchOne: (server, signal) =>
         client.getJson<Response>(server, "/poll", signal),
       onRound: (response, context) => {
+        assert.ok(response);
         observed.push(response);
         if (context.round === 2) {
           queueMicrotask(() => {
@@ -182,8 +188,8 @@ describe("poller plugin", () => {
           });
         }
       },
-      intervalMs: 5,
-      requestTimeoutMs: 50,
+      intervalMs: 10,
+      requestTimeoutMs: 200,
       jitterMs: 0,
     });
 
@@ -195,5 +201,48 @@ describe("poller plugin", () => {
       { server: "fast", round: 2 },
     ]);
     await client.close();
+  });
+
+  it("keeps running when both primary and fallback fail", async (t) => {
+    const app = await build(t);
+
+    const primary = "primary";
+    const fallback = "fallback";
+    const rounds: Array<{
+      response: string | null;
+      used?: string;
+    }> = [];
+
+    let done: (() => void) | null = null;
+    const completion = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+
+    const poller = app.poller.create({
+      primary,
+      fallback,
+      fetchOne: async () => {
+        throw new Error("boom");
+      },
+      onRound: (response, context) => {
+        rounds.push({ response, used: context.used });
+        if (context.round === 2) {
+          queueMicrotask(() => {
+            poller.stop().then(() => done?.(), noop);
+          });
+        }
+      },
+      intervalMs: 10,
+      requestTimeoutMs: 20,
+      jitterMs: 0,
+    });
+
+    poller.start();
+    await completion;
+
+    assert.deepStrictEqual(rounds, [
+      { response: null, used: undefined },
+      { response: null, used: undefined },
+    ]);
   });
 });

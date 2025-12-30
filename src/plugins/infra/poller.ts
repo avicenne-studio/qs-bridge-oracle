@@ -21,7 +21,7 @@ export type PollerRoundContext = {
 };
 
 export type PollerRoundHandler<TResponse> = (
-  response: TResponse,
+  response: TResponse | null,
   context: PollerRoundContext
 ) => Promise<void> | void;
 
@@ -108,14 +108,17 @@ function createPoller<TResponse>(
           fetchOne(primary, signal)
         );
         used = primary;
-      } catch (e) {
+      } catch {
         if (fallback) {
-          response = await withTimeout(requestTimeoutMs, (signal) =>
-            fetchOne(fallback, signal)
-          );
+          try {
+            response = await withTimeout(requestTimeoutMs, (signal) =>
+              fetchOne(fallback, signal)
+            );
+            used = fallback;
+          } catch {
+            response = null;
+          }
         }
-
-        throw e
       }
 
       await onRound(response, {
