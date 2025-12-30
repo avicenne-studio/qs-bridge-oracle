@@ -1,10 +1,3 @@
-/**
- * This file is here only to show you how to proceed if you would
- * like to run your application as a standalone executable.
- *
- * You can launch it with the command `npm run standalone`
- */
-
 import Fastify from 'fastify'
 import fp from 'fastify-plugin'
 
@@ -67,7 +60,7 @@ async function init () {
 
   try {
     // Start listening.
-    await app.listen({ port: app.config.PORT, host: '0000' })
+    await app.listen({ port: app.config.PORT, host: '0.0.0.0' })
   } catch (err) {
     app.log.error(err)
     process.exit(1)

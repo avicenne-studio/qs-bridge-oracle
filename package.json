@@ -12,6 +12,8 @@
     "build": "tsc",
     "watch": "tsc -w",
     "dev": "tsx --env-file=.env.local ./src/server.ts",
+    "simulated": "node dist/server.js",
+    "simulation": "node scripts/simulation.js",
     "test": "c8 npm run test:run",
     "test:run": "glob -c \"tsx --env-file=.env.test --test\" \"./test/**/*.ts\"",
     "lint": "eslint --ignore-pattern=dist",

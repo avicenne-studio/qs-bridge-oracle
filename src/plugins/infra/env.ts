@@ -9,6 +9,7 @@ declare module "fastify" {
       SQLITE_DB_FILE: string;
       SOLANA_KEYS: string;
       QUBIC_KEYS: string;
+      ORACLE_ID?: string;
     };
   }
 }
@@ -33,6 +34,9 @@ const schema = {
     QUBIC_KEYS: {
       type: "string",
     },
+    ORACLE_ID: {
+      type: "string",
+    },
   },
 };
 
@@ -44,8 +48,8 @@ export const autoConfig = {
   // Schema to validate
   schema,
 
-  // Needed to read .env in root folder
-  dotenv: true,
+  // Keep env loading explicit; rely on process.env or --env-file.
+  dotenv: false,
   // or, pass config options available on dotenv module
   // dotenv: {
   //   path: `${import.meta.dirname}/.env`,
