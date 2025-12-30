@@ -64,6 +64,7 @@ function shutdown() {
   for (const child of children) {
     child.kill("SIGTERM");
   }
+  // eslint-disable-next-line no-undef
   setTimeout(() => {
     for (const child of children) {
       child.kill("SIGKILL");
