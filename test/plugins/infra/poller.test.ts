@@ -7,23 +7,24 @@ import { build } from "../../helper.js";
 const noop = () => {};
 
 describe("poller plugin", () => {
-  it("collects only successful responses per round", async (t) => {
+  it("uses the primary response when it succeeds", async (t) => {
     const app = await build(t);
 
-    const servers = ["ok-1", "ok-2", "fail"] as const;
+    const primary = "primary";
+    const fallback = "fallback";
     const responsesByServer = new Map([
-      ["ok-1", ["ok-1-r1", "ok-1-r2"]],
-      ["ok-2", ["ok-2-r1", "ok-2-r2"]],
+      ["primary", ["primary-r1", "primary-r2"]],
     ]);
 
-    const pollResults: string[][] = [];
+    const pollResults: (string | null)[] = [];
+    const calls: string[] = [];
     let done: (() => void) | null = null;
     const completion = new Promise<void>((resolve) => {
       done = resolve;
     });
 
     const fetchOne = async (server: string) => {
-      if (server === "fail") throw new Error("boom");
+      calls.push(server);
 
       const bucket = responsesByServer.get(server)!;
       const value = bucket.shift()!;
@@ -31,10 +32,11 @@ describe("poller plugin", () => {
     };
 
     const poller = app.poller.create({
-      servers,
+      primary,
+      fallback,
       fetchOne: (s: string) => fetchOne(s),
-      onRound: (responses, context) => {
-        pollResults.push(responses);
+      onRound: (response, context) => {
+        pollResults.push(response);
 
         if (context.round === 2) {
           // Do not await stop inside onRound. Stop after onRound returns.
@@ -51,22 +53,21 @@ describe("poller plugin", () => {
     poller.start();
     await completion;
 
-    assert.deepStrictEqual(pollResults, [
-      ["ok-1-r1", "ok-2-r1"],
-      ["ok-1-r2", "ok-2-r2"],
-    ]);
+    assert.deepStrictEqual(pollResults, ["primary-r1", "primary-r2"]);
+    assert.deepStrictEqual(calls, ["primary", "primary"]);
     assert.strictEqual(poller.isRunning(), false);
   });
 
-  it("aborts slow servers and exposes defaults", async (t) => {
+  it("falls back after a timeout and exposes defaults", async (t) => {
     const app = await build(t);
 
     const abortedServers: string[] = [];
-    const servers = ["slow", "fast"];
+    const primary = "slow";
+    const fallback = "fast";
 
     const fetchOne = (server: string, signal: AbortSignal) =>
       new Promise<string>((resolve, reject) => {
-        if (server === "fast") {
+        if (server === fallback) {
           resolve("fast-response");
           return;
         }
@@ -86,10 +87,12 @@ describe("poller plugin", () => {
     });
 
     const poller = app.poller.create({
-      servers,
+      primary,
+      fallback,
       fetchOne,
-      onRound: (responses) => {
-        assert.deepStrictEqual(responses, ["fast-response"]);
+      onRound: (response, context) => {
+        assert.strictEqual(response, "fast-response");
+        assert.strictEqual(context.used, fallback);
         queueMicrotask(() => {
           poller.stop().then(() => done?.(), noop);
         });
@@ -116,7 +119,7 @@ describe("poller plugin", () => {
     const app = await build(t);
 
     const poller = app.poller.create({
-      servers: ["s1"],
+      primary: "s1",
       fetchOne: async () => "ok",
       onRound: noop,
       intervalMs: 1,
@@ -129,16 +132,14 @@ describe("poller plugin", () => {
     await poller.stop();
   });
 
-  it("integrates with the Undici GET client transport across multiple servers", async (t) => {
+  it("integrates with the Undici GET client transport with fallback", async (t) => {
     const app = await build(t);
 
     const fastState = { count: 0 };
     const fastServer = createServer((req, res) => {
       fastState.count += 1;
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({ server: "fast", round: fastState.count })
-      );
+      res.end(JSON.stringify({ server: "fast", round: fastState.count }));
     });
 
     const failingServer = createServer((req, res) => {
@@ -146,31 +147,22 @@ describe("poller plugin", () => {
       res.end(JSON.stringify({ error: "boom" }));
     });
 
-    let slowAborted = false;
-    const slowServer = createServer((req) => {
-      req.on("close", () => {
-        slowAborted = true;
-      });
-    });
-
     const listen = async (srv: ReturnType<typeof createServer>) =>
       new Promise<AddressInfo>((resolve) => {
         srv.listen(0, () => resolve(srv.address() as AddressInfo));
       });
 
-    const [fastAddr, failingAddr, slowAddr] = await Promise.all([
+    const [fastAddr, failingAddr] = await Promise.all([
       listen(fastServer),
       listen(failingServer),
-      listen(slowServer),
     ]);
     t.after(() => fastServer.close());
     t.after(() => failingServer.close());
-    t.after(() => slowServer.close());
 
     type Response = { server: string; round: number };
 
     const client = app.undiciGetClient.create();
-    const observed: Response[][] = [];
+    const observed: Response[] = [];
 
     let done: (() => void) | null = null;
     const completion = new Promise<void>((resolve) => {
@@ -178,15 +170,12 @@ describe("poller plugin", () => {
     });
 
     const poller = app.poller.create({
-      servers: [
-        `http://127.0.0.1:${fastAddr.port}`,
-        `http://127.0.0.1:${failingAddr.port}`,
-        `http://127.0.0.1:${slowAddr.port}`,
-      ],
+      primary: `http://127.0.0.1:${failingAddr.port}`,
+      fallback: `http://127.0.0.1:${fastAddr.port}`,
       fetchOne: (server, signal) =>
         client.getJson<Response>(server, "/poll", signal),
-      onRound: (responses, context) => {
-        observed.push(responses);
+      onRound: (response, context) => {
+        observed.push(response);
         if (context.round === 2) {
           queueMicrotask(() => {
             poller.stop().then(() => done?.(), noop);
@@ -202,10 +191,9 @@ describe("poller plugin", () => {
     await completion;
 
     assert.deepStrictEqual(observed, [
-      [{ server: "fast", round: 1 }],
-      [{ server: "fast", round: 2 }],
+      { server: "fast", round: 1 },
+      { server: "fast", round: 2 },
     ]);
-    assert.ok(slowAborted, "expected slow server request to be aborted");
     await client.close();
   });
 });

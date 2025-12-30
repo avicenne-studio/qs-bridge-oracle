@@ -15,16 +15,19 @@ export type PollerOptions = {
 export type PollerRoundContext = {
   round: number;
   startedAt: number;
-  servers: readonly string[];
+  primary: string;
+  fallback?: string;
+  used?: string;
 };
 
 export type PollerRoundHandler<TResponse> = (
-  responses: TResponse[],
+  response: TResponse,
   context: PollerRoundContext
 ) => Promise<void> | void;
 
 export type CreatePollerConfig<TResponse> = PollerOptions & {
-  servers: readonly string[];
+  primary: string;
+  fallback?: string;
   fetchOne: Fetcher<TResponse>;
   onRound: PollerRoundHandler<TResponse>;
 };
@@ -73,8 +76,15 @@ async function withTimeout<T>(
 function createPoller<TResponse>(
   config: CreatePollerConfig<TResponse>
 ): PollerHandle {
-  const { servers, fetchOne, onRound, intervalMs, requestTimeoutMs, jitterMs } =
-    config;
+  const {
+    primary,
+    fallback,
+    fetchOne,
+    onRound,
+    intervalMs,
+    requestTimeoutMs,
+    jitterMs,
+  } = config;
 
   let runningPromise: Promise<void> | null = null;
   let shouldRun = false;
@@ -90,25 +100,30 @@ function createPoller<TResponse>(
         await sleep(delay);
       }
 
-      const settled = await Promise.allSettled(
-        servers.map((server) =>
-          withTimeout(requestTimeoutMs, (signal) => fetchOne(server, signal))
-        )
-      );
+      let response: TResponse | null = null;
+      let used: string | undefined;
 
-      const success: TResponse[] = [];
-      for (const result of settled) {
-        if (result.status === "fulfilled") {
-          success.push(result.value);
+      try {
+        response = await withTimeout(requestTimeoutMs, (signal) =>
+          fetchOne(primary, signal)
+        );
+        used = primary;
+      } catch (e) {
+        if (fallback) {
+          response = await withTimeout(requestTimeoutMs, (signal) =>
+            fetchOne(fallback, signal)
+          );
         }
-        // Promise.all rethrows on first failure. Promise.allSettled lets us
-        // keep the successes even when some servers fail or time out.
+
+        throw e
       }
 
-      await onRound(success, {
+      await onRound(response, {
         round,
         startedAt,
-        servers: servers.slice(),
+        primary,
+        fallback,
+        used,
       });
 
       const elapsed = Date.now() - startedAt;
