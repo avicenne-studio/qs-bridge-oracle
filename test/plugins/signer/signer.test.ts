@@ -31,6 +31,7 @@ async function buildSignerApp(overrides: SignerEnvOverrides = {}) {
       ...process.env,
       SOLANA_KEYS: overrides.SOLANA_KEYS ?? validSolanaKeys,
       QUBIC_KEYS: overrides.QUBIC_KEYS ?? validQubicKeys,
+      HUB_URLS: "http://127.0.0.1:3010,http://127.0.0.1:3011",
     },
   };
 

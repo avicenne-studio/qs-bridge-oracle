@@ -9,13 +9,15 @@ declare module "fastify" {
       SQLITE_DB_FILE: string;
       SOLANA_KEYS: string;
       QUBIC_KEYS: string;
+      ORACLE_ID?: string;
+      HUB_URLS: string;
     };
   }
 }
 
 const schema = {
   type: "object",
-  required: ["SQLITE_DB_FILE", "PORT", "SOLANA_KEYS", "QUBIC_KEYS"],
+  required: ["SQLITE_DB_FILE", "PORT", "SOLANA_KEYS", "QUBIC_KEYS", "HUB_URLS"],
   properties: {
     RATE_LIMIT_MAX: {
       type: "number",
@@ -32,6 +34,14 @@ const schema = {
     },
     QUBIC_KEYS: {
       type: "string",
+    },
+    ORACLE_ID: {
+      type: "string",
+    },
+    HUB_URLS: {
+      type: "string",
+      pattern:
+        "^https?:\\/\\/[A-Za-z0-9.-]+(?::\\d+)?(,https?:\\/\\/[A-Za-z0-9.-]+(?::\\d+)?)*$",
     },
   },
 };
