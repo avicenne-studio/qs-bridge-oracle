@@ -4,6 +4,7 @@ import { FastifyInstance } from "fastify";
 import { OracleOrder } from "./schemas/order.js";
 
 export const ORDERS_TABLE_NAME = "orders";
+export const ORDER_SIGNATURES_TABLE_NAME = "order_signatures";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -12,62 +13,34 @@ declare module "fastify" {
 }
 
 type PersistedOrder = OracleOrder;
-type StoredOrder = OracleOrder & { id: number };
+type PersistedSignature = {
+  order_id: number;
+  signature: string;
+};
+type StoredOrder = OracleOrder;
 type CreateOrder = OracleOrder;
 type UpdateOrder = Partial<OracleOrder>;
+type StoredOrderWithSignatures = StoredOrder & { signatures: string[] };
 
-type OrderQuery = {
-  page: number;
-  limit: number;
-  order: "asc" | "desc";
-  source?: OracleOrder["source"];
-  dest?: OracleOrder["dest"];
-};
+const MAX_BY_IDS = 100;
 
-type OrderWithTotal = StoredOrder & { total: number };
+function normalizeOrderRow(row: StoredOrder): StoredOrder {
+  return {
+    ...row,
+    is_relayable: Boolean(row.is_relayable),
+  };
+}
 
 function createRepository(fastify: FastifyInstance) {
   const knex = fastify.knex;
 
   return {
-    async paginate(q: OrderQuery) {
-      const offset = (q.page - 1) * q.limit;
-
-      const query = knex<PersistedOrder>(ORDERS_TABLE_NAME)
-        .select(knex.raw("rowid as id"), "*")
-        .select(knex.raw("count(*) OVER() as total"));
-
-      if (q.source !== undefined) {
-        query.where({ source: q.source });
-      }
-
-      if (q.dest !== undefined) {
-        query.where({ dest: q.dest });
-      }
-
-      const rows = await query
-        .limit(q.limit)
-        .offset(offset)
-        .orderBy("rowid", q.order);
-
-      const orders = rows.map((row) => {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { total: _total, ...orderRow } = row as OrderWithTotal;
-        return orderRow as StoredOrder;
-      });
-
-      return {
-        orders,
-        total: rows.length > 0 ? Number((rows[0] as OrderWithTotal).total) : 0,
-      };
-    },
-
     async findById(id: number) {
       const row = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
-        .select(knex.raw("rowid as id"), "*")
-        .where("rowid", id)
+        .select("*")
+        .where("id", id)
         .first();
-      return row ?? null;
+      return row ? normalizeOrderRow(row as StoredOrder) : null;
     },
 
     async create(newOrder: CreateOrder) {
@@ -77,7 +50,7 @@ function createRepository(fastify: FastifyInstance) {
 
     async update(id: number, changes: UpdateOrder) {
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
-        .where("rowid", id)
+        .where("id", id)
         .update(changes);
 
       if (affectedRows === 0) {
@@ -89,10 +62,103 @@ function createRepository(fastify: FastifyInstance) {
 
     async delete(id: number) {
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
-        .where("rowid", id)
+        .where("id", id)
         .delete();
 
       return affectedRows > 0;
+    },
+
+    async byIds(ids: number[]) {
+      const uniqueIds = [...new Set(ids)];
+      if (uniqueIds.length === 0) {
+        return [];
+      }
+      if (uniqueIds.length > MAX_BY_IDS) {
+        throw new Error(`Cannot request more than ${MAX_BY_IDS} orders`);
+      }
+
+      const rows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
+        .select("*")
+        .whereIn("id", uniqueIds)
+        .orderBy("id", "asc")
+        .limit(MAX_BY_IDS);
+
+      return rows.map((row) => normalizeOrderRow(row as StoredOrder));
+    },
+
+    async addSignatures(orderId: number, signatures: string[]) {
+      const unique = [...new Set(signatures)];
+      if (unique.length === 0) {
+        return [];
+      }
+
+      const existing = await knex<PersistedSignature>(
+        ORDER_SIGNATURES_TABLE_NAME
+      )
+        .select("signature")
+        .where({ order_id: orderId })
+        .whereIn("signature", unique);
+
+      const existingSet = new Set(existing.map((row) => row.signature));
+      const toInsert = unique.filter((signature) => !existingSet.has(signature));
+
+      if (toInsert.length === 0) {
+        return [];
+      }
+
+      await knex<PersistedSignature>(ORDER_SIGNATURES_TABLE_NAME).insert(
+        toInsert.map((signature) => ({
+          order_id: orderId,
+          signature,
+        }))
+      );
+
+      return toInsert;
+    },
+
+    async findRelayableOrders() {
+      const rows = await knex
+        .from(`${ORDERS_TABLE_NAME} as orders`)
+        .leftJoin(
+          `${ORDER_SIGNATURES_TABLE_NAME} as signatures`,
+          "orders.id",
+          "signatures.order_id"
+        )
+        .select(
+          "orders.source",
+          "orders.dest",
+          "orders.from",
+          "orders.to",
+          "orders.amount",
+          "orders.signature",
+          "orders.status",
+          "orders.is_relayable",
+          "orders.id",
+          "signatures.signature as order_signature"
+        )
+        .where("orders.is_relayable", 1)
+        .orderBy("orders.id", "asc");
+
+      const orders = new Map<number, StoredOrderWithSignatures>();
+      for (const row of rows as Array<
+        StoredOrder & { order_signature: string | null }
+      >) {
+        const id = Number(row.id);
+        const existing = orders.get(id);
+        if (!existing) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { order_signature: _orderSignature, ...order } = row;
+          orders.set(id, {
+            ...normalizeOrderRow(order as StoredOrder),
+            signatures: [],
+          });
+        }
+        if (row.order_signature) {
+          orders.get(id)?.signatures.push(row.order_signature);
+        }
+      }
+
+      return [...orders.values()];
     },
   };
 }

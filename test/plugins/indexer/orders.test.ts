@@ -33,12 +33,15 @@ const mockSolanaTx: SolanaTransaction = {
 describe("OracleOrder utilities", () => {
   it("should accept valid orders with different source and dest", () => {
     const order: OracleOrder = {
+      id: 101,
       source: "solana",
       dest: "qubic",
       from: "A",
       to: "B",
       amount: 10,
       signature: "SOLANA_SIGNATURE_EXAMPLE",
+      status: "ready-for-relay",
+      is_relayable: true,
     };
 
     assert.doesNotThrow(() => assertValidOracleOrder(order));
@@ -46,12 +49,15 @@ describe("OracleOrder utilities", () => {
 
   it("should reject orders where source === dest", () => {
     const order: OracleOrder = {
+      id: 102,
       source: "qubic",
       dest: "qubic",
       from: "A",
       to: "B",
       amount: 1,
       signature: "QUBIC_SIGNATURE_EXAMPLE",
+      status: "ready-for-relay",
+      is_relayable: true,
     };
 
     assert.throws(
@@ -62,29 +68,33 @@ describe("OracleOrder utilities", () => {
 
   it("should construct an order from a Qubic transaction", () => {
     const order = orderFromQubic(
+      201,
       mockQubicTx,
       "solana",
       "QUBIC_SIGNATURE_1"
     );
 
+    assert.strictEqual(order.id, 201);
     assert.strictEqual(order.source, "qubic");
     assert.strictEqual(order.dest, "solana");
     assert.strictEqual(order.from, mockQubicTx.sender);
     assert.strictEqual(order.to, mockQubicTx.recipient);
     assert.strictEqual(order.amount, mockQubicTx.amount);
     assert.strictEqual(order.signature, "QUBIC_SIGNATURE_1");
+    assert.strictEqual(order.status, "ready-for-relay");
+    assert.strictEqual(order.is_relayable, true);
   });
 
   it("should throw when Qubic order has identical source and dest", () => {
     assert.throws(
-      () => orderFromQubic(mockQubicTx, "qubic", "SIG"),
+      () => orderFromQubic(202, mockQubicTx, "qubic", "SIG"),
       /source and dest must differ/
     );
   });
 
   it("should throw because normalizeBridgeInstruction is not implemented", () => {
     assert.throws(
-      () => orderFromSolana(mockSolanaTx, "qubic", "SIG"),
+      () => orderFromSolana(203, mockSolanaTx, "qubic", "SIG"),
       /not implemented/
     );
   });
