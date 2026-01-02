@@ -12,13 +12,18 @@ export const OracleChain = Type.Union([
   Type.Literal("solana"),
 ]);
 
+export const OracleOrderStatus = Type.Union([Type.Literal("ready-for-relay")]);
+
 export const OracleOrderSchema = Type.Object({
+  id: Type.Integer({ minimum: 1 }),
   source: OracleChain,
   dest: OracleChain,
   from: StringSchema,
   to: StringSchema,
   amount: Type.Number(),
   signature: SignatureSchema,
+  status: OracleOrderStatus,
+  is_relayable: Type.Boolean(),
 });
 
 export type OracleOrder = Static<typeof OracleOrderSchema>;
@@ -30,23 +35,28 @@ export function assertValidOracleOrder(order: OracleOrder) {
 }
 
 export function orderFromQubic(
+  id: number,
   tx: QubicTransaction,
   dest: Static<typeof OracleChain>,
   signature: string
 ): OracleOrder {
   const order: OracleOrder = {
+    id,
     source: "qubic",
     dest,
     from: tx.sender,
     to: tx.recipient,
     amount: tx.amount,
     signature,
+    status: "ready-for-relay",
+    is_relayable: true,
   };
   assertValidOracleOrder(order);
   return order;
 }
 
 export function orderFromSolana(
+  id: number,
   tx: SolanaTransaction,
   dest: Static<typeof OracleChain>,
   signature: string
@@ -54,12 +64,15 @@ export function orderFromSolana(
   const ix = tx.instructions[0];
   const decoded = normalizeBridgeInstruction(ix.data);
   const order: OracleOrder = {
+    id,
     source: "solana",
     dest,
     from: decoded.from,
     to: decoded.to,
     amount: decoded.amount,
     signature,
+    status: "ready-for-relay",
+    is_relayable: true,
   };
   assertValidOracleOrder(order);
   return order;

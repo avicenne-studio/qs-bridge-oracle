@@ -1,11 +1,13 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
-import { Static } from "@sinclair/typebox";
+import { Static, Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
+import { SignatureSchema } from "../common/schemas/common.js";
 import { OracleChain } from "../indexer/schemas/order.js";
 import { RECOMMENDED_POLLING_DEFAULTS } from "../../infra/poller.js";
 
 type OrderSignature = {
-  orderId: string;
+  orderId: number;
   dest: Static<typeof OracleChain>;
   signatures: string[];
 };
@@ -13,6 +15,15 @@ type OrderSignature = {
 type OrderSignaturesResponse = {
   data: OrderSignature[];
 };
+
+const RelayableSignatureSchema = Type.Object({
+  orderId: Type.Integer({ minimum: 1 }),
+  signatures: Type.Array(SignatureSchema, { minItems: 1 }),
+});
+
+const RelayableSignaturesSchema = Type.Object({
+  data: Type.Array(RelayableSignatureSchema),
+});
 
 function parseHubUrls(raw: string): string[] {
   return raw
@@ -39,7 +50,7 @@ function startHubSignaturePolling(
         "/api/orders/signatures",
         signal
       ),
-    onRound: (response, context) => {
+    onRound: async (response, context) => {
       if (!response) {
         fastify.log.warn(
           { primary: context.primary, fallback: context.fallback },
@@ -48,12 +59,38 @@ function startHubSignaturePolling(
         return;
       }
 
-      // TODO: real signature gathering service
+      if (!Value.Check(RelayableSignaturesSchema, response)) {
+        fastify.log.warn(
+          { hubUsed: context.used },
+          "Invalid hub signatures payload"
+        );
+        return;
+      }
+
+      const results = await Promise.all(
+        response.data.map(async (order) => {
+          try {
+            const added = await fastify.ordersRepository.addSignatures(
+              order.orderId,
+              order.signatures
+            );
+            return { orderId: order.orderId, added: added.length };
+          } catch (error) {
+            fastify.log.error(
+              { err: error, orderId: order.orderId },
+              "Failed to persist hub signatures"
+            );
+            return { orderId: order.orderId, added: 0 };
+          }
+        })
+      );
+
+      const addedTotal = results.reduce((sum, result) => sum + result.added, 0);
       fastify.log.info(
         {
           hubUsed: context.used,
           count: response.data.length,
-          data: response.data,
+          addedTotal,
         },
         "Polled hub order signatures"
       );
@@ -73,8 +110,8 @@ export default fp(
   },
   {
     name: "hub-signature-service",
-    dependencies: ["env", "polling", "undici-get-client"],
+    dependencies: ["env", "polling", "undici-get-client", "orders-repository"],
   }
 );
 
-export { parseHubUrls };
+export { parseHubUrls, RelayableSignatureSchema };

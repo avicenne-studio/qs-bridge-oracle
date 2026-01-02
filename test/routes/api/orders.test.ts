@@ -4,48 +4,52 @@ import { build } from "../../helper.js";
 
 async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
   await app.ordersRepository.create({
+    id: 1,
     source: "solana",
     dest: "qubic",
     from: "A",
     to: "B",
     amount: 10,
     signature: "sig-1",
+    status: "ready-for-relay",
+    is_relayable: true,
   });
   await app.ordersRepository.create({
+    id: 2,
     source: "qubic",
     dest: "solana",
     from: "C",
     to: "D",
     amount: 25,
     signature: "sig-2",
+    status: "ready-for-relay",
+    is_relayable: false,
   });
 }
 
-test("GET /api/orders returns paginated list", async (t) => {
+test("POST /api/orders returns list by ids", async (t) => {
   const app = await build(t);
   await seedOrders(app);
 
   const res = await app.inject({
-    url: "/api/orders?page=1&limit=1&order=asc&dest=qubic",
-    method: "GET",
+    url: "/api/orders",
+    method: "POST",
+    payload: {
+      ids: [1],
+    },
   });
 
   assert.strictEqual(res.statusCode, 200);
   const body = JSON.parse(res.payload);
 
-  assert.deepStrictEqual(body.pagination, {
-    page: 1,
-    limit: 1,
-    total: 1,
-  });
   assert.strictEqual(body.data.length, 1);
   assert.strictEqual(body.data[0].from, "A");
   assert.strictEqual(body.data[0].signature, "sig-1");
 });
 
-test("GET /api/orders handles repository errors", async (t) => {
+test("POST /api/orders handles repository errors", async (t) => {
   const app = await build(t);
-  const { mock: repoMock } = t.mock.method(app.ordersRepository, "paginate");
+  const { mock: repoMock } = t.mock.method(app.ordersRepository, "byIds");
   repoMock.mockImplementation(() => {
     throw new Error("db down");
   });
@@ -54,7 +58,8 @@ test("GET /api/orders handles repository errors", async (t) => {
 
   const res = await app.inject({
     url: "/api/orders",
-    method: "GET",
+    method: "POST",
+    payload: { ids: [1] },
   });
 
   assert.strictEqual(res.statusCode, 500);
