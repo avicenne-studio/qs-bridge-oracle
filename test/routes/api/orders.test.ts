@@ -27,16 +27,13 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
   });
 }
 
-test("POST /api/orders returns list by ids", async (t) => {
+test("GET /api/orders returns pending orders", async (t) => {
   const app = await build(t);
   await seedOrders(app);
 
   const res = await app.inject({
     url: "/api/orders",
-    method: "POST",
-    payload: {
-      ids: [1],
-    },
+    method: "GET",
   });
 
   assert.strictEqual(res.statusCode, 200);
@@ -47,9 +44,12 @@ test("POST /api/orders returns list by ids", async (t) => {
   assert.strictEqual(body.data[0].signature, "sig-1");
 });
 
-test("POST /api/orders handles repository errors", async (t) => {
+test("GET /api/orders handles repository errors", async (t) => {
   const app = await build(t);
-  const { mock: repoMock } = t.mock.method(app.ordersRepository, "byIds");
+  const { mock: repoMock } = t.mock.method(
+    app.ordersRepository,
+    "findPendingOrders"
+  );
   repoMock.mockImplementation(() => {
     throw new Error("db down");
   });
@@ -58,8 +58,7 @@ test("POST /api/orders handles repository errors", async (t) => {
 
   const res = await app.inject({
     url: "/api/orders",
-    method: "POST",
-    payload: { ids: [1] },
+    method: "GET",
   });
 
   assert.strictEqual(res.statusCode, 500);
