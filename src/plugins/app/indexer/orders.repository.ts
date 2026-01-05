@@ -23,6 +23,7 @@ type UpdateOrder = Partial<OracleOrder>;
 type StoredOrderWithSignatures = StoredOrder & { signatures: string[] };
 
 const MAX_BY_IDS = 100;
+const MAX_PENDING = 50;
 
 function normalizeOrderRow(row: StoredOrder): StoredOrder {
   return {
@@ -82,6 +83,16 @@ function createRepository(fastify: FastifyInstance) {
         .whereIn("id", uniqueIds)
         .orderBy("id", "asc")
         .limit(MAX_BY_IDS);
+
+      return rows.map((row) => normalizeOrderRow(row as StoredOrder));
+    },
+
+    async findPendingOrders() {
+      const rows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
+        .select("*")
+        .where("is_relayable", 1)
+        .orderBy("id", "asc")
+        .limit(MAX_PENDING);
 
       return rows.map((row) => normalizeOrderRow(row as StoredOrder));
     },

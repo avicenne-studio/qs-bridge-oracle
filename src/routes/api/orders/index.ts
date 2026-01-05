@@ -1,34 +1,23 @@
-import {
-  FastifyPluginAsyncTypebox,
-  Type,
-} from "@fastify/type-provider-typebox";
+import { FastifyPluginAsyncTypebox, Type } from "@fastify/type-provider-typebox";
 import { OracleOrderSchema } from "../../../plugins/app/indexer/schemas/order.js";
-
-const OrdersRequestSchema = Type.Object({
-  ids: Type.Array(Type.Integer({ minimum: 1 }), {
-    minItems: 1,
-    maxItems: 100,
-  }),
-});
 
 const OrdersResponseSchema = Type.Object({
   data: Type.Array(OracleOrderSchema),
 });
 
 const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
-  fastify.post(
+  fastify.get(
     "/",
     {
       schema: {
-        body: OrdersRequestSchema,
         response: {
           200: OrdersResponseSchema,
         },
       },
     },
-    async function handler(request) {
+    async function handler() {
       try {
-        const result = await fastify.ordersRepository.byIds(request.body.ids);
+        const result = await fastify.ordersRepository.findPendingOrders();
 
         return {
           data: result,

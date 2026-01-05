@@ -96,6 +96,42 @@ describe("ordersRepository", () => {
     await assert.rejects(() => repo.byIds(ids), /Cannot request more than 100/);
   });
 
+  it("should return pending orders ordered and limited", async (t) => {
+    const app = await build(t);
+    const repo = app.ordersRepository;
+
+    for (let i = 1; i <= 55; i += 1) {
+      await repo.create({
+        id: i,
+        source: "solana",
+        dest: "qubic",
+        from: `A-${i}`,
+        to: `B-${i}`,
+        amount: i,
+        signature: `sig-${i}`,
+        status: "ready-for-relay",
+        is_relayable: true,
+      });
+    }
+
+    await repo.create({
+      id: 1001,
+      source: "qubic",
+      dest: "solana",
+      from: "SkipA",
+      to: "SkipB",
+      amount: 1,
+      signature: "sig-skip",
+      status: "ready-for-relay",
+      is_relayable: false,
+    });
+
+    const pending = await repo.findPendingOrders();
+    assert.strictEqual(pending.length, 50);
+    assert.strictEqual(pending[0].id, 1);
+    assert.strictEqual(pending[49].id, 50);
+  });
+
   it("should update an order", async (t) => {
     const app = await build(t);
     const repo = app.ordersRepository;
