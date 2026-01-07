@@ -34,6 +34,8 @@ function sendUnauthorized(
   reply.code(401).send({ message: "Unauthorized" });
 }
 
+// for later with-body request
+// TODO: to remove if no such request received in the final implementation
 function hashBody() {
   return EMPTY_BODY_HASH;
 }
@@ -79,7 +81,7 @@ export default fp(
         return;
       }
 
-      const headers: Record<string, unknown> = {
+      const headers = {
         "x-hub-id": request.headers["x-hub-id"],
         "x-key-id": request.headers["x-key-id"],
         "x-timestamp": request.headers["x-timestamp"],

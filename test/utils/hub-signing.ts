@@ -35,8 +35,7 @@ function hashBody(body?: string | Buffer | Uint8Array): string {
     return createHash("sha256").update("").digest("hex");
   }
 
-  const payload =
-    typeof body === "string" ? Buffer.from(body) : Buffer.from(body);
+  const payload = Buffer.from(body);
 
   return createHash("sha256").update(payload).digest("hex");
 }
