@@ -8,6 +8,8 @@ import {
 
 export default fp(
   async function hubNoncesCleanerPlugin(fastify: FastifyInstance) {
+    let interval: NodeJS.Timeout | null = null;
+
     const cleanup = async () => {
       const nowSeconds = Math.floor(Date.now() / 1000);
       const cutoff =
@@ -19,14 +21,16 @@ export default fp(
       }
     };
 
-    await cleanup();
-
-    const interval = setInterval(cleanup, HUB_NONCE_CLEANUP_INTERVAL_MS);
-
-    interval.unref();
+    fastify.addHook("onReady", async () => {
+      await cleanup();
+      interval = setInterval(cleanup, HUB_NONCE_CLEANUP_INTERVAL_MS);
+      interval.unref();
+    });
 
     fastify.addHook("onClose", async () => {
-      clearInterval(interval);
+      if (interval) {
+        clearInterval(interval);
+      }
     });
   },
   {
