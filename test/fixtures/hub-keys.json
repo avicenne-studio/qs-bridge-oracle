@@ -1,0 +1,22 @@
+{
+  "primary": {
+    "current": {
+      "kid": "primary-current",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAwsEiudMf0UXcqAuxj65aFpLNC1JPo/oCqnsFAh2nMaQ=\n-----END PUBLIC KEY-----\n"
+    },
+    "next": {
+      "kid": "primary-next",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA95w4txQZJeejrAjHNX7PaXMORNkmBkH/i/dEvBszvC8=\n-----END PUBLIC KEY-----\n"
+    }
+  },
+  "fallback": {
+    "current": {
+      "kid": "fallback-current",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEACIc12m7cJqOnAuDmEE5gMgYkjIe2oY4ezCo1XdWXi2Q=\n-----END PUBLIC KEY-----\n"
+    },
+    "next": {
+      "kid": "fallback-next",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAPGN02KdLuw9Qh9gIxLendbIgOwLVcPgB5yfVR9sBwEY=\n-----END PUBLIC KEY-----\n"
+    }
+  }
+}

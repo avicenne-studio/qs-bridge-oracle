@@ -1,7 +1,6 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { SignatureSchema } from "../common/schemas/common.js";
 import { OracleChain } from "../indexer/schemas/order.js";
 import { RECOMMENDED_POLLING_DEFAULTS } from "../../infra/poller.js";
@@ -59,7 +58,7 @@ function startHubSignaturePolling(
         return;
       }
 
-      if (!Value.Check(RelayableSignaturesSchema, response)) {
+      if (!fastify.validation.isValid(RelayableSignaturesSchema, response)) {
         fastify.log.warn(
           { hubUsed: context.used },
           "Invalid hub signatures payload"
@@ -110,7 +109,13 @@ export default fp(
   },
   {
     name: "hub-signature-service",
-    dependencies: ["env", "polling", "undici-get-client", "orders-repository"],
+    dependencies: [
+      "env",
+      "polling",
+      "undici-get-client",
+      "orders-repository",
+      "validation",
+    ],
   }
 );
 

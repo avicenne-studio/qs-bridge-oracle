@@ -2,7 +2,11 @@ import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import knex, { Knex } from "knex";
 import { SIGNATURE_MAX_LENGTH } from "../app/common/schemas/common.js";
-import { ORDER_SIGNATURES_TABLE_NAME, ORDERS_TABLE_NAME } from "../app/indexer/orders.repository.js";
+import {
+  ORDER_SIGNATURES_TABLE_NAME,
+  ORDERS_TABLE_NAME,
+} from "../app/indexer/orders.repository.js";
+import { HUB_NONCES_TABLE_NAME } from "../app/hub/hub-nonces.repository.js";
 
 declare module "fastify" {
   export interface FastifyInstance {
@@ -61,6 +65,19 @@ export default fp(
             table.unique(["order_id", "signature"]);
           }
         );
+      }
+
+      const hasNoncesTable = await fastify.knex.schema.hasTable(
+        HUB_NONCES_TABLE_NAME
+      );
+      if (!hasNoncesTable) {
+        await fastify.knex.schema.createTable(HUB_NONCES_TABLE_NAME, (table) => {
+          table.string("hubId").notNullable();
+          table.string("kid").notNullable();
+          table.string("nonce").notNullable();
+          table.integer("ts").notNullable();
+          table.primary(["hubId", "kid", "nonce"]);
+        });
       }
     });
   },
