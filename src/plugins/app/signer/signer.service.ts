@@ -72,8 +72,6 @@ const SolanaOrderSchema = {
 } as const;
 
 type SignerService = {
-  solana: SignerKeys;
-  qubic: SignerKeys;
   signSolanaOrder: (order: SolanaOrderToSign) => Promise<string>;
 };
 
@@ -191,7 +189,7 @@ export default fp(
       fastify.config.SOLANA_KEYS,
       fastify
     );
-    const qubic = await readKeysFromFile(
+    await readKeysFromFile(
       "QUBIC_KEYS",
       fastify.config.QUBIC_KEYS,
       fastify
@@ -205,7 +203,7 @@ export default fp(
       return signSolanaOrderWithSigner(order, cachedSigner);
     };
 
-    fastify.decorate("signerService", { solana, qubic, signSolanaOrder });
+    fastify.decorate("signerService", { signSolanaOrder });
   },
   {
     name: "signer-service",

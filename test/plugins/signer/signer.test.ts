@@ -123,18 +123,11 @@ describe("signerService", () => {
     );
   });
 
-  it("decorates signerService with both key sets when inputs are valid", async (t) => {
+  it("decorates signerService when inputs are valid", async (t) => {
     const app = await buildSignerApp();
     t.after(() => app.close());
 
-    assert.deepStrictEqual(app.signerService.solana, {
-      pKey: solanaFixtureKeys.pKey,
-      sKey: solanaFixtureKeys.sKey,
-    });
-    assert.deepStrictEqual(app.signerService.qubic, {
-      pKey: "QUBIC_PUBLIC_KEY",
-      sKey: "QUBIC_SECRET_KEY",
-    });
+    assert.strictEqual(typeof app.signerService.signSolanaOrder, "function");
   });
 
   it("signs a solana order using the fixture keypair", async (t) => {
