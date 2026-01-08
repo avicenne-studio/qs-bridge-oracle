@@ -15,7 +15,6 @@
     "simulated": "node dist/server.js",
     "simulation": "node scripts/simulation.js",
     "generate-solana-keypair": "node scripts/generate-solana-keypair.js",
-    "load-solana-test-keypair": "node scripts/load-solana-test-keypair.js",
     "test": "c8 npm run test:run",
     "test:run": "glob -c \"tsx --env-file=.env.test --test\" \"./test/**/*.ts\"",
     "lint": "eslint --ignore-pattern=dist",
