@@ -11,7 +11,7 @@ import {
   createKeyPairSignerFromBytes,
   createSignableMessage,
 } from "@solana/kit";
-import { verifySignature } from "@solana/keys";
+import { signatureBytes, verifySignature } from "@solana/keys";
 
 import envPlugin, {
   autoConfig as envAutoConfig,
@@ -181,12 +181,16 @@ describe("signerService", () => {
     const serialized = serialize(schema, order);
     const digest = createHash("sha256").update(serialized).digest();
     const message = createSignableMessage(digest);
-    const sigBytes = new Uint8Array(Buffer.from(signature, "base64"));
+    const sigBytes = signatureBytes(Buffer.from(signature, "base64"));
     const signer = await createKeyPairSignerFromBytes(
       new Uint8Array(Buffer.from(solanaFixtureKeys.sKey, "base64"))
     );
 
-    const ok = await verifySignature(signer.keyPair.publicKey, sigBytes, message.content);
+    const ok = await verifySignature(
+      signer.keyPair.publicKey,
+      sigBytes,
+      message.content
+    );
     assert.ok(ok);
   });
 
@@ -281,7 +285,10 @@ describe("signerService", () => {
     const app = await buildSignerApp({ SOLANA_KEYS: solanaKeysFile });
     t.after(async () => {
       await app.close();
-      await fs.rm(path.dirname(solanaKeysFile), { recursive: true, force: true });
+      await fs.rm(path.dirname(solanaKeysFile), {
+        recursive: true,
+        force: true,
+      });
     });
 
     await assert.rejects(
@@ -312,7 +319,10 @@ describe("signerService", () => {
     const app = await buildSignerApp({ SOLANA_KEYS: solanaKeysFile });
     t.after(async () => {
       await app.close();
-      await fs.rm(path.dirname(solanaKeysFile), { recursive: true, force: true });
+      await fs.rm(path.dirname(solanaKeysFile), {
+        recursive: true,
+        force: true,
+      });
     });
 
     await assert.rejects(
