@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import os from "node:os";
 import process from "node:process";
@@ -9,6 +9,35 @@ const tmpRoot = join(os.tmpdir(), "oracle-sim");
 rmSync(tmpRoot, { recursive: true, force: true });
 mkdirSync(tmpRoot, { recursive: true });
 
+const hubKeysFile = join(tmpRoot, "hub-keys.json");
+const hubKeys = {
+  primary: {
+    current: {
+      kid: "current-1",
+      publicKeyPem:
+        "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAWRWu5e67npLDHhLZRVeePKmuBCz7aGnflyVclzIXra0=\n-----END PUBLIC KEY-----\n",
+    },
+    next: {
+      kid: "next-1",
+      publicKeyPem:
+        "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAWRWu5e67npLDHhLZRVeePKmuBCz7aGnflyVclzIXra0=\n-----END PUBLIC KEY-----\n",
+    },
+  },
+  fallback: {
+    current: {
+      kid: "current-1",
+      publicKeyPem:
+        "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAWRWu5e67npLDHhLZRVeePKmuBCz7aGnflyVclzIXra0=\n-----END PUBLIC KEY-----\n",
+    },
+    next: {
+      kid: "next-1",
+      publicKeyPem:
+        "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAWRWu5e67npLDHhLZRVeePKmuBCz7aGnflyVclzIXra0=\n-----END PUBLIC KEY-----\n",
+    },
+  },
+};
+writeFileSync(hubKeysFile, JSON.stringify(hubKeys, null, 2));
+
 const baseEnv = {
   NODE_ENV: "production",
   FASTIFY_CLOSE_GRACE_DELAY: "1000",
@@ -17,6 +46,7 @@ const baseEnv = {
   SOLANA_KEYS: "./test/fixtures/signer/solana.keys.json",
   QUBIC_KEYS: "./test/fixtures/signer/qubic.keys.json",
   HUB_URLS: "http://127.0.0.1:3010,http://127.0.0.1:3011",
+  HUB_KEYS_FILE: hubKeysFile,
 };
 
 const oracles = [

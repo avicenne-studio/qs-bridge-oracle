@@ -4,14 +4,17 @@
 - This Fastify service is one Oracle node in a replicated oracle network that feeds a Hub service with order signatures and liveness signals for Qubic ↔ Solana bridge transfers.
 - Every node must be deterministic, auditable, and tamper-resistant: all blockchain transactions are validated locally and only sanitized data leaves the server (e.g., to the Hub).
 - Keys for both chains are mounted as JSON files that hold signing material (`SOLANA_KEYS`, `QUBIC_KEYS`). File paths are sanitized to prevent directory traversal.
+- Inbound Hub → Oracle requests are authenticated with Ed25519 signatures and replay protection (timestamp + nonce).
 
 ## Runtime Architecture
 - Entry point: `src/server.ts` creates a Fastify instance with opinionated logging/AJV settings and registers `src/app.ts`.
 - `src/app.ts` autoloads three plugin layers:
   1. `src/plugins/infra`: cross-cutting concerns (env validation, helmet/cors/rate limit, sqlite, sensible errors, file manager).
+     - `hub-keys`, `hub-verifier`, and `hub-nonces-cleaner` enforce Hub request authentication for `/api/*`.
   2. `src/plugins/app`: domain services such as the signer service, common schemas, and the on-disk orders repository.
   3. `src/routes`: HTTP routes grouped by feature (home + `/api` tree).
 - Database: SQLite via `better-sqlite3` and `knex`. The `orders` table (id, source/dest, from/to, amount, signature) is auto-created in the Knex plugin (`src/plugins/infra/@knex.ts`) using the `SQLITE_DB_FILE` path from the environment.
+- Replay protection: the `seen_nonces` table stores `(hubId, kid, nonce, ts)` for inbound Hub requests and is periodically cleaned.
 - Order ingestion helpers live in `src/plugins/app/indexer/schemas/*`. They provide typed validators and conversion helpers (`orderFromQubic`, `orderFromSolana`) for transactions pulled from chain RPCs. `normalizeBridgeInstruction` is still a stub—fill it carefully once the Solana instruction format is finalized.
 - Signing: `src/plugins/app/signer/signer.service.ts` reads both Solana and Qubic key JSON files, validates their schemas, and decorates the Fastify instance with `signerService` so future routes/plugins can sign bridge attestations.
 - Routes:
@@ -34,7 +37,7 @@
 - Tests load `.env.test` (not committed) to point at an ephemeral SQLite file and throttle rate limits for deterministic runs.
 
 ## Operational Notes
-- Required env vars: `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`; optional `RATE_LIMIT_MAX`. Keep secrets outside the repo and mount read-only wherever possible.
+- Required env vars: `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`, `HUB_KEYS_FILE`; optional `RATE_LIMIT_MAX`. Keep secrets outside the repo and mount read-only wherever possible.
 - Docker is the default orchestration. `docker-compose.yml` targets development; `docker-compose.prod.yml` uses the multi-stage production image. Both expose port `3000` and mount the SQLite database volume.
 - Builds compile TypeScript (`npm run build`) into `dist/`; production start script runs `node dist/server.js`.
 - Because the oracle interacts with two blockchains, keep serialization/deserialization code constant-time wherever feasible, validate every inbound structure against the TypeBox schemas, and never assume external RPC responses are trusted.

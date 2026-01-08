@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { build } from "../../helper.js";
+import { signHubHeaders } from "../../utils/hub-signing.js";
 
 async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
   await app.ordersRepository.create({
@@ -34,6 +35,7 @@ test("GET /api/orders returns pending orders", async (t) => {
   const res = await app.inject({
     url: "/api/orders",
     method: "GET",
+    headers: await signHubHeaders({ method: "GET", url: "/api/orders" }),
   });
 
   assert.strictEqual(res.statusCode, 200);
@@ -59,6 +61,7 @@ test("GET /api/orders handles repository errors", async (t) => {
   const res = await app.inject({
     url: "/api/orders",
     method: "GET",
+    headers: await signHubHeaders({ method: "GET", url: "/api/orders" }),
   });
 
   assert.strictEqual(res.statusCode, 500);

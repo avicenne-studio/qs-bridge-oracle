@@ -11,13 +11,21 @@ declare module "fastify" {
       QUBIC_KEYS: string;
       ORACLE_ID?: string;
       HUB_URLS: string;
+      HUB_KEYS_FILE: string;
     };
   }
 }
 
 const schema = {
   type: "object",
-  required: ["SQLITE_DB_FILE", "PORT", "SOLANA_KEYS", "QUBIC_KEYS", "HUB_URLS"],
+  required: [
+    "SQLITE_DB_FILE",
+    "PORT",
+    "SOLANA_KEYS",
+    "QUBIC_KEYS",
+    "HUB_URLS",
+    "HUB_KEYS_FILE",
+  ],
   properties: {
     RATE_LIMIT_MAX: {
       type: "number",
@@ -42,6 +50,9 @@ const schema = {
       type: "string",
       pattern:
         "^https?:\\/\\/[A-Za-z0-9.-]+(?::\\d+)?(,https?:\\/\\/[A-Za-z0-9.-]+(?::\\d+)?)*$",
+    },
+    HUB_KEYS_FILE: {
+      type: "string",
     },
   },
 };
@@ -85,6 +96,10 @@ export default fp(
     fastify.config.QUBIC_KEYS = fileManager.sanitizeKeyFilePath(
       "QUBIC_KEYS",
       fastify.config.QUBIC_KEYS
+    );
+    fastify.config.HUB_KEYS_FILE = fileManager.sanitizeKeyFilePath(
+      "HUB_KEYS_FILE",
+      fastify.config.HUB_KEYS_FILE
     );
   },
   { name: "env", dependencies: ['file-manager'] }

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { build } from "../../helper.js";
+import { signHubHeaders } from "../../utils/hub-signing.js";
 
 test("GET /api/health success", async (t) => {
   const app = await build(t);
@@ -8,6 +9,7 @@ test("GET /api/health success", async (t) => {
   const res = await app.inject({
     url: "/api/health",
     method: "GET",
+    headers: await signHubHeaders({ method: "GET", url: "/api/health" }),
   });
 
   assert.strictEqual(res.statusCode, 200);
@@ -36,6 +38,7 @@ test("GET /api/health handles knex failure", async (t) => {
   const res = await app.inject({
     url: "/api/health",
     method: "GET",
+    headers: await signHubHeaders({ method: "GET", url: "/api/health" }),
   });
 
   assert.strictEqual(res.statusCode, 503);

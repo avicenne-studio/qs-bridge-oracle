@@ -1,0 +1,26 @@
+{
+  "primary": {
+    "current": {
+      "kid": "primary-current",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAwsEiudMf0UXcqAuxj65aFpLNC1JPo/oCqnsFAh2nMaQ=\n-----END PUBLIC KEY-----\n",
+      "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIMBrdUCedKd1ZxGnyuMC0Zs5O1tOk9iMQ3qFAI0xyqYM\n-----END PRIVATE KEY-----\n"
+    },
+    "next": {
+      "kid": "primary-next",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA95w4txQZJeejrAjHNX7PaXMORNkmBkH/i/dEvBszvC8=\n-----END PUBLIC KEY-----\n",
+      "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIOZOvrF1qii9zoUvpA7DB1s96wNz7pHJtJMjs3MxiWpO\n-----END PRIVATE KEY-----\n"
+    }
+  },
+  "fallback": {
+    "current": {
+      "kid": "fallback-current",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEACIc12m7cJqOnAuDmEE5gMgYkjIe2oY4ezCo1XdWXi2Q=\n-----END PUBLIC KEY-----\n",
+      "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIFjSK5koOkjbowgJUjL22cuOXPf/hcahL62yWUp/nJ4p\n-----END PRIVATE KEY-----\n"
+    },
+    "next": {
+      "kid": "fallback-next",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAPGN02KdLuw9Qh9gIxLendbIgOwLVcPgB5yfVR9sBwEY=\n-----END PUBLIC KEY-----\n",
+      "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEII4s2yyIqAdCQgLD/xkMBG6ANUuwMJOUqVkYuVGNmxef\n-----END PRIVATE KEY-----\n"
+    }
+  }
+}

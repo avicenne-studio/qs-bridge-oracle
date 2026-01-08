@@ -25,6 +25,18 @@ Set `SQLITE_DB_FILE` to the database path.
 
 The Oracle creates the SQLite database automatically on first launch.
 
+## Hub Security & Key Rotation
+
+Oracles only trust Hub-signed requests using pinned Ed25519 public keys stored on disk (`HUB_KEYS_FILE`).
+The Hub exposes `GET /api/keys` for operators to retrieve current/next public keys
+([qs-bridge-hub](https://github.com/avicenne-studio/qs-bridge-hub)).
+Oracles should not auto-fetch keys to avoid trusting the network path at runtime
+and to keep key changes as an explicit, audited operator action.
+
+Rotation flow: update `HUB_KEYS_FILE` with the Hub's `current` and `next` keys before a rotation.
+Requests include `X-Key-Id`; the oracle accepts either `current` or `next` for the given hub ID.
+It is the oracle operator's responsibility to keep the pinned keys file updated.
+
 
 ## Development
 

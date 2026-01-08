@@ -7,6 +7,7 @@ import envPlugin, {
   autoConfig as envAutoConfig,
 } from "../../../src/plugins/infra/env.js";
 import fmPlugin from "../../../src/plugins/infra/@file-manager.js";
+import validationPlugin from "../../../src/plugins/infra/validation.js";
 import signerService from "../../../src/plugins/app/signer/signer.service.js";
 
 const fixturesDir = path.join(process.cwd(), "test/fixtures/signer");
@@ -20,6 +21,7 @@ const unreadablePath = path.join(fixturesDir, "directory.json");
 type SignerEnvOverrides = Partial<{
   SOLANA_KEYS: string;
   QUBIC_KEYS: string;
+  HUB_KEYS_FILE: string;
 }>;
 
 async function buildSignerApp(overrides: SignerEnvOverrides = {}) {
@@ -31,12 +33,16 @@ async function buildSignerApp(overrides: SignerEnvOverrides = {}) {
       ...process.env,
       SOLANA_KEYS: overrides.SOLANA_KEYS ?? validSolanaKeys,
       QUBIC_KEYS: overrides.QUBIC_KEYS ?? validQubicKeys,
+      HUB_KEYS_FILE:
+        overrides.HUB_KEYS_FILE ??
+        path.join(process.cwd(), "test/fixtures/hub-keys.json"),
       HUB_URLS: "http://127.0.0.1:3010,http://127.0.0.1:3011",
     },
   };
 
   try {
-    await app.register(fmPlugin)
+    await app.register(fmPlugin);
+    await app.register(validationPlugin);
     await app.register(envPlugin, envOptions);
     await app.register(signerService);
     await app.ready();

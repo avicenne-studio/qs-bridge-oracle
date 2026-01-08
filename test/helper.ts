@@ -1,8 +1,14 @@
-import fastify, { LightMyRequestResponse } from "fastify";
+import fastify, { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { TestContext } from "node:test";
 import serviceApp from "../src/app.js";
 import assert from "node:assert";
-import fp from 'fastify-plugin'
+import fp from "fastify-plugin";
+import path from "node:path";
+
+const hubKeysPublicFixturePath = path.join(
+  process.cwd(),
+  "test/fixtures/hub-keys.json"
+);
 
 // Fill in this config with all the configurations
 // needed for testing the application
@@ -22,12 +28,21 @@ export function expectValidationError(
 }
 
 // automatically build and tear down our instance
-export async function build(t?: TestContext) {
+export async function build(
+  t?: TestContext,
+  beforeReady?: (fastify: FastifyInstance) => void | Promise<void>
+) {
+  process.env.HUB_KEYS_FILE =
+    process.env.HUB_KEYS_FILE ?? hubKeysPublicFixturePath;
   // you can set all the options supported by the fastify CLI command
   const app = fastify();
   app.register(fp(serviceApp));
 
-  await app.ready()
+  if (beforeReady) {
+    await beforeReady(app);
+  }
+
+  await app.ready();
 
   // This is after start, so we can't decorate the instance using `.decorate`
 
