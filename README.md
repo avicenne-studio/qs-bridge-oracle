@@ -117,6 +117,15 @@ Run the full test suite:
 npm run test
 ```
 
+## Solana Test Keypairs
+
+Generate a new Solana CLI-style keypair file (64-byte JSON array) and print a
+`SOLANA_KEYS` JSON payload (you must provide `OUT`):
+
+```bash
+OUT=.temp/solana-id.json npm run generate-solana-keypair
+```
+
 ## Linting
 
 Check lint rules:
