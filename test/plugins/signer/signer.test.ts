@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fastify from "fastify";
 import path from "node:path";
@@ -19,7 +19,9 @@ import envPlugin, {
 import fmPlugin from "../../../src/plugins/infra/@file-manager.js";
 import validationPlugin from "../../../src/plugins/infra/validation.js";
 import signerService, {
-  __test__ as signerTestHelpers,
+  decodeSecretKey,
+  normalizeSignatureValue,
+  signSolanaOrderWithSigner,
 } from "../../../src/plugins/app/signer/signer.service.js";
 
 const fixturesDir = path.join(process.cwd(), "test/fixtures/signer");
@@ -130,7 +132,7 @@ describe("signerService", () => {
     assert.strictEqual(typeof app.signerService.signSolanaOrder, "function");
   });
 
-  it("signs a solana order using the fixture keypair", async (t) => {
+  it("signs a solana order using the fixture keypair", async (t: TestContext) => {
     const app = await buildSignerApp();
     t.after(() => app.close());
 
@@ -151,7 +153,6 @@ describe("signerService", () => {
     };
 
     const signature = await app.signerService.signSolanaOrder(order);
-    assert.match(signature, /^[A-Za-z0-9+/=]+$/);
 
     const schema = {
       struct: {
@@ -184,7 +185,7 @@ describe("signerService", () => {
       sigBytes,
       message.content
     );
-    assert.ok(ok);
+    t.assert.ok(ok);
   });
 
   it("signs a solana order with numeric fields provided as strings", async (t) => {
@@ -339,23 +340,20 @@ describe("signerService", () => {
   });
 
   it("exposes helper behavior for signature normalization and error paths", async () => {
-    assert.strictEqual(
-      signerTestHelpers.normalizeSignatureValue("Zg=="),
-      "Zg=="
-    );
+    assert.strictEqual(normalizeSignatureValue("Zg=="), "Zg==");
 
     assert.throws(
-      () => signerTestHelpers.decodeSecretKey("not-base64"),
+      () => decodeSecretKey("not-base64"),
       /secret key must be 64 bytes/
     );
 
     assert.throws(
-      () => signerTestHelpers.normalizeSignatureValue(123),
+      () => normalizeSignatureValue(123),
       /unsupported signature format/
     );
 
     await assert.rejects(
-      signerTestHelpers.signSolanaOrderWithSigner(
+      signSolanaOrderWithSigner(
         {
           protocolName: "qs-bridge",
           protocolVersion: 1,

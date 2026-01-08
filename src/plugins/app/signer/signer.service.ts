@@ -134,7 +134,7 @@ function serializeSolanaOrder(order: SolanaOrderToSign): Uint8Array {
   return serialize(SolanaOrderSchema, normalized);
 }
 
-function normalizeSignatureValue(value: unknown): string {
+export function normalizeSignatureValue(value: unknown): string {
   if (typeof value === "string") {
     return value;
   }
@@ -144,7 +144,7 @@ function normalizeSignatureValue(value: unknown): string {
   throw new Error("SignerService(SOLANA_KEYS): unsupported signature format");
 }
 
-function decodeSecretKey(encoded: string): Uint8Array {
+export function decodeSecretKey(encoded: string): Uint8Array {
   const trimmed = encoded.trim();
   const bytes = new Uint8Array(Buffer.from(trimmed, "base64"));
   if (bytes.length !== 64) {
@@ -162,7 +162,7 @@ async function createSolanaSignerFromKeys(keys: SignerKeys): Promise<SolanaSigne
   return signer;
 }
 
-async function signSolanaOrderWithSigner(
+export async function signSolanaOrderWithSigner(
   order: SolanaOrderToSign,
   signer: SolanaSigner
 ): Promise<string> {
@@ -175,12 +175,6 @@ async function signSolanaOrderWithSigner(
   }
   return normalizeSignatureValue(sigDict[signer.address]);
 }
-
-export const __test__ = {
-  decodeSecretKey,
-  normalizeSignatureValue,
-  signSolanaOrderWithSigner,
-};
 
 export default fp(
   async function signerService(fastify: FastifyInstance) {
