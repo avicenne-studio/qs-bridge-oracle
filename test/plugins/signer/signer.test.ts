@@ -6,10 +6,14 @@ import os from "node:os";
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { serialize } from "borsh";
 import {
   createKeyPairSignerFromBytes,
   createSignableMessage,
+  getBytesEncoder,
+  getU16Encoder,
+  getU32Encoder,
+  getU64Encoder,
+  getUtf8Encoder,
 } from "@solana/kit";
 import { signatureBytes, verifySignature } from "@solana/keys";
 
@@ -36,6 +40,27 @@ const solanaFixtureKeys = {
   pKey: "BmeYyqDyr4T2ymByJGKVhTqGjeDYpWZj4Kf8x1a6Tre3",
   sKey: "LwdDrOVxJ1SKbEna9L/AWohEgpezYbuQ2DICTgRkEyegBOJkGYG01sq1bn8BnzQ34yxzQS7eMzulchLDYCPDyA==",
 };
+
+function bytes32(value: number): Uint8Array {
+  return new Uint8Array(32).fill(value);
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
+function encodeString(value: string): Uint8Array {
+  const stringBytes = getUtf8Encoder().encode(value);
+  const lengthBytes = getU32Encoder().encode(stringBytes.length);
+  return concatBytes([new Uint8Array(lengthBytes), new Uint8Array(stringBytes)]);
+}
 
 type SignerEnvOverrides = Partial<{
   SOLANA_KEYS: string;
@@ -138,42 +163,38 @@ describe("signerService", () => {
 
     const order = {
       protocolName: "qs-bridge",
-      protocolVersion: 1,
-      destinationChainId: 2,
-      contractAddress: "So11111111111111111111111111111111111111112",
-      networkIn: "solana",
-      networkOut: "qubic",
-      tokenIn: "So11111111111111111111111111111111111111112",
-      tokenOut: "QUBIC",
-      fromAddress: "from",
-      toAddress: "to",
+      protocolVersion: "1",
+      contractAddress: bytes32(1),
+      networkIn: 1,
+      networkOut: 2,
+      tokenIn: bytes32(2),
+      tokenOut: bytes32(3),
+      fromAddress: bytes32(4),
+      toAddress: bytes32(5),
       amount: 1n,
       relayerFee: 0n,
-      nonce: 1n,
+      bpsFee: 25,
+      nonce: bytes32(6),
     };
 
     const signature = await app.signerService.signSolanaOrder(order);
 
-    const schema = {
-      struct: {
-        protocolName: "string",
-        protocolVersion: "u32",
-        destinationChainId: "u32",
-        contractAddress: "string",
-        networkIn: "string",
-        networkOut: "string",
-        tokenIn: "string",
-        tokenOut: "string",
-        fromAddress: "string",
-        toAddress: "string",
-        amount: "u64",
-        relayerFee: "u64",
-        nonce: "u64",
-      },
-    } as const;
-
-    const serialized = serialize(schema, order);
-    const digest = createHash("sha256").update(serialized).digest();
+    const encoded = concatBytes([
+      encodeString(order.protocolName),
+      encodeString(order.protocolVersion),
+      getBytesEncoder().encode(order.contractAddress),
+      getU32Encoder().encode(order.networkIn),
+      getU32Encoder().encode(order.networkOut),
+      getBytesEncoder().encode(order.tokenIn),
+      getBytesEncoder().encode(order.tokenOut),
+      getBytesEncoder().encode(order.fromAddress),
+      getBytesEncoder().encode(order.toAddress),
+      getU64Encoder().encode(order.amount),
+      getU64Encoder().encode(order.relayerFee),
+      getU16Encoder().encode(order.bpsFee),
+      getBytesEncoder().encode(order.nonce),
+    ]);
+    const digest = createHash("sha256").update(encoded).digest();
     const message = createSignableMessage(digest);
     const sigBytes = signatureBytes(Buffer.from(signature, "base64"));
     const signer = await createKeyPairSignerFromBytes(
@@ -195,17 +216,17 @@ describe("signerService", () => {
     const signature = await app.signerService.signSolanaOrder({
       protocolName: "qs-bridge",
       protocolVersion: "1",
-      destinationChainId: "2",
-      contractAddress: "So11111111111111111111111111111111111111112",
-      networkIn: "solana",
-      networkOut: "qubic",
-      tokenIn: "So11111111111111111111111111111111111111112",
-      tokenOut: "QUBIC",
-      fromAddress: "from",
-      toAddress: "to",
+      contractAddress: bytes32(10),
+      networkIn: "1",
+      networkOut: "2",
+      tokenIn: bytes32(11),
+      tokenOut: bytes32(12),
+      fromAddress: bytes32(13),
+      toAddress: bytes32(14),
       amount: "1",
       relayerFee: "0",
-      nonce: "1",
+      bpsFee: "25",
+      nonce: bytes32(15),
     });
 
     assert.ok(Buffer.from(signature, "base64").length > 0);
@@ -217,18 +238,18 @@ describe("signerService", () => {
 
     const signature = await app.signerService.signSolanaOrder({
       protocolName: "qs-bridge",
-      protocolVersion: 1,
-      destinationChainId: 2,
-      contractAddress: "So11111111111111111111111111111111111111112",
-      networkIn: "solana",
-      networkOut: "qubic",
-      tokenIn: "So11111111111111111111111111111111111111112",
-      tokenOut: "QUBIC",
-      fromAddress: "from",
-      toAddress: "to",
+      protocolVersion: "1",
+      contractAddress: bytes32(20),
+      networkIn: 1,
+      networkOut: 2,
+      tokenIn: bytes32(21),
+      tokenOut: bytes32(22),
+      fromAddress: bytes32(23),
+      toAddress: bytes32(24),
       amount: 1,
       relayerFee: 0,
-      nonce: 1,
+      bpsFee: 25,
+      nonce: bytes32(25),
     });
 
     assert.ok(Buffer.from(signature, "base64").length > 0);
@@ -240,26 +261,26 @@ describe("signerService", () => {
 
     const baseOrder = {
       protocolName: "qs-bridge",
-      protocolVersion: 1,
-      destinationChainId: 2,
-      contractAddress: "So11111111111111111111111111111111111111112",
-      networkIn: "solana",
-      networkOut: "qubic",
-      tokenIn: "So11111111111111111111111111111111111111112",
-      tokenOut: "QUBIC",
-      fromAddress: "from",
-      toAddress: "to",
+      protocolVersion: "1",
+      contractAddress: bytes32(30),
+      networkIn: 1,
+      networkOut: 2,
+      tokenIn: bytes32(31),
+      tokenOut: bytes32(32),
+      fromAddress: bytes32(33),
+      toAddress: bytes32(34),
       amount: 1n,
       relayerFee: 0n,
-      nonce: 1n,
+      bpsFee: 25,
+      nonce: bytes32(35),
     };
 
     await assert.rejects(
       app.signerService.signSolanaOrder({
         ...baseOrder,
-        protocolVersion: 4294967296,
+        networkIn: 4294967296,
       }),
-      /protocolVersion must be uint32/
+      /networkIn must be uint32/
     );
 
     await assert.rejects(
@@ -268,6 +289,38 @@ describe("signerService", () => {
         amount: -1n,
       }),
       /amount must be uint64/
+    );
+
+    await assert.rejects(
+      app.signerService.signSolanaOrder({
+        ...baseOrder,
+        bpsFee: 70000,
+      }),
+      /bpsFee must be uint16/
+    );
+  });
+
+  it("rejects solana orders with invalid byte lengths", async (t) => {
+    const app = await buildSignerApp();
+    t.after(() => app.close());
+
+    await assert.rejects(
+      app.signerService.signSolanaOrder({
+        protocolName: "qs-bridge",
+        protocolVersion: "1",
+        contractAddress: bytes32(1),
+        networkIn: 1,
+        networkOut: 2,
+        tokenIn: new Uint8Array(31),
+        tokenOut: bytes32(3),
+        fromAddress: bytes32(4),
+        toAddress: bytes32(5),
+        amount: 1n,
+        relayerFee: 0n,
+        bpsFee: 25,
+        nonce: bytes32(6),
+      }),
+      /tokenIn must be 32 bytes/
     );
   });
 
@@ -288,18 +341,18 @@ describe("signerService", () => {
     await assert.rejects(
       app.signerService.signSolanaOrder({
         protocolName: "qs-bridge",
-        protocolVersion: 1,
-        destinationChainId: 2,
-        contractAddress: "So11111111111111111111111111111111111111112",
-        networkIn: "solana",
-        networkOut: "qubic",
-        tokenIn: "So11111111111111111111111111111111111111112",
-        tokenOut: "QUBIC",
-        fromAddress: "from",
-        toAddress: "to",
+        protocolVersion: "1",
+        contractAddress: bytes32(40),
+        networkIn: 1,
+        networkOut: 2,
+        tokenIn: bytes32(41),
+        tokenOut: bytes32(42),
+        fromAddress: bytes32(43),
+        toAddress: bytes32(44),
         amount: 1n,
         relayerFee: 0n,
-        nonce: 1n,
+        bpsFee: 25,
+        nonce: bytes32(45),
       }),
       /secret key must be 64 bytes/
     );
@@ -322,18 +375,18 @@ describe("signerService", () => {
     await assert.rejects(
       app.signerService.signSolanaOrder({
         protocolName: "qs-bridge",
-        protocolVersion: 1,
-        destinationChainId: 2,
-        contractAddress: "So11111111111111111111111111111111111111112",
-        networkIn: "solana",
-        networkOut: "qubic",
-        tokenIn: "So11111111111111111111111111111111111111112",
-        tokenOut: "QUBIC",
-        fromAddress: "from",
-        toAddress: "to",
+        protocolVersion: "1",
+        contractAddress: bytes32(50),
+        networkIn: 1,
+        networkOut: 2,
+        tokenIn: bytes32(51),
+        tokenOut: bytes32(52),
+        fromAddress: bytes32(53),
+        toAddress: bytes32(54),
         amount: 1n,
         relayerFee: 0n,
-        nonce: 1n,
+        bpsFee: 25,
+        nonce: bytes32(55),
       }),
       /public key does not match secret key/
     );
@@ -356,18 +409,18 @@ describe("signerService", () => {
       signSolanaOrderWithSigner(
         {
           protocolName: "qs-bridge",
-          protocolVersion: 1,
-          destinationChainId: 2,
-          contractAddress: "So11111111111111111111111111111111111111112",
-          networkIn: "solana",
-          networkOut: "qubic",
-          tokenIn: "So11111111111111111111111111111111111111112",
-          tokenOut: "QUBIC",
-          fromAddress: "from",
-          toAddress: "to",
+          protocolVersion: "1",
+          contractAddress: bytes32(60),
+          networkIn: 1,
+          networkOut: 2,
+          tokenIn: bytes32(61),
+          tokenOut: bytes32(62),
+          fromAddress: bytes32(63),
+          toAddress: bytes32(64),
           amount: 1n,
           relayerFee: 0n,
-          nonce: 1n,
+          bpsFee: 25,
+          nonce: bytes32(65),
         },
         {
           address: "missing",

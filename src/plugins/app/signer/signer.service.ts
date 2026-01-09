@@ -2,10 +2,14 @@ import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { serialize } from "borsh";
 import {
   createKeyPairSignerFromBytes,
   createSignableMessage,
+  getBytesEncoder,
+  getU16Encoder,
+  getU32Encoder,
+  getU64Encoder,
+  getUtf8Encoder,
 } from "@solana/kit";
 import {
   SignerKeys,
@@ -16,18 +20,18 @@ const MAX_U64 = (1n << 64n) - 1n;
 
 export type SolanaOrderToSign = {
   protocolName: string;
-  protocolVersion: number | string;
-  destinationChainId: number | string;
-  contractAddress: string;
-  networkIn: string;
-  networkOut: string;
-  tokenIn: string;
-  tokenOut: string;
-  fromAddress: string;
-  toAddress: string;
+  protocolVersion: string;
+  contractAddress: Uint8Array;
+  networkIn: number | string;
+  networkOut: number | string;
+  tokenIn: Uint8Array;
+  tokenOut: Uint8Array;
+  fromAddress: Uint8Array;
+  toAddress: Uint8Array;
   amount: bigint | number | string;
   relayerFee: bigint | number | string;
-  nonce: bigint | number | string;
+  bpsFee: number | string;
+  nonce: Uint8Array;
 };
 
 type SolanaSigner = {
@@ -39,37 +43,19 @@ type SolanaSigner = {
 
 type SolanaOrderMessage = {
   protocolName: string;
-  protocolVersion: number;
-  destinationChainId: number;
-  contractAddress: string;
-  networkIn: string;
-  networkOut: string;
-  tokenIn: string;
-  tokenOut: string;
-  fromAddress: string;
-  toAddress: string;
+  protocolVersion: string;
+  contractAddress: Uint8Array;
+  networkIn: number;
+  networkOut: number;
+  tokenIn: Uint8Array;
+  tokenOut: Uint8Array;
+  fromAddress: Uint8Array;
+  toAddress: Uint8Array;
   amount: bigint;
   relayerFee: bigint;
-  nonce: bigint;
+  bpsFee: number;
+  nonce: Uint8Array;
 };
-
-const SolanaOrderSchema = {
-  struct: {
-    protocolName: "string",
-    protocolVersion: "u32",
-    destinationChainId: "u32",
-    contractAddress: "string",
-    networkIn: "string",
-    networkOut: "string",
-    tokenIn: "string",
-    tokenOut: "string",
-    fromAddress: "string",
-    toAddress: "string",
-    amount: "u64",
-    relayerFee: "u64",
-    nonce: "u64",
-  },
-} as const;
 
 type SignerService = {
   signSolanaOrder: (order: SolanaOrderToSign) => Promise<string>;
@@ -111,27 +97,80 @@ function parseU64(value: bigint | number | string, field: string): bigint {
   return parsed;
 }
 
+function parseU16(value: number | string, field: string): number {
+  const parsed = typeof value === "string" ? Number(value) : value;
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 0xffff) {
+    throw new Error(`SignerService(SOLANA_KEYS): ${field} must be uint16`);
+  }
+  return parsed;
+}
+
+function assertFixedBytes(value: Uint8Array, field: string, length: number) {
+  if (value.length !== length) {
+    throw new Error(`SignerService(SOLANA_KEYS): ${field} must be ${length} bytes`);
+  }
+}
+
 function normalizeSolanaOrder(order: SolanaOrderToSign): SolanaOrderMessage {
   return {
     protocolName: order.protocolName,
-    protocolVersion: parseU32(order.protocolVersion, "protocolVersion"),
-    destinationChainId: parseU32(order.destinationChainId, "destinationChainId"),
+    protocolVersion: order.protocolVersion,
     contractAddress: order.contractAddress,
-    networkIn: order.networkIn,
-    networkOut: order.networkOut,
+    networkIn: parseU32(order.networkIn, "networkIn"),
+    networkOut: parseU32(order.networkOut, "networkOut"),
     tokenIn: order.tokenIn,
     tokenOut: order.tokenOut,
     fromAddress: order.fromAddress,
     toAddress: order.toAddress,
     amount: parseU64(order.amount, "amount"),
     relayerFee: parseU64(order.relayerFee, "relayerFee"),
-    nonce: parseU64(order.nonce, "nonce"),
+    bpsFee: parseU16(order.bpsFee, "bpsFee"),
+    nonce: order.nonce,
   };
+}
+
+function encodeString(value: string): Uint8Array {
+  const stringBytes = getUtf8Encoder().encode(value);
+  const lengthBytes = getU32Encoder().encode(stringBytes.length);
+  return concatBytes([new Uint8Array(lengthBytes), new Uint8Array(stringBytes)]);
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
 }
 
 function serializeSolanaOrder(order: SolanaOrderToSign): Uint8Array {
   const normalized = normalizeSolanaOrder(order);
-  return serialize(SolanaOrderSchema, normalized);
+  assertFixedBytes(normalized.contractAddress, "contractAddress", 32);
+  assertFixedBytes(normalized.tokenIn, "tokenIn", 32);
+  assertFixedBytes(normalized.tokenOut, "tokenOut", 32);
+  assertFixedBytes(normalized.fromAddress, "fromAddress", 32);
+  assertFixedBytes(normalized.toAddress, "toAddress", 32);
+  assertFixedBytes(normalized.nonce, "nonce", 32);
+
+  const data: Uint8Array[] = [];
+  data.push(encodeString(normalized.protocolName));
+  data.push(encodeString(normalized.protocolVersion));
+  data.push(new Uint8Array(getBytesEncoder().encode(normalized.contractAddress)));
+  data.push(new Uint8Array(getU32Encoder().encode(normalized.networkIn)));
+  data.push(new Uint8Array(getU32Encoder().encode(normalized.networkOut)));
+  data.push(new Uint8Array(getBytesEncoder().encode(normalized.tokenIn)));
+  data.push(new Uint8Array(getBytesEncoder().encode(normalized.tokenOut)));
+  data.push(new Uint8Array(getBytesEncoder().encode(normalized.fromAddress)));
+  data.push(new Uint8Array(getBytesEncoder().encode(normalized.toAddress)));
+  data.push(new Uint8Array(getU64Encoder().encode(normalized.amount)));
+  data.push(new Uint8Array(getU64Encoder().encode(normalized.relayerFee)));
+  data.push(new Uint8Array(getU16Encoder().encode(normalized.bpsFee)));
+  data.push(new Uint8Array(getBytesEncoder().encode(normalized.nonce)));
+
+  return concatBytes(data);
 }
 
 export function normalizeSignatureValue(value: unknown): string {
