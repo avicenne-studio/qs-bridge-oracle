@@ -48,7 +48,10 @@ export default fp(
           table.float("amount").notNullable();
           table.string("signature", SIGNATURE_MAX_LENGTH).notNullable();
           table.string("status").notNullable().defaultTo("ready-for-relay");
-          table.boolean("is_relayable").notNullable().defaultTo(true);
+          table
+            .boolean("oracle_accept_to_relay")
+            .notNullable()
+            .defaultTo(true);
         });
       }
       

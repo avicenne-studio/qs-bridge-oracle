@@ -28,7 +28,7 @@ const MAX_PENDING = 50;
 function normalizeOrderRow(row: StoredOrder): StoredOrder {
   return {
     ...row,
-    is_relayable: Boolean(row.is_relayable),
+    oracle_accept_to_relay: Boolean(row.oracle_accept_to_relay),
   };
 }
 
@@ -45,7 +45,9 @@ function createRepository(fastify: FastifyInstance) {
     },
 
     async create(newOrder: CreateOrder) {
-      const [id] = await knex<PersistedOrder>(ORDERS_TABLE_NAME).insert(newOrder);
+      const [id] = await knex<PersistedOrder>(ORDERS_TABLE_NAME).insert(
+        newOrder
+      );
       return this.findById(Number(id));
     },
 
@@ -64,7 +66,7 @@ function createRepository(fastify: FastifyInstance) {
     async markReadyForRelay(id: number) {
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("id", id)
-        .update({ status: "ready-for-relay", is_relayable: true });
+        .update({ status: "ready-for-relay", oracle_accept_to_relay: true });
 
       if (affectedRows === 0) {
         return null;
@@ -102,7 +104,7 @@ function createRepository(fastify: FastifyInstance) {
     async findPendingOrders() {
       const rows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .select("*")
-        .where("is_relayable", 1)
+        .where("oracle_accept_to_relay", 1)
         .orderBy("id", "asc")
         .limit(MAX_PENDING);
 
@@ -123,7 +125,9 @@ function createRepository(fastify: FastifyInstance) {
         .whereIn("signature", unique);
 
       const existingSet = new Set(existing.map((row) => row.signature));
-      const toInsert = unique.filter((signature) => !existingSet.has(signature));
+      const toInsert = unique.filter(
+        (signature) => !existingSet.has(signature)
+      );
 
       if (toInsert.length === 0) {
         return [];
@@ -155,11 +159,11 @@ function createRepository(fastify: FastifyInstance) {
           "orders.amount",
           "orders.signature",
           "orders.status",
-          "orders.is_relayable",
+          "orders.oracle_accept_to_relay",
           "orders.id",
           "signatures.signature as order_signature"
         )
-        .where("orders.is_relayable", 1)
+        .where("orders.oracle_accept_to_relay", 1)
         .orderBy("orders.id", "asc");
 
       const orders = new Map<number, StoredOrderWithSignatures>();

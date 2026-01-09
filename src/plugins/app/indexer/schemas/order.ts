@@ -23,7 +23,7 @@ export const OracleOrderSchema = Type.Object({
   amount: Type.Number(),
   signature: SignatureSchema,
   status: OracleOrderStatus,
-  is_relayable: Type.Boolean(),
+  oracle_accept_to_relay: Type.Boolean(),
 });
 
 export type OracleOrder = Static<typeof OracleOrderSchema>;
@@ -49,7 +49,7 @@ export function orderFromQubic(
     amount: tx.amount,
     signature,
     status: "ready-for-relay",
-    is_relayable: true,
+    oracle_accept_to_relay: true,
   };
   assertValidOracleOrder(order);
   return order;
@@ -72,7 +72,7 @@ export function orderFromSolana(
     amount: decoded.amount,
     signature,
     status: "ready-for-relay",
-    is_relayable: true,
+    oracle_accept_to_relay: true,
   };
   assertValidOracleOrder(order);
   return order;

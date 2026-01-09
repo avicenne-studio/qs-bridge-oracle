@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { build, waitFor } from "../helper.js";
 import { ORDER_SIGNATURES_TABLE_NAME } from "../../src/plugins/app/indexer/orders.repository.js";
-import { OracleOrder } from "../../src/plugins/app/indexer/schemas/order.js";
 
 const HUB_PRIMARY_PORT = 6101;
 const HUB_FALLBACK_PORT = 6102;
@@ -80,7 +79,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       amount: 10,
       signature: "sig-hub-1",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
     const order2 = await app.ordersRepository.create({
       id: 902,
@@ -91,7 +90,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       amount: 20,
       signature: "sig-hub-2",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
 
     payload = {
@@ -155,24 +154,25 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       amount: 30,
       signature: "sig-hub-3",
       status: "ready-for-relay",
-      is_relayable: false,
+      oracle_accept_to_relay: false,
     });
 
     payload = {
       data: [{ orderId: order!.id, signatures: ["sig-3", "sig-4"] }],
     };
 
-    let is_relayable = false
+    let relayAccepted = false;
     await waitFor(async () => {
       if (hitCount === 0) {
         return false;
       }
 
       const updated = await app.ordersRepository.findById(order!.id);
-      return is_relayable = Boolean(updated?.is_relayable);
+      relayAccepted = updated?.oracle_accept_to_relay === true
+      return relayAccepted;
     });
 
-    assert.ok(is_relayable);
+    assert.ok(relayAccepted);
   });
 
   it("does not mark orders ready when signatures are below the threshold", async (t) => {
@@ -208,7 +208,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       amount: 40,
       signature: "sig-hub-4",
       status: "ready-for-relay",
-      is_relayable: false,
+      oracle_accept_to_relay: false,
     });
 
     payload = { data: [{ orderId: order!.id, signatures: ["sig-5"] }] };
@@ -216,7 +216,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
     await waitFor(() => hitCount > 0);
 
     const updated = await app.ordersRepository.findById(order!.id);
-    assert.strictEqual(updated?.is_relayable, false);
+    assert.strictEqual(updated?.oracle_accept_to_relay, false);
   });
 
   it("logs when hub payload is invalid", async (t) => {
