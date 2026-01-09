@@ -98,8 +98,8 @@ function startHubSignaturePolling(
         })
       );
 
-      const addedTotal = results.reduce((sum, result) => sum + result.added, 0);
-      const readyCount = results.reduce(
+      const addedSignatures = results.reduce((sum, result) => sum + result.added, 0);
+      const readyForRelayCount = results.reduce(
         (sum, result) => sum + (result.markedReady ? 1 : 0),
         0
       );
@@ -107,8 +107,8 @@ function startHubSignaturePolling(
         {
           hubUsed: context.used,
           count: response.data.length,
-          addedTotal,
-          readyCount,
+          addedSignatures,
+          readyForRelayCount,
         },
         "Polled hub order signatures"
       );

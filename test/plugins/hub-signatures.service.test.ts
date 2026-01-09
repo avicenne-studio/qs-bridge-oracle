@@ -1,8 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
+import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { build, waitFor } from "../helper.js";
 import { ORDER_SIGNATURES_TABLE_NAME } from "../../src/plugins/app/indexer/orders.repository.js";
+import { OracleOrder } from "../../src/plugins/app/indexer/schemas/order.js";
 
 const HUB_PRIMARY_PORT = 6101;
 const HUB_FALLBACK_PORT = 6102;
@@ -10,7 +11,7 @@ const HUB_FALLBACK_PORT = 6102;
 async function startHubServer(
   t: { after: (fn: () => void) => void },
   port: number,
-  handler: Parameters<typeof createServer>[0]
+  handler: (req: IncomingMessage, res: ServerResponse) => void
 ) {
   const server = createServer(handler);
   await new Promise<void>((resolve) => server.listen(port, resolve));
@@ -161,17 +162,17 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       data: [{ orderId: order!.id, signatures: ["sig-3", "sig-4"] }],
     };
 
-    let updated;
+    let is_relayable = false
     await waitFor(async () => {
       if (hitCount === 0) {
         return false;
       }
 
-      updated = await app.ordersRepository.findById(order!.id);
-      return Boolean(updated?.is_relayable);
+      const updated = await app.ordersRepository.findById(order!.id);
+      return is_relayable = Boolean(updated?.is_relayable);
     });
 
-    assert.strictEqual(updated?.is_relayable, true);
+    assert.ok(is_relayable);
   });
 
   it("does not mark orders ready when signatures are below the threshold", async (t) => {
