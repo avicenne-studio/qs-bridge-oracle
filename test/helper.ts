@@ -3,12 +3,6 @@ import { TestContext } from "node:test";
 import serviceApp from "../src/app.js";
 import assert from "node:assert";
 import fp from "fastify-plugin";
-import path from "node:path";
-
-const hubKeysPublicFixturePath = path.join(
-  process.cwd(),
-  "test/fixtures/hub-keys.json"
-);
 
 // Fill in this config with all the configurations
 // needed for testing the application
@@ -32,8 +26,6 @@ export async function build(
   t?: TestContext,
   beforeReady?: (fastify: FastifyInstance) => void | Promise<void>
 ) {
-  process.env.HUB_KEYS_FILE =
-    process.env.HUB_KEYS_FILE ?? hubKeysPublicFixturePath;
   // you can set all the options supported by the fastify CLI command
   const app = fastify();
   app.register(fp(serviceApp));

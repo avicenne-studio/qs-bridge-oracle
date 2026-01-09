@@ -61,6 +61,18 @@ function createRepository(fastify: FastifyInstance) {
       return this.findById(id);
     },
 
+    async markReadyForRelay(id: number) {
+      const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
+        .where("id", id)
+        .update({ status: "ready-for-relay", is_relayable: true });
+
+      if (affectedRows === 0) {
+        return null;
+      }
+
+      return this.findById(id);
+    },
+
     async delete(id: number) {
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("id", id)

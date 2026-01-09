@@ -157,6 +157,36 @@ describe("ordersRepository", () => {
     assert.strictEqual(fetched?.amount, 42);
   });
 
+  it("should mark an order ready for relay", async (t) => {
+    const app = await build(t);
+    const repo = app.ordersRepository;
+
+    const created = await repo.create({
+      id: 311,
+      source: "solana",
+      dest: "qubic",
+      from: "ReadyA",
+      to: "ReadyB",
+      amount: 33,
+      signature: "sig-ready",
+      status: "ready-for-relay",
+      is_relayable: false,
+    });
+
+    const updated = await repo.markReadyForRelay(created!.id);
+    assert.ok(updated);
+    assert.strictEqual(updated?.status, "ready-for-relay");
+    assert.strictEqual(updated?.is_relayable, true);
+  });
+
+  it("should return null when marking a non-existent order ready", async (t) => {
+    const app = await build(t);
+    const repo = app.ordersRepository;
+
+    const updated = await repo.markReadyForRelay(9999);
+    assert.strictEqual(updated, null);
+  });
+
   it("should return null when updating a non-existent order", async (t) => {
     const app = await build(t);
     const repo = app.ordersRepository;
