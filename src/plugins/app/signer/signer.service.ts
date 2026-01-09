@@ -155,22 +155,21 @@ function serializeSolanaOrder(order: SolanaOrderToSign): Uint8Array {
   assertFixedBytes(normalized.toAddress, "toAddress", 32);
   assertFixedBytes(normalized.nonce, "nonce", 32);
 
-  const data: Uint8Array[] = [];
-  data.push(encodeString(normalized.protocolName));
-  data.push(encodeString(normalized.protocolVersion));
-  data.push(new Uint8Array(getBytesEncoder().encode(normalized.contractAddress)));
-  data.push(new Uint8Array(getU32Encoder().encode(normalized.networkIn)));
-  data.push(new Uint8Array(getU32Encoder().encode(normalized.networkOut)));
-  data.push(new Uint8Array(getBytesEncoder().encode(normalized.tokenIn)));
-  data.push(new Uint8Array(getBytesEncoder().encode(normalized.tokenOut)));
-  data.push(new Uint8Array(getBytesEncoder().encode(normalized.fromAddress)));
-  data.push(new Uint8Array(getBytesEncoder().encode(normalized.toAddress)));
-  data.push(new Uint8Array(getU64Encoder().encode(normalized.amount)));
-  data.push(new Uint8Array(getU64Encoder().encode(normalized.relayerFee)));
-  data.push(new Uint8Array(getU16Encoder().encode(normalized.bpsFee)));
-  data.push(new Uint8Array(getBytesEncoder().encode(normalized.nonce)));
-
-  return concatBytes(data);
+  return concatBytes([
+    encodeString(normalized.protocolName),
+    encodeString(normalized.protocolVersion),
+    new Uint8Array(getBytesEncoder().encode(normalized.contractAddress)),
+    new Uint8Array(getU32Encoder().encode(normalized.networkIn)),
+    new Uint8Array(getU32Encoder().encode(normalized.networkOut)),
+    new Uint8Array(getBytesEncoder().encode(normalized.tokenIn)),
+    new Uint8Array(getBytesEncoder().encode(normalized.tokenOut)),
+    new Uint8Array(getBytesEncoder().encode(normalized.fromAddress)),
+    new Uint8Array(getBytesEncoder().encode(normalized.toAddress)),
+    new Uint8Array(getU64Encoder().encode(normalized.amount)),
+    new Uint8Array(getU64Encoder().encode(normalized.relayerFee)),
+    new Uint8Array(getU16Encoder().encode(normalized.bpsFee)),
+    new Uint8Array(getBytesEncoder().encode(normalized.nonce)),
+  ]);
 }
 
 export function normalizeSignatureValue(value: unknown): string {

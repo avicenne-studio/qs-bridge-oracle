@@ -182,17 +182,17 @@ describe("signerService", () => {
     const encoded = concatBytes([
       encodeString(order.protocolName),
       encodeString(order.protocolVersion),
-      getBytesEncoder().encode(order.contractAddress),
-      getU32Encoder().encode(order.networkIn),
-      getU32Encoder().encode(order.networkOut),
-      getBytesEncoder().encode(order.tokenIn),
-      getBytesEncoder().encode(order.tokenOut),
-      getBytesEncoder().encode(order.fromAddress),
-      getBytesEncoder().encode(order.toAddress),
-      getU64Encoder().encode(order.amount),
-      getU64Encoder().encode(order.relayerFee),
-      getU16Encoder().encode(order.bpsFee),
-      getBytesEncoder().encode(order.nonce),
+      new Uint8Array(getBytesEncoder().encode(order.contractAddress)),
+      new Uint8Array(getU32Encoder().encode(order.networkIn)),
+      new Uint8Array(getU32Encoder().encode(order.networkOut)),
+      new Uint8Array(getBytesEncoder().encode(order.tokenIn)),
+      new Uint8Array(getBytesEncoder().encode(order.tokenOut)),
+      new Uint8Array(getBytesEncoder().encode(order.fromAddress)),
+      new Uint8Array(getBytesEncoder().encode(order.toAddress)),
+      new Uint8Array(getU64Encoder().encode(order.amount)),
+      new Uint8Array(getU64Encoder().encode(order.relayerFee)),
+      new Uint8Array(getU16Encoder().encode(order.bpsFee)),
+      new Uint8Array(getBytesEncoder().encode(order.nonce)),
     ]);
     const digest = createHash("sha256").update(encoded).digest();
     const message = createSignableMessage(digest);
