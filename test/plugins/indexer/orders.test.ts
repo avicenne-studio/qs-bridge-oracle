@@ -41,7 +41,7 @@ describe("OracleOrder utilities", () => {
       amount: 10,
       signature: "SOLANA_SIGNATURE_EXAMPLE",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     };
 
     assert.doesNotThrow(() => assertValidOracleOrder(order));
@@ -57,7 +57,7 @@ describe("OracleOrder utilities", () => {
       amount: 1,
       signature: "QUBIC_SIGNATURE_EXAMPLE",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     };
 
     assert.throws(
@@ -82,7 +82,7 @@ describe("OracleOrder utilities", () => {
     assert.strictEqual(order.amount, mockQubicTx.amount);
     assert.strictEqual(order.signature, "QUBIC_SIGNATURE_1");
     assert.strictEqual(order.status, "ready-for-relay");
-    assert.strictEqual(order.is_relayable, true);
+    assert.strictEqual(order.oracle_accept_to_relay, true);
   });
 
   it("should throw when Qubic order has identical source and dest", () => {

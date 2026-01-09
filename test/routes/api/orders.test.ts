@@ -13,7 +13,7 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     amount: 10,
     signature: "sig-1",
     status: "ready-for-relay",
-    is_relayable: true,
+    oracle_accept_to_relay: true,
   });
   await app.ordersRepository.create({
     id: 2,
@@ -24,7 +24,7 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     amount: 25,
     signature: "sig-2",
     status: "ready-for-relay",
-    is_relayable: false,
+    oracle_accept_to_relay: false,
   });
 }
 

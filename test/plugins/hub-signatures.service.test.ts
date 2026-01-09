@@ -1,16 +1,30 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
+import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { build, waitFor } from "../helper.js";
 import { ORDER_SIGNATURES_TABLE_NAME } from "../../src/plugins/app/indexer/orders.repository.js";
 
-describe("hub signatures polling", () => {
-  it("starts polling on app startup", async (t) => {
-    let hitCount = 0;
+const HUB_PRIMARY_PORT = 6101;
+const HUB_FALLBACK_PORT = 6102;
 
-    const server = createServer((req, res) => {
+async function startHubServer(
+  t: { after: (fn: () => void) => void },
+  port: number,
+  handler: (req: IncomingMessage, res: ServerResponse) => void
+) {
+  const server = createServer(handler);
+  await new Promise<void>((resolve) => server.listen(port, resolve));
+  t.after(() => server.close());
+  return server;
+}
+
+describe("hub signatures polling", { concurrency: 1 }, () => {
+  it("starts polling on app startup", async (t) => {
+    let primaryHits = 0;
+
+    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
       if (req.url === "/api/orders/signatures") {
-        hitCount += 1;
+        primaryHits += 1;
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ data: [] }));
         return;
@@ -20,22 +34,23 @@ describe("hub signatures polling", () => {
       res.end();
     });
 
-    await new Promise<void>((resolve) => server.listen(6101, resolve));
-    t.after(() => server.close());
+    await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
+      res.writeHead(404);
+      res.end();
+    });
 
     const app = await build(t);
     t.after(() => app.close());
 
-    await waitFor(() => hitCount > 0);
-    assert.ok(hitCount > 0);
+    await waitFor(() => primaryHits > 0);
+    assert.ok(primaryHits > 0);
   });
 
   it("stores signatures from hub responses", async (t) => {
-    const originalHubUrls = process.env.HUB_URLS;
     let hitCount = 0;
     let payload = { data: [] as Array<unknown> };
 
-    const server = createServer((req, res) => {
+    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
       if (req.url === "/api/orders/signatures") {
         hitCount += 1;
         res.writeHead(200, { "content-type": "application/json" });
@@ -47,11 +62,9 @@ describe("hub signatures polling", () => {
       res.end();
     });
 
-    await new Promise<void>((resolve) => server.listen(6102, resolve));
-    t.after(() => server.close());
-    process.env.HUB_URLS = "http://127.0.0.1:6102";
-    t.after(() => {
-      process.env.HUB_URLS = originalHubUrls;
+    await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
+      res.writeHead(404);
+      res.end();
     });
 
     const app = await build(t);
@@ -66,7 +79,7 @@ describe("hub signatures polling", () => {
       amount: 10,
       signature: "sig-hub-1",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
     const order2 = await app.ordersRepository.create({
       id: 902,
@@ -77,7 +90,7 @@ describe("hub signatures polling", () => {
       amount: 20,
       signature: "sig-hub-2",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
 
     payload = {
@@ -108,10 +121,106 @@ describe("hub signatures polling", () => {
     ]);
   });
 
-  it("logs when hub payload is invalid", async (t) => {
-    const originalHubUrls = process.env.HUB_URLS;
+  it("marks orders ready when signatures meet the threshold", async (t) => {
+    let hitCount = 0;
+    let payload = { data: [] as Array<unknown> };
 
-    const server = createServer((req, res) => {
+    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
+      if (req.url === "/api/orders/signatures") {
+        hitCount += 1;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(payload));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
+      res.writeHead(404);
+      res.end();
+    });
+
+    const app = await build(t);
+    t.after(() => app.close());
+
+    const order = await app.ordersRepository.create({
+      id: 903,
+      source: "solana",
+      dest: "qubic",
+      from: "HubE",
+      to: "HubF",
+      amount: 30,
+      signature: "sig-hub-3",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: false,
+    });
+
+    payload = {
+      data: [{ orderId: order!.id, signatures: ["sig-3", "sig-4"] }],
+    };
+
+    let relayAccepted = false;
+    await waitFor(async () => {
+      if (hitCount === 0) {
+        return false;
+      }
+
+      const updated = await app.ordersRepository.findById(order!.id);
+      relayAccepted = updated?.oracle_accept_to_relay === true
+      return relayAccepted;
+    });
+
+    assert.ok(relayAccepted);
+  });
+
+  it("does not mark orders ready when signatures are below the threshold", async (t) => {
+    let hitCount = 0;
+    let payload = { data: [] as Array<unknown> };
+
+    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
+      if (req.url === "/api/orders/signatures") {
+        hitCount += 1;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(payload));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
+      res.writeHead(404);
+      res.end();
+    });
+
+    const app = await build(t);
+    t.after(() => app.close());
+
+    const order = await app.ordersRepository.create({
+      id: 904,
+      source: "qubic",
+      dest: "solana",
+      from: "HubG",
+      to: "HubH",
+      amount: 40,
+      signature: "sig-hub-4",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: false,
+    });
+
+    payload = { data: [{ orderId: order!.id, signatures: ["sig-5"] }] };
+
+    await waitFor(() => hitCount > 0);
+
+    const updated = await app.ordersRepository.findById(order!.id);
+    assert.strictEqual(updated?.oracle_accept_to_relay, false);
+  });
+
+  it("logs when hub payload is invalid", async (t) => {
+    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
       if (req.url === "/api/orders/signatures") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
@@ -126,11 +235,9 @@ describe("hub signatures polling", () => {
       res.end();
     });
 
-    await new Promise<void>((resolve) => server.listen(6104, resolve));
-    t.after(() => server.close());
-    process.env.HUB_URLS = "http://127.0.0.1:6104";
-    t.after(() => {
-      process.env.HUB_URLS = originalHubUrls;
+    await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
+      res.writeHead(404);
+      res.end();
     });
 
     const app = await build(t);
@@ -146,9 +253,7 @@ describe("hub signatures polling", () => {
   });
 
   it("logs when persisting signatures fails", async (t) => {
-    const originalHubUrls = process.env.HUB_URLS;
-
-    const server = createServer((req, res) => {
+    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
       if (req.url === "/api/orders/signatures") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
@@ -163,11 +268,9 @@ describe("hub signatures polling", () => {
       res.end();
     });
 
-    await new Promise<void>((resolve) => server.listen(6105, resolve));
-    t.after(() => server.close());
-    process.env.HUB_URLS = "http://127.0.0.1:6105";
-    t.after(() => {
-      process.env.HUB_URLS = originalHubUrls;
+    await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
+      res.writeHead(404);
+      res.end();
     });
 
     const app = await build(t);
@@ -190,9 +293,7 @@ describe("hub signatures polling", () => {
   });
 
   it("logs when hub poll fails", async (t) => {
-    const originalHubUrls = process.env.HUB_URLS;
-
-    const server = createServer((req, res) => {
+    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
       if (req.url === "/api/orders/signatures") {
         res.writeHead(500);
         res.end();
@@ -203,11 +304,9 @@ describe("hub signatures polling", () => {
       res.end();
     });
 
-    await new Promise<void>((resolve) => server.listen(6103, resolve));
-    t.after(() => server.close());
-    process.env.HUB_URLS = "http://127.0.0.1:6103";
-    t.after(() => {
-      process.env.HUB_URLS = originalHubUrls;
+    await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
+      res.writeHead(500);
+      res.end();
     });
 
     const app = await build(t);

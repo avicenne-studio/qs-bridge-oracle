@@ -1,13 +1,11 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
-import { Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 import { SignatureSchema } from "../common/schemas/common.js";
-import { OracleChain } from "../indexer/schemas/order.js";
 import { RECOMMENDED_POLLING_DEFAULTS } from "../../infra/poller.js";
 
 type OrderSignature = {
   orderId: number;
-  dest: Static<typeof OracleChain>;
   signatures: string[];
 };
 
@@ -66,6 +64,11 @@ function startHubSignaturePolling(
         return;
       }
 
+      const threshold = Math.max(
+        1,
+        Math.floor(fastify.config.ORACLE_SIGNATURE_THRESHOLD)
+      );
+
       const results = await Promise.all(
         response.data.map(async (order) => {
           try {
@@ -73,23 +76,39 @@ function startHubSignaturePolling(
               order.orderId,
               order.signatures
             );
-            return { orderId: order.orderId, added: added.length };
+            let markedReady = false;
+            if (order.signatures.length >= threshold) {
+              const updated = await fastify.ordersRepository.markReadyForRelay(
+                order.orderId
+              );
+              markedReady = updated !== null
+            }
+            return {
+              orderId: order.orderId,
+              added: added.length,
+              markedReady,
+            };
           } catch (error) {
             fastify.log.error(
               { err: error, orderId: order.orderId },
               "Failed to persist hub signatures"
             );
-            return { orderId: order.orderId, added: 0 };
+            return { orderId: order.orderId, added: 0, markedReady: false };
           }
         })
       );
 
-      const addedTotal = results.reduce((sum, result) => sum + result.added, 0);
+      const addedSignatures = results.reduce((sum, result) => sum + result.added, 0);
+      const readyForRelayCount = results.reduce(
+        (sum, result) => sum + (result.markedReady ? 1 : 0),
+        0
+      );
       fastify.log.info(
         {
           hubUsed: context.used,
           count: response.data.length,
-          addedTotal,
+          addedSignatures,
+          readyForRelayCount,
         },
         "Polled hub order signatures"
       );

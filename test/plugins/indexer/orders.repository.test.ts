@@ -16,7 +16,7 @@ describe("ordersRepository", () => {
       amount: 123,
       signature: "sig-solana-1",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
 
     assert.ok(created);
@@ -28,7 +28,7 @@ describe("ordersRepository", () => {
     assert.strictEqual(created?.amount, 123);
     assert.strictEqual(created?.signature, "sig-solana-1");
     assert.strictEqual(created?.status, "ready-for-relay");
-    assert.strictEqual(created?.is_relayable, true);
+    assert.strictEqual(created?.oracle_accept_to_relay, true);
 
     const fetched = await repo.findById(created!.id);
     assert.deepStrictEqual(fetched, created);
@@ -48,7 +48,7 @@ describe("ordersRepository", () => {
       amount: 10,
       signature: "sig-a",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
     const order2 = await repo.create({
       id: 202,
@@ -59,7 +59,7 @@ describe("ordersRepository", () => {
       amount: 20,
       signature: "sig-b",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
     await repo.create({
       id: 203,
@@ -70,7 +70,7 @@ describe("ordersRepository", () => {
       amount: 30,
       signature: "sig-c",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
 
     const fetched = await repo.byIds([order2!.id, order1!.id, order2!.id]);
@@ -110,7 +110,7 @@ describe("ordersRepository", () => {
         amount: i,
         signature: `sig-${i}`,
         status: "ready-for-relay",
-        is_relayable: true,
+        oracle_accept_to_relay: true,
       });
     }
 
@@ -123,7 +123,7 @@ describe("ordersRepository", () => {
       amount: 1,
       signature: "sig-skip",
       status: "ready-for-relay",
-      is_relayable: false,
+      oracle_accept_to_relay: false,
     });
 
     const pending = await repo.findPendingOrders();
@@ -145,7 +145,7 @@ describe("ordersRepository", () => {
       amount: 50,
       signature: "sig-update",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
 
     const updated = await repo.update(created!.id, { amount: 42 });
@@ -155,6 +155,36 @@ describe("ordersRepository", () => {
 
     const fetched = await repo.findById(created!.id);
     assert.strictEqual(fetched?.amount, 42);
+  });
+
+  it("should mark an order ready for relay", async (t) => {
+    const app = await build(t);
+    const repo = app.ordersRepository;
+
+    const created = await repo.create({
+      id: 311,
+      source: "solana",
+      dest: "qubic",
+      from: "ReadyA",
+      to: "ReadyB",
+      amount: 33,
+      signature: "sig-ready",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: false,
+    });
+
+    const updated = await repo.markReadyForRelay(created!.id);
+    assert.ok(updated);
+    assert.strictEqual(updated?.status, "ready-for-relay");
+    assert.strictEqual(updated?.oracle_accept_to_relay, true);
+  });
+
+  it("should return null when marking a non-existent order ready", async (t) => {
+    const app = await build(t);
+    const repo = app.ordersRepository;
+
+    const updated = await repo.markReadyForRelay(9999);
+    assert.strictEqual(updated, null);
   });
 
   it("should return null when updating a non-existent order", async (t) => {
@@ -178,7 +208,7 @@ describe("ordersRepository", () => {
       amount: 7,
       signature: "sig-delete",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
 
     const removed = await repo.delete(created!.id);
@@ -209,7 +239,7 @@ describe("ordersRepository", () => {
       amount: 5,
       signature: "sig-main",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
 
     const inserted = await repo.addSignatures(created!.id, [
@@ -236,7 +266,7 @@ describe("ordersRepository", () => {
       amount: 9,
       signature: "sig-empty",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
 
     const inserted = await repo.addSignatures(created!.id, []);
@@ -256,7 +286,7 @@ describe("ordersRepository", () => {
       amount: 11,
       signature: "sig-relay",
       status: "ready-for-relay",
-      is_relayable: true,
+      oracle_accept_to_relay: true,
     });
 
     const notRelayable = await repo.create({
@@ -268,7 +298,7 @@ describe("ordersRepository", () => {
       amount: 12,
       signature: "sig-skip",
       status: "ready-for-relay",
-      is_relayable: false,
+      oracle_accept_to_relay: false,
     });
 
     await repo.addSignatures(relayable!.id, ["sig-a", "sig-b"]);

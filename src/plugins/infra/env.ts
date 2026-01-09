@@ -9,6 +9,7 @@ declare module "fastify" {
       SQLITE_DB_FILE: string;
       SOLANA_KEYS: string;
       QUBIC_KEYS: string;
+      ORACLE_SIGNATURE_THRESHOLD: number;
       ORACLE_ID?: string;
       HUB_URLS: string;
       HUB_KEYS_FILE: string;
@@ -36,6 +37,11 @@ const schema = {
     },
     PORT: {
       type: "number",
+    },
+    ORACLE_SIGNATURE_THRESHOLD: {
+      type: "number",
+      minimum: 1,
+      default: 2,
     },
     SOLANA_KEYS: {
       type: "string",

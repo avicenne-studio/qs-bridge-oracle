@@ -17,6 +17,7 @@
 - Replay protection: the `seen_nonces` table stores `(hubId, kid, nonce, ts)` for inbound Hub requests and is periodically cleaned.
 - Order ingestion helpers live in `src/plugins/app/indexer/schemas/*`. They provide typed validators and conversion helpers (`orderFromQubic`, `orderFromSolana`) for transactions pulled from chain RPCs. `normalizeBridgeInstruction` is still a stub—fill it carefully once the Solana instruction format is finalized.
 - Signing: `src/plugins/app/signer/signer.service.ts` reads both Solana and Qubic key JSON files, validates their schemas, and decorates the Fastify instance with `signerService` so future routes/plugins can sign bridge attestations.
+- Hub signatures polling (`src/plugins/app/hub/hub-signatures.service.ts`) stores signatures and marks orders as `ready-for-relay` when the payload meets `ORACLE_SIGNATURE_THRESHOLD`.
 - Routes:
   - `src/routes/home.ts` – static welcome message.
   - `src/routes/api/health/index.ts` – verifies database connectivity and returns an RFC 3339 timestamp (used by the Hub to track oracle heartbeat).
@@ -37,7 +38,7 @@
 - Tests load `.env.test` (not committed) to point at an ephemeral SQLite file and throttle rate limits for deterministic runs.
 
 ## Operational Notes
-- Required env vars: `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`, `HUB_KEYS_FILE`; optional `RATE_LIMIT_MAX`. Keep secrets outside the repo and mount read-only wherever possible.
+- Required env vars: `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`, `HUB_KEYS_FILE`; optional `RATE_LIMIT_MAX`, `ORACLE_SIGNATURE_THRESHOLD` (defaults to 2). Keep secrets outside the repo and mount read-only wherever possible.
 - Docker is the default orchestration. `docker-compose.yml` targets development; `docker-compose.prod.yml` uses the multi-stage production image. Both expose port `3000` and mount the SQLite database volume.
 - Builds compile TypeScript (`npm run build`) into `dist/`; production start script runs `node dist/server.js`.
 - Because the oracle interacts with two blockchains, keep serialization/deserialization code constant-time wherever feasible, validate every inbound structure against the TypeBox schemas, and never assume external RPC responses are trusted.
