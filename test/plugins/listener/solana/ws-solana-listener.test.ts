@@ -14,25 +14,27 @@ import { type OracleOrder } from "../../../../src/plugins/app/indexer/schemas/or
 import { type SolanaOrderToSign } from "../../../../src/plugins/app/signer/signer.service.js";
 
 type WsEventMap = {
-  open: {};
-  close: {};
+  open: Record<string, never>;
+  close: Record<string, never>;
   error: { data?: unknown };
   message: { data?: unknown };
 };
+
+type WsEventHandler = (event: WsEventMap[keyof WsEventMap]) => void;
 
 class MockWebSocket {
   static OPEN = 1;
   static CLOSED = 3;
   readyState = MockWebSocket.OPEN;
   sent: string[] = [];
-  private listeners = new Map<keyof WsEventMap, Set<(event: any) => void>>();
+  private listeners = new Map<keyof WsEventMap, Set<WsEventHandler>>();
 
   addEventListener<K extends keyof WsEventMap>(
     type: K,
     listener: (event: WsEventMap[K]) => void
   ) {
-    const bucket = this.listeners.get(type) ?? new Set();
-    bucket.add(listener);
+    const bucket = this.listeners.get(type) ?? new Set<WsEventHandler>();
+    bucket.add(listener as WsEventHandler);
     this.listeners.set(type, bucket);
   }
 
@@ -378,22 +380,30 @@ describe("ws solana listener plugin", () => {
       }
     }
 
-    const defaultFactory = createDefaultSolanaWsFactory(FakeWebSocket as any);
+    type DefaultFactoryArg = Parameters<typeof createDefaultSolanaWsFactory>[0];
+    type ResolveInput = Parameters<typeof resolveSolanaWsFactory>[0];
+
+    const defaultFactory = createDefaultSolanaWsFactory(
+      FakeWebSocket as unknown as DefaultFactoryArg
+    );
     const override = () => new MockWebSocket();
     const resolved = resolveSolanaWsFactory(
-      { solanaWsFactory: override } as any,
+      { solanaWsFactory: override } as ResolveInput,
       defaultFactory
     );
     assert.strictEqual(resolved, override);
 
     const parentFactory = () => new MockWebSocket();
     const resolvedParent = resolveSolanaWsFactory(
-      { parent: { solanaWsFactory: parentFactory } } as any,
+      { parent: { solanaWsFactory: parentFactory } } as ResolveInput,
       defaultFactory
     );
     assert.strictEqual(resolvedParent, parentFactory);
 
-    const resolvedDefault = resolveSolanaWsFactory({} as any, defaultFactory);
+    const resolvedDefault = resolveSolanaWsFactory(
+      {} as ResolveInput,
+      defaultFactory
+    );
     assert.strictEqual(resolvedDefault, defaultFactory);
 
     const fromDefault = defaultFactory("ws://example.test");
