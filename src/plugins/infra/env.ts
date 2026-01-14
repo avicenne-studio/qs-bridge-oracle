@@ -13,6 +13,9 @@ declare module "fastify" {
       ORACLE_ID?: string;
       HUB_URLS: string;
       HUB_KEYS_FILE: string;
+      SOLANA_WS_URL: string;
+      SOLANA_LISTENER_ENABLED: boolean;
+      SOLANA_BPS_FEE: number;
     };
   }
 }
@@ -26,6 +29,9 @@ const schema = {
     "QUBIC_KEYS",
     "HUB_URLS",
     "HUB_KEYS_FILE",
+    "SOLANA_WS_URL",
+    "SOLANA_LISTENER_ENABLED",
+    "SOLANA_BPS_FEE",
   ],
   properties: {
     RATE_LIMIT_MAX: {
@@ -59,6 +65,18 @@ const schema = {
     },
     HUB_KEYS_FILE: {
       type: "string",
+    },
+    SOLANA_WS_URL: {
+      type: "string",
+    },
+    SOLANA_LISTENER_ENABLED: {
+      type: "boolean",
+      default: true,
+    },
+    SOLANA_BPS_FEE: {
+      type: "number",
+      minimum: 0,
+      default: 0,
     },
   },
 };

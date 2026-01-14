@@ -21,9 +21,11 @@ export const OracleOrderSchema = Type.Object({
   from: StringSchema,
   to: StringSchema,
   amount: Type.Number(),
+  relayerFee: Type.Number(),
   signature: SignatureSchema,
   status: OracleOrderStatus,
   oracle_accept_to_relay: Type.Boolean(),
+  source_payload: Type.Optional(StringSchema),
 });
 
 export type OracleOrder = Static<typeof OracleOrderSchema>;
@@ -47,6 +49,7 @@ export function orderFromQubic(
     from: tx.sender,
     to: tx.recipient,
     amount: tx.amount,
+    relayerFee: 0,
     signature,
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
@@ -70,6 +73,7 @@ export function orderFromSolana(
     from: decoded.from,
     to: decoded.to,
     amount: decoded.amount,
+    relayerFee: 0,
     signature,
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
