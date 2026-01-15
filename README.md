@@ -2,6 +2,12 @@
 
 This repository hosts the Oracle responsible for validating Solana <-> Qubic bridge transactions.
 
+## Documentation
+
+- `CONTRIBUTING.md` describes the contribution process and requirements.
+- `SECURITY.md` explains how to report vulnerabilities.
+- `AGENT.md` contains the Oracle architecture notes and Solana client reference for AI agents.
+
 ## Prerequisites
 
 Using **Docker** is the default way to run the Oracle.
@@ -27,7 +33,7 @@ The Oracle creates the SQLite database automatically on first launch.
 
 ## Hub Security & Key Rotation
 
-Oracles only trust Hub-signed requests using pinned Ed25519 public keys stored on disk (`HUB_KEYS_FILE`).
+Oracles only trust Hub-signed requests using pinned `Ed25519` public keys stored on disk (`HUB_KEYS_FILE`).
 The Hub exposes `GET /api/keys` for operators to retrieve current/next public keys
 ([qs-bridge-hub](https://github.com/avicenne-studio/qs-bridge-hub)).
 Oracles should not auto-fetch keys to avoid trusting the network path at runtime
@@ -37,8 +43,9 @@ Rotation flow: update `HUB_KEYS_FILE` with the Hub's `current` and `next` keys b
 Requests include `X-Key-Id`; the oracle accepts either `current` or `next` for the given hub ID.
 It is the oracle operator's responsibility to keep the pinned keys file updated.
 
-
 ## Development
+
+You also need to run the [hub](https://github.com/avicenne-studio/qs-bridge-hub).
 
 ### Run the Oracle in development mode
 
@@ -53,10 +60,7 @@ Access the API at:
 http://localhost:3000
 ```
 
-The SQLite database is stored in the `oracle-sqlite` Docker volume at `/data/oracle.sqlite3`.
-Any changes to local `.ts` files reload automatically inside the container.
-
-## Production
+## Production (WIP)
 
 Use the production-optimized multi-stage image with the dedicated compose file:
 
@@ -109,6 +113,17 @@ Run the production server:
 npm start
 ```
 
+## Simulation
+
+Run a local network of Oracles:
+
+```bash
+npm run simulation
+```
+
+You also need to run the [hub](https://github.com/avicenne-studio/qs-bridge-hub)
+simulation launching two hubs is available in the hub repository.
+
 ## Testing and Coverage
 
 Run the full test suite:
@@ -139,3 +154,15 @@ Autofix:
 ```bash
 npm run lint:fix
 ```
+
+## Contributing
+
+Please read `CONTRIBUTING.md` before opening a pull request.
+
+## Security
+
+Report vulnerabilities privately using GitHub’s security reporting flow. See `SECURITY.md`.
+
+## License
+
+MIT, see `LICENSE`.
