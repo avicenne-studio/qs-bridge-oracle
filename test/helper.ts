@@ -21,17 +21,67 @@ export function expectValidationError(
   assert.strictEqual(message, expectedMessage);
 }
 
+class NoopWebSocket {
+  static OPEN = 1;
+  static CLOSED = 3;
+  readyState = NoopWebSocket.OPEN;
+  private listeners = new Map<string, Set<(event: unknown) => void>>();
+
+  addEventListener(type: string, handler: (event: unknown) => void) {
+    const bucket = this.listeners.get(type) ?? new Set();
+    bucket.add(handler);
+    this.listeners.set(type, bucket);
+  }
+
+  removeEventListener(type: string, handler: (event: unknown) => void) {
+    const bucket = this.listeners.get(type);
+    if (!bucket) {
+      return;
+    }
+    bucket.delete(handler);
+  }
+
+  send() {}
+
+  close() {
+    this.readyState = NoopWebSocket.CLOSED;
+    const bucket = this.listeners.get("close");
+    if (!bucket) {
+      return;
+    }
+    for (const handler of bucket) {
+      handler({});
+    }
+  }
+}
+
 // automatically build and tear down our instance
+type BuildHooks = {
+  beforeRegister?: (fastify: FastifyInstance) => void | Promise<void>;
+  beforeReady?: (fastify: FastifyInstance) => void | Promise<void>;
+};
+
 export async function build(
   t?: TestContext,
-  beforeReady?: (fastify: FastifyInstance) => void | Promise<void>
+  hooks?: ((fastify: FastifyInstance) => void | Promise<void>) | BuildHooks
 ) {
   // you can set all the options supported by the fastify CLI command
   const app = fastify();
+  const resolvedHooks: BuildHooks =
+    typeof hooks === "function" ? { beforeReady: hooks } : hooks ?? {};
+
+  if (resolvedHooks.beforeRegister) {
+    await resolvedHooks.beforeRegister(app);
+  }
+
+  if (!app.hasDecorator("solanaWsFactory")) {
+    app.decorate("solanaWsFactory", () => new NoopWebSocket());
+  }
+
   app.register(fp(serviceApp));
 
-  if (beforeReady) {
-    await beforeReady(app);
+  if (resolvedHooks.beforeReady) {
+    await resolvedHooks.beforeReady(app);
   }
 
   await app.ready();

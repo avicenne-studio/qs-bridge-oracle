@@ -36,6 +36,9 @@ async function buildHubKeysApp(overrides: HubKeysEnvOverrides = {}) {
       QUBIC_KEYS: validQubicKeys,
       HUB_URLS: "http://127.0.0.1:3010,http://127.0.0.1:3011",
       HUB_KEYS_FILE: overrides.HUB_KEYS_FILE ?? validHubKeys,
+      SOLANA_WS_URL: "ws://localhost:8900",
+      SOLANA_LISTENER_ENABLED: false,
+      SOLANA_BPS_FEE: 25,
     },
   };
 

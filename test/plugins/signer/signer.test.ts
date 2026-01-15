@@ -81,6 +81,9 @@ async function buildSignerApp(overrides: SignerEnvOverrides = {}) {
         overrides.HUB_KEYS_FILE ??
         path.join(process.cwd(), "test/fixtures/hub-keys.json"),
       HUB_URLS: "http://127.0.0.1:3010,http://127.0.0.1:3011",
+      SOLANA_WS_URL: "ws://localhost:8900",
+      SOLANA_LISTENER_ENABLED: false,
+      SOLANA_BPS_FEE: 25,
     },
   };
 

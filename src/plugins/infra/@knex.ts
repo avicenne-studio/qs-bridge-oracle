@@ -46,6 +46,8 @@ export default fp(
           table.string("from").notNullable();
           table.string("to").notNullable();
           table.float("amount").notNullable();
+          table.float("relayerFee").notNullable().defaultTo(0);
+          table.string("source_payload").nullable();
           table.string("signature", SIGNATURE_MAX_LENGTH).notNullable();
           table.string("status").notNullable().defaultTo("ready-for-relay");
           table

@@ -157,6 +157,8 @@ function createRepository(fastify: FastifyInstance) {
           "orders.from",
           "orders.to",
           "orders.amount",
+          "orders.relayerFee",
+          "orders.source_payload",
           "orders.signature",
           "orders.status",
           "orders.oracle_accept_to_relay",
