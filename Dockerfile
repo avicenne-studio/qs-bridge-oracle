@@ -1,4 +1,4 @@
-FROM node:24.12.0-trixie-slim AS build
+FROM node:24.12.0-alpine3.23 AS build
 WORKDIR /app
 
 RUN apt-get update && \
@@ -21,7 +21,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ---------- PRODUCTION STAGE ----------
-FROM node:24.12.0-trixie-slim AS production
+FROM node:24.12.0-alpine3.23 AS production
 WORKDIR /app
 ENV NODE_ENV=production
 
