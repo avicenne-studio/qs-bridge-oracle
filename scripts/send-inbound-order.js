@@ -1,0 +1,338 @@
+import { readFile } from "node:fs/promises";
+import { Buffer } from "node:buffer";
+import process from "node:process";
+import { createHash } from "node:crypto";
+import {
+  address,
+  appendTransactionMessageInstruction,
+  createKeyPairSignerFromBytes,
+  createSolanaRpc,
+  createSolanaRpcSubscriptions,
+  createTransactionMessage,
+  createSignableMessage,
+  getAddressEncoder,
+  getBytesEncoder,
+  getProgramDerivedAddress,
+  getSignatureFromTransaction,
+  getU32Encoder,
+  getU64Encoder,
+  getUtf8Encoder,
+  sendAndConfirmTransactionFactory,
+  setTransactionMessageFeePayer,
+  setTransactionMessageLifetimeUsingBlockhash,
+  signTransactionMessageWithSigners,
+} from "@solana/kit";
+import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
+import { findOraclePda } from "../dist/clients/js/pdas/oracle.js";
+import { findInboundOrderPda } from "../dist/clients/js/pdas/inboundOrder.js";
+import { getInboundInstruction } from "../dist/clients/js/instructions/inbound.js";
+import { QS_BRIDGE_PROGRAM_ADDRESS } from "../dist/clients/js/programs/qsBridge.js";
+import { fetchGlobalState } from "../dist/clients/js/accounts/globalState.js";
+
+const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
+const DEFAULT_WS_URL = "wss://api.devnet.solana.com";
+const TOKEN_PROGRAM_ADDRESS = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const ASSOCIATED_TOKEN_PROGRAM_ADDRESS =
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+const COMPUTE_BUDGET_PROGRAM_ADDRESS =
+  "ComputeBudget111111111111111111111111111111";
+const COMPUTE_UNITS = 300_000;
+const ORACLE_THRESHOLD_PERCENT = 60;
+const DEFAULT_PROTOCOL_NAME = "QubicBridge";
+const DEFAULT_PROTOCOL_VERSION = "1";
+
+const HEX_PATTERN = /^[0-9a-fA-F]+$/;
+
+async function readJson(filePath) {
+  const raw = await readFile(filePath, "utf-8");
+  return JSON.parse(raw);
+}
+
+function parseKeypairBytes(value, label) {
+  if (!Array.isArray(value) || value.length !== 64) {
+    throw new Error(`${label} must be a JSON array of 64 bytes`);
+  }
+  return new Uint8Array(value);
+}
+
+function parseBytes32(value, field) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${field} must be a hex or base58 string`);
+  }
+
+  const normalized = value.startsWith("0x") ? value.slice(2) : value;
+  if (normalized.length === 64 && HEX_PATTERN.test(normalized)) {
+    return new Uint8Array(Buffer.from(normalized, "hex"));
+  }
+
+  const addr = address(value);
+  const bytes = new Uint8Array(getAddressEncoder().encode(addr));
+  if (bytes.length !== 32) {
+    throw new Error(`${field} must decode to 32 bytes`);
+  }
+  return bytes;
+}
+
+function encodeString(value) {
+  const stringBytes = getUtf8Encoder().encode(value);
+  const lengthBytes = getU32Encoder().encode(stringBytes.length);
+  return concatBytes([new Uint8Array(lengthBytes), new Uint8Array(stringBytes)]);
+}
+
+function concatBytes(chunks) {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
+function serializeInboundOrder(payload) {
+  return concatBytes([
+    encodeString(payload.protocolName),
+    encodeString(payload.protocolVersion),
+    new Uint8Array(getBytesEncoder().encode(payload.contractAddress)),
+    new Uint8Array(getU32Encoder().encode(payload.networkIn)),
+    new Uint8Array(getU32Encoder().encode(payload.networkOut)),
+    new Uint8Array(getBytesEncoder().encode(payload.tokenIn)),
+    new Uint8Array(getBytesEncoder().encode(payload.tokenOut)),
+    new Uint8Array(getBytesEncoder().encode(payload.fromAddress)),
+    new Uint8Array(getBytesEncoder().encode(payload.toAddress)),
+    new Uint8Array(getU64Encoder().encode(payload.amount)),
+    new Uint8Array(getU64Encoder().encode(payload.relayerFee)),
+    new Uint8Array(getBytesEncoder().encode(payload.nonce)),
+  ]);
+}
+
+async function signInboundOrder(payload, signer) {
+  const serialized = serializeInboundOrder(payload);
+  const digest = createHash("sha256").update(serialized).digest();
+  const signable = createSignableMessage(digest);
+  const [sigDict] = await signer.signMessages([signable]);
+  const signature = sigDict?.[signer.address];
+  if (!signature) {
+    throw new Error("Signer did not return a signature");
+  }
+  return new Uint8Array(signature);
+}
+
+async function findAssociatedTokenAddress(owner, mint, tokenProgram, associatedTokenProgram) {
+  const [ata] = await getProgramDerivedAddress({
+    programAddress: associatedTokenProgram,
+    seeds: [
+      getAddressEncoder().encode(owner),
+      getAddressEncoder().encode(tokenProgram),
+      getAddressEncoder().encode(mint),
+    ],
+  });
+  return ata;
+}
+
+function getComputeUnitLimitInstruction(units) {
+  return {
+    programAddress: COMPUTE_BUDGET_PROGRAM_ADDRESS,
+    accounts: [],
+    data: concatBytes([
+      new Uint8Array([2]),
+      new Uint8Array(getU32Encoder().encode(units)),
+    ]),
+  };
+}
+
+function padToLength(items, length, filler) {
+  if (items.length >= length) {
+    return items.slice(0, length);
+  }
+  const padding = Array.from({ length: length - items.length }, () => filler);
+  return items.concat(padding);
+}
+
+async function main() {
+  const orderPath = process.argv[2];
+  const oracleKeysPath = process.argv[3];
+  const relayerKeyPath = process.argv[4];
+  if (!orderPath || !oracleKeysPath || !relayerKeyPath) {
+    throw new Error(
+      "Usage: node scripts/send-inbound-order.js <order.json> <oracle-keys.json> <relayer-key.json>"
+    );
+  }
+
+  const rpcUrl = process.env.SOLANA_RPC_URL || DEFAULT_RPC_URL;
+  const wsUrl = process.env.SOLANA_WS_URL || DEFAULT_WS_URL;
+
+  const order = await readJson(orderPath);
+  const oracleKeys = await readJson(oracleKeysPath);
+  const relayerKey = await readJson(relayerKeyPath);
+
+  const relayerSigner = await createKeyPairSignerFromBytes(
+    parseKeypairBytes(relayerKey, "Relayer keypair")
+  );
+
+  const oracleSigners = await Promise.all(
+    oracleKeys.map((entry, index) =>
+      createKeyPairSignerFromBytes(
+        parseKeypairBytes(entry, `Oracle keypair #${index + 1}`)
+      )
+    )
+  );
+
+  const networkIn = Number(order.networkIn);
+  const networkOut = Number(order.networkOut);
+  const tokenIn = parseBytes32(order.tokenIn, "tokenIn");
+  const fromAddress = parseBytes32(order.fromAddress, "fromAddress");
+  const toAddress = parseBytes32(order.toAddress, "toAddress");
+  const amount = BigInt(order.amount);
+  const relayerFee = BigInt(order.relayerFee);
+  const nonce = parseBytes32(order.nonce, "nonce");
+  const protocolName = order.protocolName || DEFAULT_PROTOCOL_NAME;
+  const protocolVersion = order.protocolVersion || DEFAULT_PROTOCOL_VERSION;
+
+  const recipient = address(order.recipient);
+
+  const rpc = createSolanaRpc(rpcUrl);
+  const rpcSubscriptions = createSolanaRpcSubscriptions(wsUrl);
+  const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({
+    rpc,
+    rpcSubscriptions,
+  });
+
+  const [globalStatePda] = await findGlobalStatePda();
+  const globalState = await fetchGlobalState(rpc, globalStatePda);
+  const tokenMint = globalState.data.tokenMint;
+
+  const tokenOut = parseBytes32(tokenMint, "tokenOut");
+
+  const tokenProgram = TOKEN_PROGRAM_ADDRESS;
+  const associatedTokenProgram = ASSOCIATED_TOKEN_PROGRAM_ADDRESS;
+
+  const recipientAta = await findAssociatedTokenAddress(
+    recipient,
+    tokenMint,
+    tokenProgram,
+    associatedTokenProgram
+  );
+  const relayerAta = await findAssociatedTokenAddress(
+    relayerSigner.address,
+    tokenMint,
+    tokenProgram,
+    associatedTokenProgram
+  );
+
+  const contractAddressBytes = new Uint8Array(
+    getAddressEncoder().encode(address(QS_BRIDGE_PROGRAM_ADDRESS))
+  );
+
+  const orderPayload = {
+    protocolName,
+    protocolVersion,
+    contractAddress: contractAddressBytes,
+    networkIn,
+    networkOut,
+    tokenIn,
+    tokenOut,
+    fromAddress,
+    toAddress,
+    amount,
+    relayerFee,
+    nonce,
+  };
+
+  const oracleCount = globalState.data.oracleCount;
+  const signatureCount = Math.min(
+    Math.max(1, Math.ceil(oracleCount * (ORACLE_THRESHOLD_PERCENT / 100))),
+    6
+  );
+  if (oracleSigners.length < signatureCount) {
+    throw new Error(
+      `Need ${signatureCount} oracle keys, got ${oracleSigners.length}`
+    );
+  }
+
+  const signingOracles = oracleSigners.slice(0, signatureCount);
+  const signatures = [];
+  for (const signer of signingOracles) {
+    signatures.push(await signInboundOrder(orderPayload, signer));
+  }
+
+  const oracleAddresses = oracleSigners.map((signer) => signer.address);
+  const oraclePdas = await Promise.all(
+    oracleAddresses.map((oracle) => findOraclePda({ oracle }))
+  );
+  const paddedOraclePdas = padToLength(oraclePdas, 6, oraclePdas[0]);
+
+  const [inboundOrderPda] = await findInboundOrderPda({
+    networkIn,
+    nonce,
+  });
+  const existingInbound = await rpc
+    .getAccountInfo(inboundOrderPda, { encoding: "base64" })
+    .send();
+  if (existingInbound?.value) {
+    throw new Error(
+      "Inbound order already exists for this nonce. Update order.json with a new nonce."
+    );
+  }
+
+  const instruction = getInboundInstruction({
+    relayer: relayerSigner,
+    globalState: globalStatePda,
+    tokenMint,
+    recipient,
+    recipientAta,
+    relayerAta,
+    inboundOrderPda,
+    tokenProgram,
+    associatedTokenProgram,
+    oracle1Pda: paddedOraclePdas[0],
+    oracle2Pda: paddedOraclePdas[1],
+    oracle3Pda: paddedOraclePdas[2],
+    oracle4Pda: paddedOraclePdas[3],
+    oracle5Pda: paddedOraclePdas[4],
+    oracle6Pda: paddedOraclePdas[5],
+    order: {
+      networkIn,
+      networkOut,
+      tokenIn,
+      tokenOut,
+      fromAddress,
+      toAddress,
+      amount,
+      relayerFee,
+      nonce,
+    },
+    signatures,
+  });
+
+  const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
+
+  let message = setTransactionMessageLifetimeUsingBlockhash(
+    latestBlockhash,
+    setTransactionMessageFeePayer(
+      relayerSigner.address,
+      createTransactionMessage({ version: "legacy" })
+    )
+  );
+  message = appendTransactionMessageInstruction(
+    getComputeUnitLimitInstruction(COMPUTE_UNITS),
+    message
+  );
+  message = appendTransactionMessageInstruction(instruction, message);
+
+  const signedTransaction = await signTransactionMessageWithSigners(message);
+  const signature = getSignatureFromTransaction(signedTransaction);
+
+  await sendAndConfirmTransaction(signedTransaction, { commitment: "confirmed" });
+
+  process.stdout.write(
+    `Inbound order sent. Transaction signature: ${signature}\n` +
+      `Explorer: https://solscan.io/tx/${signature}?cluster=devnet\n`
+  );
+}
+
+main().catch((error) => {
+  process.stderr.write(`${error?.stack || error?.message || error}\n`);
+  process.exit(1);
+});
