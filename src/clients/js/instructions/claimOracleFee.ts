@@ -8,16 +8,8 @@
 
 import {
   combineCodec,
-  fixDecoderSize,
-  fixEncoderSize,
-  getBytesDecoder,
-  getBytesEncoder,
   getStructDecoder,
   getStructEncoder,
-  getU32Decoder,
-  getU32Encoder,
-  getU64Decoder,
-  getU64Encoder,
   getU8Decoder,
   getU8Encoder,
   transformEncoder,
@@ -39,21 +31,23 @@ import {
 import { QS_BRIDGE_PROGRAM_ADDRESS } from "../programs/index.js";
 import { getAccountMetaFactory, type ResolvedAccount } from "../shared/index.js";
 
-export const OUTBOUND_DISCRIMINATOR = 1;
+export const CLAIM_ORACLE_FEE_DISCRIMINATOR = 11;
 
-export function getOutboundDiscriminatorBytes() {
-  return getU8Encoder().encode(OUTBOUND_DISCRIMINATOR);
+export function getClaimOracleFeeDiscriminatorBytes() {
+  return getU8Encoder().encode(CLAIM_ORACLE_FEE_DISCRIMINATOR);
 }
 
-export type OutboundInstruction<
+export type ClaimOracleFeeInstruction<
   TProgram extends string = typeof QS_BRIDGE_PROGRAM_ADDRESS,
-  TAccountUser extends string | AccountMeta<string> = string,
+  TAccountClaimer extends string | AccountMeta<string> = string,
   TAccountGlobalState extends string | AccountMeta<string> = string,
-  TAccountOutboundOrder extends string | AccountMeta<string> = string,
-  TAccountUserTokenAccount extends string | AccountMeta<string> = string,
+  TAccountOraclePda extends string | AccountMeta<string> = string,
+  TAccountOracleOwner extends string | AccountMeta<string> = string,
   TAccountTokenMint extends string | AccountMeta<string> = string,
+  TAccountOracleAta extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountAssociatedTokenProgram extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -61,24 +55,31 @@ export type OutboundInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountUser extends string
-        ? WritableSignerAccount<TAccountUser> & AccountSignerMeta<TAccountUser>
-        : TAccountUser,
+      TAccountClaimer extends string
+        ? WritableSignerAccount<TAccountClaimer> &
+            AccountSignerMeta<TAccountClaimer>
+        : TAccountClaimer,
       TAccountGlobalState extends string
         ? ReadonlyAccount<TAccountGlobalState>
         : TAccountGlobalState,
-      TAccountOutboundOrder extends string
-        ? WritableAccount<TAccountOutboundOrder>
-        : TAccountOutboundOrder,
-      TAccountUserTokenAccount extends string
-        ? WritableAccount<TAccountUserTokenAccount>
-        : TAccountUserTokenAccount,
+      TAccountOraclePda extends string
+        ? WritableAccount<TAccountOraclePda>
+        : TAccountOraclePda,
+      TAccountOracleOwner extends string
+        ? ReadonlyAccount<TAccountOracleOwner>
+        : TAccountOracleOwner,
       TAccountTokenMint extends string
         ? WritableAccount<TAccountTokenMint>
         : TAccountTokenMint,
+      TAccountOracleAta extends string
+        ? WritableAccount<TAccountOracleAta>
+        : TAccountOracleAta,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountAssociatedTokenProgram extends string
+        ? ReadonlyAccount<TAccountAssociatedTokenProgram>
+        : TAccountAssociatedTokenProgram,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -86,121 +87,96 @@ export type OutboundInstruction<
     ]
   >;
 
-export type OutboundInstructionData = {
-  discriminator: number;
-  networkOut: number;
-  tokenOut: ReadonlyUint8Array;
-  toAddress: ReadonlyUint8Array;
-  amount: bigint;
-  relayerFee: bigint;
-  nonce: ReadonlyUint8Array;
-};
+export type ClaimOracleFeeInstructionData = { discriminator: number };
 
-export type OutboundInstructionDataArgs = {
-  networkOut: number;
-  tokenOut: ReadonlyUint8Array;
-  toAddress: ReadonlyUint8Array;
-  amount: number | bigint;
-  relayerFee: number | bigint;
-  nonce: ReadonlyUint8Array;
-};
+export type ClaimOracleFeeInstructionDataArgs = {};
 
-export function getOutboundInstructionDataEncoder(): FixedSizeEncoder<OutboundInstructionDataArgs> {
+export function getClaimOracleFeeInstructionDataEncoder(): FixedSizeEncoder<ClaimOracleFeeInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([
-      ["discriminator", getU8Encoder()],
-      ["networkOut", getU32Encoder()],
-      ["tokenOut", fixEncoderSize(getBytesEncoder(), 32)],
-      ["toAddress", fixEncoderSize(getBytesEncoder(), 32)],
-      ["amount", getU64Encoder()],
-      ["relayerFee", getU64Encoder()],
-      ["nonce", fixEncoderSize(getBytesEncoder(), 32)],
-    ]),
-    (value) => ({ ...value, discriminator: OUTBOUND_DISCRIMINATOR }),
+    getStructEncoder([["discriminator", getU8Encoder()]]),
+    (value) => ({ ...value, discriminator: CLAIM_ORACLE_FEE_DISCRIMINATOR }),
   );
 }
 
-export function getOutboundInstructionDataDecoder(): FixedSizeDecoder<OutboundInstructionData> {
-  return getStructDecoder([
-    ["discriminator", getU8Decoder()],
-    ["networkOut", getU32Decoder()],
-    ["tokenOut", fixDecoderSize(getBytesDecoder(), 32)],
-    ["toAddress", fixDecoderSize(getBytesDecoder(), 32)],
-    ["amount", getU64Decoder()],
-    ["relayerFee", getU64Decoder()],
-    ["nonce", fixDecoderSize(getBytesDecoder(), 32)],
-  ]);
+export function getClaimOracleFeeInstructionDataDecoder(): FixedSizeDecoder<ClaimOracleFeeInstructionData> {
+  return getStructDecoder([["discriminator", getU8Decoder()]]);
 }
 
-export function getOutboundInstructionDataCodec(): FixedSizeCodec<
-  OutboundInstructionDataArgs,
-  OutboundInstructionData
+export function getClaimOracleFeeInstructionDataCodec(): FixedSizeCodec<
+  ClaimOracleFeeInstructionDataArgs,
+  ClaimOracleFeeInstructionData
 > {
   return combineCodec(
-    getOutboundInstructionDataEncoder(),
-    getOutboundInstructionDataDecoder(),
+    getClaimOracleFeeInstructionDataEncoder(),
+    getClaimOracleFeeInstructionDataDecoder(),
   );
 }
 
-export type OutboundInput<
-  TAccountUser extends string = string,
+export type ClaimOracleFeeInput<
+  TAccountClaimer extends string = string,
   TAccountGlobalState extends string = string,
-  TAccountOutboundOrder extends string = string,
-  TAccountUserTokenAccount extends string = string,
+  TAccountOraclePda extends string = string,
+  TAccountOracleOwner extends string = string,
   TAccountTokenMint extends string = string,
+  TAccountOracleAta extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
-  /** User who is locking tokens */
-  user: TransactionSigner<TAccountUser>;
+  /** Claimer (Admin or Oracle User) */
+  claimer: TransactionSigner<TAccountClaimer>;
   /** Global State */
   globalState: Address<TAccountGlobalState>;
-  /** Outbound Order PDA */
-  outboundOrder: Address<TAccountOutboundOrder>;
-  /** User's token account to burn from */
-  userTokenAccount: Address<TAccountUserTokenAccount>;
+  /** Oracle PDA */
+  oraclePda: Address<TAccountOraclePda>;
+  /** Oracle Owner */
+  oracleOwner: Address<TAccountOracleOwner>;
   /** Token Mint */
   tokenMint: Address<TAccountTokenMint>;
+  /** Oracle Associated Token Account */
+  oracleAta: Address<TAccountOracleAta>;
   /** Token Program Account */
   tokenProgram?: Address<TAccountTokenProgram>;
+  /** Associated Token Program Account */
+  associatedTokenProgram: Address<TAccountAssociatedTokenProgram>;
   /** System Program Account */
   systemProgram?: Address<TAccountSystemProgram>;
-  networkOut: OutboundInstructionDataArgs["networkOut"];
-  tokenOut: OutboundInstructionDataArgs["tokenOut"];
-  toAddress: OutboundInstructionDataArgs["toAddress"];
-  amount: OutboundInstructionDataArgs["amount"];
-  relayerFee: OutboundInstructionDataArgs["relayerFee"];
-  nonce: OutboundInstructionDataArgs["nonce"];
 };
 
-export function getOutboundInstruction<
-  TAccountUser extends string,
+export function getClaimOracleFeeInstruction<
+  TAccountClaimer extends string,
   TAccountGlobalState extends string,
-  TAccountOutboundOrder extends string,
-  TAccountUserTokenAccount extends string,
+  TAccountOraclePda extends string,
+  TAccountOracleOwner extends string,
   TAccountTokenMint extends string,
+  TAccountOracleAta extends string,
   TAccountTokenProgram extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof QS_BRIDGE_PROGRAM_ADDRESS,
 >(
-  input: OutboundInput<
-    TAccountUser,
+  input: ClaimOracleFeeInput<
+    TAccountClaimer,
     TAccountGlobalState,
-    TAccountOutboundOrder,
-    TAccountUserTokenAccount,
+    TAccountOraclePda,
+    TAccountOracleOwner,
     TAccountTokenMint,
+    TAccountOracleAta,
     TAccountTokenProgram,
+    TAccountAssociatedTokenProgram,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): OutboundInstruction<
+): ClaimOracleFeeInstruction<
   TProgramAddress,
-  TAccountUser,
+  TAccountClaimer,
   TAccountGlobalState,
-  TAccountOutboundOrder,
-  TAccountUserTokenAccount,
+  TAccountOraclePda,
+  TAccountOracleOwner,
   TAccountTokenMint,
+  TAccountOracleAta,
   TAccountTokenProgram,
+  TAccountAssociatedTokenProgram,
   TAccountSystemProgram
 > {
   // Program address.
@@ -208,24 +184,23 @@ export function getOutboundInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    user: { value: input.user ?? null, isWritable: true },
+    claimer: { value: input.claimer ?? null, isWritable: true },
     globalState: { value: input.globalState ?? null, isWritable: false },
-    outboundOrder: { value: input.outboundOrder ?? null, isWritable: true },
-    userTokenAccount: {
-      value: input.userTokenAccount ?? null,
-      isWritable: true,
-    },
+    oraclePda: { value: input.oraclePda ?? null, isWritable: true },
+    oracleOwner: { value: input.oracleOwner ?? null, isWritable: false },
     tokenMint: { value: input.tokenMint ?? null, isWritable: true },
+    oracleAta: { value: input.oracleAta ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
     ResolvedAccount
   >;
-
-  // Original args.
-  const args = { ...input };
 
   // Resolve default values.
   if (!accounts.tokenProgram.value) {
@@ -240,63 +215,69 @@ export function getOutboundInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.user),
+      getAccountMeta(accounts.claimer),
       getAccountMeta(accounts.globalState),
-      getAccountMeta(accounts.outboundOrder),
-      getAccountMeta(accounts.userTokenAccount),
+      getAccountMeta(accounts.oraclePda),
+      getAccountMeta(accounts.oracleOwner),
       getAccountMeta(accounts.tokenMint),
+      getAccountMeta(accounts.oracleAta),
       getAccountMeta(accounts.tokenProgram),
+      getAccountMeta(accounts.associatedTokenProgram),
       getAccountMeta(accounts.systemProgram),
     ],
-    data: getOutboundInstructionDataEncoder().encode(
-      args as OutboundInstructionDataArgs,
-    ),
+    data: getClaimOracleFeeInstructionDataEncoder().encode({}),
     programAddress,
-  } as OutboundInstruction<
+  } as ClaimOracleFeeInstruction<
     TProgramAddress,
-    TAccountUser,
+    TAccountClaimer,
     TAccountGlobalState,
-    TAccountOutboundOrder,
-    TAccountUserTokenAccount,
+    TAccountOraclePda,
+    TAccountOracleOwner,
     TAccountTokenMint,
+    TAccountOracleAta,
     TAccountTokenProgram,
+    TAccountAssociatedTokenProgram,
     TAccountSystemProgram
   >);
 }
 
-export type ParsedOutboundInstruction<
+export type ParsedClaimOracleFeeInstruction<
   TProgram extends string = typeof QS_BRIDGE_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /** User who is locking tokens */
-    user: TAccountMetas[0];
+    /** Claimer (Admin or Oracle User) */
+    claimer: TAccountMetas[0];
     /** Global State */
     globalState: TAccountMetas[1];
-    /** Outbound Order PDA */
-    outboundOrder: TAccountMetas[2];
-    /** User's token account to burn from */
-    userTokenAccount: TAccountMetas[3];
+    /** Oracle PDA */
+    oraclePda: TAccountMetas[2];
+    /** Oracle Owner */
+    oracleOwner: TAccountMetas[3];
     /** Token Mint */
     tokenMint: TAccountMetas[4];
+    /** Oracle Associated Token Account */
+    oracleAta: TAccountMetas[5];
     /** Token Program Account */
-    tokenProgram: TAccountMetas[5];
+    tokenProgram: TAccountMetas[6];
+    /** Associated Token Program Account */
+    associatedTokenProgram: TAccountMetas[7];
     /** System Program Account */
-    systemProgram: TAccountMetas[6];
+    systemProgram: TAccountMetas[8];
   };
-  data: OutboundInstructionData;
+  data: ClaimOracleFeeInstructionData;
 };
 
-export function parseOutboundInstruction<
+export function parseClaimOracleFeeInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedOutboundInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 7) {
+): ParsedClaimOracleFeeInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 9) {
     // TODO: Coded error.
     throw new Error("Not enough accounts");
   }
@@ -309,14 +290,16 @@ export function parseOutboundInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      user: getNextAccount(),
+      claimer: getNextAccount(),
       globalState: getNextAccount(),
-      outboundOrder: getNextAccount(),
-      userTokenAccount: getNextAccount(),
+      oraclePda: getNextAccount(),
+      oracleOwner: getNextAccount(),
       tokenMint: getNextAccount(),
+      oracleAta: getNextAccount(),
       tokenProgram: getNextAccount(),
+      associatedTokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),
     },
-    data: getOutboundInstructionDataDecoder().decode(instruction.data),
+    data: getClaimOracleFeeInstructionDataDecoder().decode(instruction.data),
   };
 }
