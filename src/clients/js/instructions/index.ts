@@ -6,13 +6,14 @@
  * @see https://github.com/codama-idl/codama
  */
 
-export * from "./addOracle.js";
-export * from "./addPauser.js";
-export * from "./inbound.js";
-export * from "./initGlobalState.js";
-export * from "./outbound.js";
-export * from "./overrideOutbound.js";
-export * from "./pause.js";
-export * from "./removeOracle.js";
-export * from "./removePauser.js";
-export * from "./unpause.js";
+export * from "./addOracle";
+export * from "./addPauser";
+export * from "./claimProtocolFee";
+export * from "./inbound";
+export * from "./initGlobalState";
+export * from "./outbound";
+export * from "./overrideOutbound";
+export * from "./pause";
+export * from "./removeOracle";
+export * from "./removePauser";
+export * from "./unpause";

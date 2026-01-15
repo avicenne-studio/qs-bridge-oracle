@@ -8,16 +8,8 @@
 
 import {
   combineCodec,
-  fixDecoderSize,
-  fixEncoderSize,
-  getBytesDecoder,
-  getBytesEncoder,
   getStructDecoder,
   getStructEncoder,
-  getU32Decoder,
-  getU32Encoder,
-  getU64Decoder,
-  getU64Encoder,
   getU8Decoder,
   getU8Encoder,
   transformEncoder,
@@ -39,21 +31,21 @@ import {
 import { QS_BRIDGE_PROGRAM_ADDRESS } from "../programs";
 import { getAccountMetaFactory, type ResolvedAccount } from "../shared";
 
-export const OUTBOUND_DISCRIMINATOR = 1;
+export const CLAIM_PROTOCOL_FEE_DISCRIMINATOR = 10;
 
-export function getOutboundDiscriminatorBytes() {
-  return getU8Encoder().encode(OUTBOUND_DISCRIMINATOR);
+export function getClaimProtocolFeeDiscriminatorBytes() {
+  return getU8Encoder().encode(CLAIM_PROTOCOL_FEE_DISCRIMINATOR);
 }
 
-export type OutboundInstruction<
+export type ClaimProtocolFeeInstruction<
   TProgram extends string = typeof QS_BRIDGE_PROGRAM_ADDRESS,
-  TAccountUser extends string | AccountMeta<string> = string,
+  TAccountProtocolFeeRecipient extends string | AccountMeta<string> = string,
   TAccountGlobalState extends string | AccountMeta<string> = string,
-  TAccountOutboundOrder extends string | AccountMeta<string> = string,
-  TAccountUserTokenAccount extends string | AccountMeta<string> = string,
   TAccountTokenMint extends string | AccountMeta<string> = string,
+  TAccountProtocolFeeRecipientAta extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountAssociatedTokenProgram extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -61,24 +53,25 @@ export type OutboundInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountUser extends string
-        ? WritableSignerAccount<TAccountUser> & AccountSignerMeta<TAccountUser>
-        : TAccountUser,
+      TAccountProtocolFeeRecipient extends string
+        ? WritableSignerAccount<TAccountProtocolFeeRecipient> &
+            AccountSignerMeta<TAccountProtocolFeeRecipient>
+        : TAccountProtocolFeeRecipient,
       TAccountGlobalState extends string
-        ? ReadonlyAccount<TAccountGlobalState>
+        ? WritableAccount<TAccountGlobalState>
         : TAccountGlobalState,
-      TAccountOutboundOrder extends string
-        ? WritableAccount<TAccountOutboundOrder>
-        : TAccountOutboundOrder,
-      TAccountUserTokenAccount extends string
-        ? WritableAccount<TAccountUserTokenAccount>
-        : TAccountUserTokenAccount,
       TAccountTokenMint extends string
         ? WritableAccount<TAccountTokenMint>
         : TAccountTokenMint,
+      TAccountProtocolFeeRecipientAta extends string
+        ? WritableAccount<TAccountProtocolFeeRecipientAta>
+        : TAccountProtocolFeeRecipientAta,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountAssociatedTokenProgram extends string
+        ? ReadonlyAccount<TAccountAssociatedTokenProgram>
+        : TAccountAssociatedTokenProgram,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -86,121 +79,84 @@ export type OutboundInstruction<
     ]
   >;
 
-export type OutboundInstructionData = {
-  discriminator: number;
-  networkOut: number;
-  tokenOut: ReadonlyUint8Array;
-  toAddress: ReadonlyUint8Array;
-  amount: bigint;
-  relayerFee: bigint;
-  nonce: ReadonlyUint8Array;
-};
+export type ClaimProtocolFeeInstructionData = { discriminator: number };
 
-export type OutboundInstructionDataArgs = {
-  networkOut: number;
-  tokenOut: ReadonlyUint8Array;
-  toAddress: ReadonlyUint8Array;
-  amount: number | bigint;
-  relayerFee: number | bigint;
-  nonce: ReadonlyUint8Array;
-};
+export type ClaimProtocolFeeInstructionDataArgs = {};
 
-export function getOutboundInstructionDataEncoder(): FixedSizeEncoder<OutboundInstructionDataArgs> {
+export function getClaimProtocolFeeInstructionDataEncoder(): FixedSizeEncoder<ClaimProtocolFeeInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([
-      ["discriminator", getU8Encoder()],
-      ["networkOut", getU32Encoder()],
-      ["tokenOut", fixEncoderSize(getBytesEncoder(), 32)],
-      ["toAddress", fixEncoderSize(getBytesEncoder(), 32)],
-      ["amount", getU64Encoder()],
-      ["relayerFee", getU64Encoder()],
-      ["nonce", fixEncoderSize(getBytesEncoder(), 32)],
-    ]),
-    (value) => ({ ...value, discriminator: OUTBOUND_DISCRIMINATOR }),
+    getStructEncoder([["discriminator", getU8Encoder()]]),
+    (value) => ({ ...value, discriminator: CLAIM_PROTOCOL_FEE_DISCRIMINATOR }),
   );
 }
 
-export function getOutboundInstructionDataDecoder(): FixedSizeDecoder<OutboundInstructionData> {
-  return getStructDecoder([
-    ["discriminator", getU8Decoder()],
-    ["networkOut", getU32Decoder()],
-    ["tokenOut", fixDecoderSize(getBytesDecoder(), 32)],
-    ["toAddress", fixDecoderSize(getBytesDecoder(), 32)],
-    ["amount", getU64Decoder()],
-    ["relayerFee", getU64Decoder()],
-    ["nonce", fixDecoderSize(getBytesDecoder(), 32)],
-  ]);
+export function getClaimProtocolFeeInstructionDataDecoder(): FixedSizeDecoder<ClaimProtocolFeeInstructionData> {
+  return getStructDecoder([["discriminator", getU8Decoder()]]);
 }
 
-export function getOutboundInstructionDataCodec(): FixedSizeCodec<
-  OutboundInstructionDataArgs,
-  OutboundInstructionData
+export function getClaimProtocolFeeInstructionDataCodec(): FixedSizeCodec<
+  ClaimProtocolFeeInstructionDataArgs,
+  ClaimProtocolFeeInstructionData
 > {
   return combineCodec(
-    getOutboundInstructionDataEncoder(),
-    getOutboundInstructionDataDecoder(),
+    getClaimProtocolFeeInstructionDataEncoder(),
+    getClaimProtocolFeeInstructionDataDecoder(),
   );
 }
 
-export type OutboundInput<
-  TAccountUser extends string = string,
+export type ClaimProtocolFeeInput<
+  TAccountProtocolFeeRecipient extends string = string,
   TAccountGlobalState extends string = string,
-  TAccountOutboundOrder extends string = string,
-  TAccountUserTokenAccount extends string = string,
   TAccountTokenMint extends string = string,
+  TAccountProtocolFeeRecipientAta extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
-  /** User who is locking tokens */
-  user: TransactionSigner<TAccountUser>;
+  /** Protocol Fee Recipient */
+  protocolFeeRecipient: TransactionSigner<TAccountProtocolFeeRecipient>;
   /** Global State */
   globalState: Address<TAccountGlobalState>;
-  /** Outbound Order PDA */
-  outboundOrder: Address<TAccountOutboundOrder>;
-  /** User's token account to burn from */
-  userTokenAccount: Address<TAccountUserTokenAccount>;
   /** Token Mint */
   tokenMint: Address<TAccountTokenMint>;
+  /** Protocol Fee Recipient Associated Token Account */
+  protocolFeeRecipientAta: Address<TAccountProtocolFeeRecipientAta>;
   /** Token Program Account */
   tokenProgram?: Address<TAccountTokenProgram>;
+  /** Associated Token Program Account */
+  associatedTokenProgram: Address<TAccountAssociatedTokenProgram>;
   /** System Program Account */
   systemProgram?: Address<TAccountSystemProgram>;
-  networkOut: OutboundInstructionDataArgs["networkOut"];
-  tokenOut: OutboundInstructionDataArgs["tokenOut"];
-  toAddress: OutboundInstructionDataArgs["toAddress"];
-  amount: OutboundInstructionDataArgs["amount"];
-  relayerFee: OutboundInstructionDataArgs["relayerFee"];
-  nonce: OutboundInstructionDataArgs["nonce"];
 };
 
-export function getOutboundInstruction<
-  TAccountUser extends string,
+export function getClaimProtocolFeeInstruction<
+  TAccountProtocolFeeRecipient extends string,
   TAccountGlobalState extends string,
-  TAccountOutboundOrder extends string,
-  TAccountUserTokenAccount extends string,
   TAccountTokenMint extends string,
+  TAccountProtocolFeeRecipientAta extends string,
   TAccountTokenProgram extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof QS_BRIDGE_PROGRAM_ADDRESS,
 >(
-  input: OutboundInput<
-    TAccountUser,
+  input: ClaimProtocolFeeInput<
+    TAccountProtocolFeeRecipient,
     TAccountGlobalState,
-    TAccountOutboundOrder,
-    TAccountUserTokenAccount,
     TAccountTokenMint,
+    TAccountProtocolFeeRecipientAta,
     TAccountTokenProgram,
+    TAccountAssociatedTokenProgram,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): OutboundInstruction<
+): ClaimProtocolFeeInstruction<
   TProgramAddress,
-  TAccountUser,
+  TAccountProtocolFeeRecipient,
   TAccountGlobalState,
-  TAccountOutboundOrder,
-  TAccountUserTokenAccount,
   TAccountTokenMint,
+  TAccountProtocolFeeRecipientAta,
   TAccountTokenProgram,
+  TAccountAssociatedTokenProgram,
   TAccountSystemProgram
 > {
   // Program address.
@@ -208,24 +164,27 @@ export function getOutboundInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    user: { value: input.user ?? null, isWritable: true },
-    globalState: { value: input.globalState ?? null, isWritable: false },
-    outboundOrder: { value: input.outboundOrder ?? null, isWritable: true },
-    userTokenAccount: {
-      value: input.userTokenAccount ?? null,
+    protocolFeeRecipient: {
+      value: input.protocolFeeRecipient ?? null,
       isWritable: true,
     },
+    globalState: { value: input.globalState ?? null, isWritable: true },
     tokenMint: { value: input.tokenMint ?? null, isWritable: true },
+    protocolFeeRecipientAta: {
+      value: input.protocolFeeRecipientAta ?? null,
+      isWritable: true,
+    },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
     ResolvedAccount
   >;
-
-  // Original args.
-  const args = { ...input };
 
   // Resolve default values.
   if (!accounts.tokenProgram.value) {
@@ -240,62 +199,60 @@ export function getOutboundInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.user),
+      getAccountMeta(accounts.protocolFeeRecipient),
       getAccountMeta(accounts.globalState),
-      getAccountMeta(accounts.outboundOrder),
-      getAccountMeta(accounts.userTokenAccount),
       getAccountMeta(accounts.tokenMint),
+      getAccountMeta(accounts.protocolFeeRecipientAta),
       getAccountMeta(accounts.tokenProgram),
+      getAccountMeta(accounts.associatedTokenProgram),
       getAccountMeta(accounts.systemProgram),
     ],
-    data: getOutboundInstructionDataEncoder().encode(
-      args as OutboundInstructionDataArgs,
-    ),
+    data: getClaimProtocolFeeInstructionDataEncoder().encode({}),
     programAddress,
-  } as OutboundInstruction<
+  } as ClaimProtocolFeeInstruction<
     TProgramAddress,
-    TAccountUser,
+    TAccountProtocolFeeRecipient,
     TAccountGlobalState,
-    TAccountOutboundOrder,
-    TAccountUserTokenAccount,
     TAccountTokenMint,
+    TAccountProtocolFeeRecipientAta,
     TAccountTokenProgram,
+    TAccountAssociatedTokenProgram,
     TAccountSystemProgram
   >);
 }
 
-export type ParsedOutboundInstruction<
+export type ParsedClaimProtocolFeeInstruction<
   TProgram extends string = typeof QS_BRIDGE_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /** User who is locking tokens */
-    user: TAccountMetas[0];
+    /** Protocol Fee Recipient */
+    protocolFeeRecipient: TAccountMetas[0];
     /** Global State */
     globalState: TAccountMetas[1];
-    /** Outbound Order PDA */
-    outboundOrder: TAccountMetas[2];
-    /** User's token account to burn from */
-    userTokenAccount: TAccountMetas[3];
     /** Token Mint */
-    tokenMint: TAccountMetas[4];
+    tokenMint: TAccountMetas[2];
+    /** Protocol Fee Recipient Associated Token Account */
+    protocolFeeRecipientAta: TAccountMetas[3];
     /** Token Program Account */
-    tokenProgram: TAccountMetas[5];
+    tokenProgram: TAccountMetas[4];
+    /** Associated Token Program Account */
+    associatedTokenProgram: TAccountMetas[5];
     /** System Program Account */
     systemProgram: TAccountMetas[6];
   };
-  data: OutboundInstructionData;
+  data: ClaimProtocolFeeInstructionData;
 };
 
-export function parseOutboundInstruction<
+export function parseClaimProtocolFeeInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedOutboundInstruction<TProgram, TAccountMetas> {
+): ParsedClaimProtocolFeeInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 7) {
     // TODO: Coded error.
     throw new Error("Not enough accounts");
@@ -309,14 +266,14 @@ export function parseOutboundInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      user: getNextAccount(),
+      protocolFeeRecipient: getNextAccount(),
       globalState: getNextAccount(),
-      outboundOrder: getNextAccount(),
-      userTokenAccount: getNextAccount(),
       tokenMint: getNextAccount(),
+      protocolFeeRecipientAta: getNextAccount(),
       tokenProgram: getNextAccount(),
+      associatedTokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),
     },
-    data: getOutboundInstructionDataDecoder().decode(instruction.data),
+    data: getClaimProtocolFeeInstructionDataDecoder().decode(instruction.data),
   };
 }
