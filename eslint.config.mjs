@@ -3,7 +3,7 @@ import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
-  { ignores: ["src/clients/js/**"] },
+  { ignores: ["src/clients/**"] },
   eslint.configs.recommended,
   tseslint.configs.recommended,
 );
