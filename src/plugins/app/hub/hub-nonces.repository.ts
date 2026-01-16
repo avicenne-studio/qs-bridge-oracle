@@ -1,13 +1,11 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
+import { kKnex, type KnexAccessor } from "../../infra/@knex.js";
 
 export const HUB_NONCES_TABLE_NAME = "seen_nonces";
 
-declare module "fastify" {
-  interface FastifyInstance {
-    hubNoncesRepository: ReturnType<typeof createRepository>;
-  }
-}
+export const kHubNoncesRepository = Symbol("app.hubNoncesRepository");
+export type HubNoncesRepository = ReturnType<typeof createRepository>;
 
 type NonceRecord = {
   hubId: string;
@@ -17,7 +15,7 @@ type NonceRecord = {
 };
 
 function createRepository(fastify: FastifyInstance) {
-  const knex = fastify.knex;
+  const knex = fastify.getDecorator<KnexAccessor>(kKnex).get();
 
   return {
     async exists(hubId: string, kid: string, nonce: string) {
@@ -42,7 +40,7 @@ function createRepository(fastify: FastifyInstance) {
 
 export default fp(
   function hubNoncesRepositoryPlugin(fastify: FastifyInstance) {
-    fastify.decorate("hubNoncesRepository", createRepository(fastify));
+    fastify.decorate(kHubNoncesRepository, createRepository(fastify));
   },
   {
     name: "hub-nonces-repository",

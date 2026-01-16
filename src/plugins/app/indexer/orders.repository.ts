@@ -1,16 +1,13 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
+import { kKnex, type KnexAccessor } from "../../infra/@knex.js";
 
 import { OracleOrder } from "./schemas/order.js";
 
 export const ORDERS_TABLE_NAME = "orders";
 export const ORDER_SIGNATURES_TABLE_NAME = "order_signatures";
-
-declare module "fastify" {
-  interface FastifyInstance {
-    ordersRepository: ReturnType<typeof createRepository>;
-  }
-}
+export const kOrdersRepository = Symbol("app.ordersRepository");
+export type OrdersRepository = ReturnType<typeof createRepository>;
 
 type PersistedOrder = OracleOrder;
 type PersistedSignature = {
@@ -33,7 +30,7 @@ function normalizeOrderRow(row: StoredOrder): StoredOrder {
 }
 
 function createRepository(fastify: FastifyInstance) {
-  const knex = fastify.knex;
+  const knex = fastify.getDecorator<KnexAccessor>(kKnex).get();
 
   return {
     async findById(id: number) {
@@ -194,7 +191,7 @@ function createRepository(fastify: FastifyInstance) {
 
 export default fp(
   function (fastify) {
-    fastify.decorate("ordersRepository", createRepository(fastify));
+    fastify.decorate(kOrdersRepository, createRepository(fastify));
   },
   {
     name: "orders-repository",

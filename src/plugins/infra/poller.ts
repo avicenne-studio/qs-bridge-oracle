@@ -45,14 +45,12 @@ export const RECOMMENDED_POLLING_DEFAULTS: Readonly<PollerOptions> =
     jitterMs: 25,
   });
 
-declare module "fastify" {
-  interface FastifyInstance {
-    poller: {
-      defaults: Readonly<PollerOptions>;
-      create<TResponse>(config: CreatePollerConfig<TResponse>): PollerHandle;
-    };
-  }
-}
+export type PollerService = {
+  defaults: Readonly<PollerOptions>;
+  create<TResponse>(config: CreatePollerConfig<TResponse>): PollerHandle;
+};
+
+export const kPoller = Symbol("infra.poller");
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
@@ -170,7 +168,7 @@ export default fp(
   function pollingPlugin(fastify: FastifyInstance) {
     const handles = new Set<PollerHandle>();
 
-    fastify.decorate("poller", {
+    fastify.decorate(kPoller, {
       defaults: RECOMMENDED_POLLING_DEFAULTS,
       create<TResponse>(config: CreatePollerConfig<TResponse>) {
         const handle = createPoller(config);

@@ -26,6 +26,8 @@ import signerService, {
   decodeSecretKey,
   normalizeSignatureValue,
   signSolanaOrderWithSigner,
+  kSignerService,
+  type SignerService,
 } from "../../../src/plugins/app/signer/signer.service.js";
 
 const fixturesDir = path.join(process.cwd(), "test/fixtures/signer");
@@ -156,13 +158,15 @@ describe("signerService", () => {
   it("decorates signerService when inputs are valid", async (t) => {
     const app = await buildSignerApp();
     t.after(() => app.close());
+    const signer: SignerService = app.getDecorator(kSignerService);
 
-    assert.strictEqual(typeof app.signerService.signSolanaOrder, "function");
+    assert.strictEqual(typeof signer.signSolanaOrder, "function");
   });
 
   it("signs a solana order using the fixture keypair", async (t: TestContext) => {
     const app = await buildSignerApp();
     t.after(() => app.close());
+    const signer: SignerService = app.getDecorator(kSignerService);
 
     const order = {
       protocolName: "qs-bridge",
@@ -180,7 +184,7 @@ describe("signerService", () => {
       nonce: bytes32(6),
     };
 
-    const signature = await app.signerService.signSolanaOrder(order);
+    const signature = await signer.signSolanaOrder(order);
 
     const encoded = concatBytes([
       encodeString(order.protocolName),
@@ -200,12 +204,12 @@ describe("signerService", () => {
     const digest = createHash("sha256").update(encoded).digest();
     const message = createSignableMessage(digest);
     const sigBytes = signatureBytes(Buffer.from(signature, "base64"));
-    const signer = await createKeyPairSignerFromBytes(
+    const keypairSigner = await createKeyPairSignerFromBytes(
       new Uint8Array(Buffer.from(solanaFixtureKeys.sKey, "base64"))
     );
 
     const ok = await verifySignature(
-      signer.keyPair.publicKey,
+      keypairSigner.keyPair.publicKey,
       sigBytes,
       message.content
     );
@@ -215,8 +219,9 @@ describe("signerService", () => {
   it("signs a solana order with numeric fields provided as strings", async (t) => {
     const app = await buildSignerApp();
     t.after(() => app.close());
+    const signer: SignerService = app.getDecorator(kSignerService);
 
-    const signature = await app.signerService.signSolanaOrder({
+    const signature = await signer.signSolanaOrder({
       protocolName: "qs-bridge",
       protocolVersion: "1",
       contractAddress: bytes32(10),
@@ -238,8 +243,9 @@ describe("signerService", () => {
   it("signs a solana order with numeric fields provided as numbers", async (t) => {
     const app = await buildSignerApp();
     t.after(() => app.close());
+    const signer: SignerService = app.getDecorator(kSignerService);
 
-    const signature = await app.signerService.signSolanaOrder({
+    const signature = await signer.signSolanaOrder({
       protocolName: "qs-bridge",
       protocolVersion: "1",
       contractAddress: bytes32(20),
@@ -261,6 +267,7 @@ describe("signerService", () => {
   it("rejects solana orders with invalid numeric fields", async (t) => {
     const app = await buildSignerApp();
     t.after(() => app.close());
+    const signer: SignerService = app.getDecorator(kSignerService);
 
     const baseOrder = {
       protocolName: "qs-bridge",
@@ -279,7 +286,7 @@ describe("signerService", () => {
     };
 
     await assert.rejects(
-      app.signerService.signSolanaOrder({
+      signer.signSolanaOrder({
         ...baseOrder,
         networkIn: 4294967296,
       }),
@@ -287,7 +294,7 @@ describe("signerService", () => {
     );
 
     await assert.rejects(
-      app.signerService.signSolanaOrder({
+      signer.signSolanaOrder({
         ...baseOrder,
         amount: -1n,
       }),
@@ -295,7 +302,7 @@ describe("signerService", () => {
     );
 
     await assert.rejects(
-      app.signerService.signSolanaOrder({
+      signer.signSolanaOrder({
         ...baseOrder,
         bpsFee: 70000,
       }),
@@ -306,9 +313,10 @@ describe("signerService", () => {
   it("rejects solana orders with invalid byte lengths", async (t) => {
     const app = await buildSignerApp();
     t.after(() => app.close());
+    const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      app.signerService.signSolanaOrder({
+      signer.signSolanaOrder({
         protocolName: "qs-bridge",
         protocolVersion: "1",
         contractAddress: bytes32(1),
@@ -340,9 +348,10 @@ describe("signerService", () => {
         force: true,
       });
     });
+    const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      app.signerService.signSolanaOrder({
+      signer.signSolanaOrder({
         protocolName: "qs-bridge",
         protocolVersion: "1",
         contractAddress: bytes32(40),
@@ -374,9 +383,10 @@ describe("signerService", () => {
         force: true,
       });
     });
+    const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      app.signerService.signSolanaOrder({
+      signer.signSolanaOrder({
         protocolName: "qs-bridge",
         protocolVersion: "1",
         contractAddress: bytes32(50),

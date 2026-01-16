@@ -1,24 +1,23 @@
 import env from "@fastify/env";
 import fp from "fastify-plugin";
+import { kFileManager, type FileManager } from "./@file-manager.js";
 
-declare module "fastify" {
-  export interface FastifyInstance {
-    config: {
-      PORT: number;
-      RATE_LIMIT_MAX: number;
-      SQLITE_DB_FILE: string;
-      SOLANA_KEYS: string;
-      QUBIC_KEYS: string;
-      ORACLE_SIGNATURE_THRESHOLD: number;
-      ORACLE_ID?: string;
-      HUB_URLS: string;
-      HUB_KEYS_FILE: string;
-      SOLANA_WS_URL: string;
-      SOLANA_LISTENER_ENABLED: boolean;
-      SOLANA_BPS_FEE: number;
-    };
-  }
-}
+export type EnvConfig = {
+  PORT: number;
+  RATE_LIMIT_MAX: number;
+  SQLITE_DB_FILE: string;
+  SOLANA_KEYS: string;
+  QUBIC_KEYS: string;
+  ORACLE_SIGNATURE_THRESHOLD: number;
+  ORACLE_ID?: string;
+  HUB_URLS: string;
+  HUB_KEYS_FILE: string;
+  SOLANA_WS_URL: string;
+  SOLANA_LISTENER_ENABLED: boolean;
+  SOLANA_BPS_FEE: number;
+};
+
+export const kEnvConfig = "config";
 
 const schema = {
   type: "object",
@@ -84,7 +83,7 @@ const schema = {
 export const autoConfig = {
   // Decorate Fastify instance with `config` key
   // Optional, default: 'config'
-  confKey: "config",
+  confKey: kEnvConfig,
 
   // Schema to validate
   schema,
@@ -111,19 +110,20 @@ export default fp(
   async (fastify, opts) => {
     await fastify.register(env, opts);
 
-    const { fileManager } = fastify;
+    const fileManager = fastify.getDecorator<FileManager>(kFileManager);
+    const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
 
-    fastify.config.SOLANA_KEYS = fileManager.sanitizeKeyFilePath(
+    config.SOLANA_KEYS = fileManager.sanitizeKeyFilePath(
       "SOLANA_KEYS",
-      fastify.config.SOLANA_KEYS
+      config.SOLANA_KEYS
     );
-    fastify.config.QUBIC_KEYS = fileManager.sanitizeKeyFilePath(
+    config.QUBIC_KEYS = fileManager.sanitizeKeyFilePath(
       "QUBIC_KEYS",
-      fastify.config.QUBIC_KEYS
+      config.QUBIC_KEYS
     );
-    fastify.config.HUB_KEYS_FILE = fileManager.sanitizeKeyFilePath(
+    config.HUB_KEYS_FILE = fileManager.sanitizeKeyFilePath(
       "HUB_KEYS_FILE",
-      fastify.config.HUB_KEYS_FILE
+      config.HUB_KEYS_FILE
     );
   },
   { name: "env", dependencies: ['file-manager'] }

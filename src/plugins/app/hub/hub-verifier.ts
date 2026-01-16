@@ -2,7 +2,12 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import fp from "fastify-plugin";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Static, Type } from "@sinclair/typebox";
-import { HubKeysFile } from "./hub-keys.js";
+import { kHubKeys, type HubKeysFile } from "./hub-keys.js";
+import {
+  kHubNoncesRepository,
+  type HubNoncesRepository,
+} from "./hub-nonces.repository.js";
+import { kValidation, type ValidationService } from "../../infra/validation.js";
 
 export const HUB_AUTH_TIME_SKEW_SECONDS = 60;
 export const HUB_NONCE_CLEANUP_INTERVAL_MS = 2 * 60 * 1000;
@@ -76,6 +81,11 @@ function getHubPublicKey(hubKeys: HubKeysFile, hubId: string, kid: string) {
 
 export default fp(
   async function hubVerifierPlugin(fastify: FastifyInstance) {
+    const validation = fastify.getDecorator<ValidationService>(kValidation);
+    const hubNoncesRepository =
+      fastify.getDecorator<HubNoncesRepository>(kHubNoncesRepository);
+    const hubKeys = fastify.getDecorator<HubKeysFile>(kHubKeys);
+
     fastify.addHook("preValidation", async (request, reply) => {
       if (!shouldVerify(request)) {
         return;
@@ -90,7 +100,7 @@ export default fp(
         "x-signature": request.headers["x-signature"],
       };
 
-      if (!fastify.validation.isValid<HubHeaders>(HubHeadersSchema, headers)) {
+      if (!validation.isValid<HubHeaders>(HubHeadersSchema, headers)) {
         return sendUnauthorized(request, reply, "invalid-headers");
       }
 
@@ -108,7 +118,7 @@ export default fp(
         return sendUnauthorized(request, reply, "timestamp-skew");
       }
 
-      const exists = await fastify.hubNoncesRepository.exists(
+      const exists = await hubNoncesRepository.exists(
         hubId,
         kid,
         nonce
@@ -118,7 +128,7 @@ export default fp(
       }
 
       try {
-        await fastify.hubNoncesRepository.insert({
+        await hubNoncesRepository.insert({
           hubId,
           kid,
           nonce,
@@ -144,7 +154,7 @@ export default fp(
         bodyHash,
       });
 
-      const publicKeyPem = getHubPublicKey(fastify.hubKeys, hubId, kid);
+      const publicKeyPem = getHubPublicKey(hubKeys, hubId, kid);
       if (!publicKeyPem) {
         return sendUnauthorized(request, reply, "unknown-key");
       }

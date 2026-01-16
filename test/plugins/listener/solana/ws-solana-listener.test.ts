@@ -12,6 +12,9 @@ import { getOutboundEventEncoder } from "../../../../src/clients/js/types/outbou
 import { getOverrideOutboundEventEncoder } from "../../../../src/clients/js/types/overrideOutboundEvent.js";
 import { type OracleOrder } from "../../../../src/plugins/app/indexer/schemas/order.js";
 import { type SolanaOrderToSign } from "../../../../src/plugins/app/signer/signer.service.js";
+import { kEnvConfig } from "../../../../src/plugins/infra/env.js";
+import { kOrdersRepository } from "../../../../src/plugins/app/indexer/orders.repository.js";
+import { kSignerService } from "../../../../src/plugins/app/signer/signer.service.js";
 
 type WsEventMap = {
   open: Record<string, never>;
@@ -157,7 +160,7 @@ async function buildListenerApp({
   app.register(
     fp(
       async (instance) => {
-        instance.decorate("config", {
+        instance.decorate(kEnvConfig, {
           SOLANA_LISTENER_ENABLED: enabled,
           SOLANA_WS_URL: "ws://localhost:8900",
           SOLANA_BPS_FEE: 25,
@@ -170,7 +173,7 @@ async function buildListenerApp({
   app.register(
     fp(
       async (instance) => {
-        instance.decorate("signerService", {
+        instance.decorate(kSignerService, {
           async signSolanaOrder(order: SolanaOrderToSign) {
             signerCalls.push(order);
             if (signerImpl) {
@@ -187,7 +190,7 @@ async function buildListenerApp({
   app.register(
     fp(
       async (instance) => {
-        instance.decorate("ordersRepository", ordersRepository);
+        instance.decorate(kOrdersRepository, ordersRepository);
       },
       { name: "orders-repository" }
     )
@@ -208,7 +211,7 @@ describe("ws solana listener plugin", () => {
 
     app.register(
       fp(async (instance) => {
-        instance.decorate("config", {
+        instance.decorate(kEnvConfig, {
           SOLANA_LISTENER_ENABLED: false,
           SOLANA_WS_URL: "ws://localhost:8900",
           SOLANA_BPS_FEE: 25,
@@ -217,12 +220,12 @@ describe("ws solana listener plugin", () => {
     );
     app.register(
       fp(async (instance) => {
-        instance.decorate("signerService", { signSolanaOrder: async () => "sig" });
+        instance.decorate(kSignerService, { signSolanaOrder: async () => "sig" });
       }, { name: "signer-service" })
     );
     app.register(
       fp(async (instance) => {
-        instance.decorate("ordersRepository", createInMemoryOrders());
+        instance.decorate(kOrdersRepository, createInMemoryOrders());
       }, { name: "orders-repository" })
     );
     app.decorate("solanaWsFactory", () => {
@@ -268,7 +271,7 @@ describe("ws solana listener plugin", () => {
     const app = fastify({ logger: false });
     app.register(
       fp(async (instance) => {
-        instance.decorate("config", {
+        instance.decorate(kEnvConfig, {
           SOLANA_LISTENER_ENABLED: true,
           SOLANA_WS_URL: "ws://localhost:8900",
           SOLANA_BPS_FEE: 25,
@@ -277,12 +280,12 @@ describe("ws solana listener plugin", () => {
     );
     app.register(
       fp(async (instance) => {
-        instance.decorate("signerService", { signSolanaOrder: async () => "sig" });
+        instance.decorate(kSignerService, { signSolanaOrder: async () => "sig" });
       }, { name: "signer-service" })
     );
     app.register(
       fp(async (instance) => {
-        instance.decorate("ordersRepository", createInMemoryOrders());
+        instance.decorate(kOrdersRepository, createInMemoryOrders());
       }, { name: "orders-repository" })
     );
     app.register(wsSolanaListener);

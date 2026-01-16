@@ -5,6 +5,10 @@ import { Type } from "@sinclair/typebox";
 import validationPlugin, {
   formatFirstError,
 } from "../../../src/plugins/infra/validation.js";
+import {
+  kValidation,
+  type ValidationService,
+} from "../../../src/plugins/infra/validation.js";
 
 describe("validation plugin", () => {
   it("uses fallback message when schema errors are empty", () => {
@@ -16,9 +20,11 @@ describe("validation plugin", () => {
     const app = fastify();
     await app.register(validationPlugin);
     await app.ready();
+    const validation: ValidationService = app.getDecorator(kValidation);
 
     assert.throws(
-      () => app.validation.assertValid(Type.Number(), "not-a-number", "Validation"),
+      () =>
+        validation.assertValid(Type.Number(), "not-a-number", "Validation"),
       /Validation: invalid schema -/
     );
 

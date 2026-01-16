@@ -1,7 +1,8 @@
 import { OracleOrder } from "../../indexer/schemas/order.js";
 import { type OutboundEvent } from "../../../../clients/js/types/outboundEvent.js";
 import { type OverrideOutboundEvent } from "../../../../clients/js/types/overrideOutboundEvent.js";
-import { type SolanaOrderToSign } from "../../signer/signer.service.js";
+import { type SolanaOrderToSign, type SignerService } from "../../signer/signer.service.js";
+import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import {
   bytesToHex,
   hexToBytes,
@@ -13,16 +14,6 @@ import {
 export const SOLANA_PROTOCOL_NAME = "qs-bridge";
 export const SOLANA_PROTOCOL_VERSION = "1";
 export const QUBIC_NETWORK_ID = 1;
-
-type OrdersRepository = {
-  findById: (id: number) => Promise<OracleOrder | null>;
-  create: (order: OracleOrder) => Promise<OracleOrder | null>;
-  update: (id: number, changes: Partial<OracleOrder>) => Promise<OracleOrder | null>;
-};
-
-type SignerService = {
-  signSolanaOrder: (order: SolanaOrderToSign) => Promise<string>;
-};
 
 type Logger = {
   info: (payload: unknown, message?: string) => void;

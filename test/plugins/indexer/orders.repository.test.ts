@@ -1,11 +1,15 @@
 import { it, describe } from "node:test";
 import assert from "node:assert";
 import { build } from "../../helper.js";
+import {
+  kOrdersRepository,
+  type OrdersRepository,
+} from "../../../src/plugins/app/indexer/orders.repository.js";
 
 describe("ordersRepository", () => {
   it("should create and retrieve an order by id", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
       id: 101,
@@ -37,7 +41,7 @@ describe("ordersRepository", () => {
 
   it("should return orders by ids", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     // Insert 3 orders
     const order1 = await repo.create({
@@ -86,7 +90,7 @@ describe("ordersRepository", () => {
 
   it("should return empty list when byIds is empty", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const fetched = await repo.byIds([]);
     assert.deepStrictEqual(fetched, []);
@@ -94,7 +98,7 @@ describe("ordersRepository", () => {
 
   it("should reject byIds when exceeding the limit", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const ids = Array.from({ length: 101 }, (_, i) => i + 1);
     await assert.rejects(() => repo.byIds(ids), /Cannot request more than 100/);
@@ -102,7 +106,7 @@ describe("ordersRepository", () => {
 
   it("should return pending orders ordered and limited", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     for (let i = 1; i <= 55; i += 1) {
       await repo.create({
@@ -140,7 +144,7 @@ describe("ordersRepository", () => {
 
   it("should update an order", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
       id: 301,
@@ -166,7 +170,7 @@ describe("ordersRepository", () => {
 
   it("should mark an order ready for relay", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
       id: 311,
@@ -189,7 +193,7 @@ describe("ordersRepository", () => {
 
   it("should return null when marking a non-existent order ready", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const updated = await repo.markReadyForRelay(9999);
     assert.strictEqual(updated, null);
@@ -197,7 +201,7 @@ describe("ordersRepository", () => {
 
   it("should return null when updating a non-existent order", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const updated = await repo.update(9999, { amount: 100 });
     assert.strictEqual(updated, null);
@@ -205,7 +209,7 @@ describe("ordersRepository", () => {
 
   it("should delete an order", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
       id: 401,
@@ -229,7 +233,7 @@ describe("ordersRepository", () => {
 
   it("should return false when deleting a non-existent order", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const removed = await repo.delete(9999);
     assert.strictEqual(removed, false);
@@ -237,7 +241,7 @@ describe("ordersRepository", () => {
 
   it("should add unique signatures to an order", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
       id: 501,
@@ -265,7 +269,7 @@ describe("ordersRepository", () => {
 
   it("should return empty list when adding no signatures", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
       id: 601,
@@ -286,7 +290,7 @@ describe("ordersRepository", () => {
 
   it("should return relayable orders with signatures", async (t) => {
     const app = await build(t);
-    const repo = app.ordersRepository;
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const relayable = await repo.create({
       id: 701,

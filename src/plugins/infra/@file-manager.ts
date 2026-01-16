@@ -1,13 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import fp from "fastify-plugin";
-import { ReturnType } from "@sinclair/typebox";
 
-declare module "fastify" {
-  interface FastifyInstance {
-    fileManager: ReturnType<typeof createFileManager>;
-  }
-}
+export type FileManager = ReturnType<typeof createFileManager>;
+export const kFileManager = Symbol("infra.fileManager");
 
 function createFileManager() {
   return {
@@ -58,7 +54,7 @@ async function readJsonFile(prefix: string, filePath: string) {
 
 export default fp(
   async (fastify) => {
-    fastify.decorate("fileManager", createFileManager());
+    fastify.decorate(kFileManager, createFileManager());
   },
   { name: "file-manager" }
 );

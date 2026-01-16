@@ -2,6 +2,10 @@ import {
   FastifyPluginAsyncTypebox,
   Type,
 } from "@fastify/type-provider-typebox";
+import {
+  kKnex,
+  type KnexAccessor,
+} from "../../../plugins/infra/@knex.js";
 
 const HealthResponseSchema = Type.Object({
   status: Type.Literal("ok"),
@@ -9,6 +13,7 @@ const HealthResponseSchema = Type.Object({
 });
 
 const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
+  const knex = fastify.getDecorator<KnexAccessor>(kKnex).get();
   fastify.get(
     "/",
     {
@@ -19,8 +24,8 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
       },
     },
     async function handler() {
-      const result = await fastify.knex
-        .select(fastify.knex.raw("1 as result"))
+      const result = await knex
+        .select(knex.raw("1 as result"))
         .first();
 
       if (result?.result !== 1) {

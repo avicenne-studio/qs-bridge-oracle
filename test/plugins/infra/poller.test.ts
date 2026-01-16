@@ -3,12 +3,21 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { AddressInfo } from "node:net";
 import { build } from "../../helper.js";
+import {
+  kPoller,
+  type PollerService,
+} from "../../../src/plugins/infra/poller.js";
+import {
+  kUndiciGetClient,
+  type UndiciGetClientService,
+} from "../../../src/plugins/infra/undici-get-client.js";
 
 const noop = () => {};
 
 describe("poller plugin", () => {
   it("uses the primary response when it succeeds", async (t) => {
     const app = await build(t);
+    const pollerService: PollerService = app.getDecorator(kPoller);
 
     const primary = "primary";
     const fallback = "fallback";
@@ -31,7 +40,7 @@ describe("poller plugin", () => {
       return value;
     };
 
-    const poller = app.poller.create({
+    const poller = pollerService.create({
       primary,
       fallback,
       fetchOne: (s: string) => fetchOne(s),
@@ -63,6 +72,7 @@ describe("poller plugin", () => {
 
   it("falls back after a timeout and exposes defaults", async (t) => {
     const app = await build(t);
+    const pollerService: PollerService = app.getDecorator(kPoller);
 
     const abortedServers: string[] = [];
     const primary = "slow";
@@ -89,7 +99,7 @@ describe("poller plugin", () => {
       done = resolve;
     });
 
-    const poller = app.poller.create({
+    const poller = pollerService.create({
       primary,
       fallback,
       fetchOne,
@@ -105,7 +115,7 @@ describe("poller plugin", () => {
       jitterMs: 0,
     });
 
-    assert.deepStrictEqual(app.poller.defaults, {
+    assert.deepStrictEqual(pollerService.defaults, {
       intervalMs: 3000,
       requestTimeoutMs: 700,
       jitterMs: 25,
@@ -120,8 +130,9 @@ describe("poller plugin", () => {
 
   it("throws when start is invoked twice", async (t) => {
     const app = await build(t);
+    const pollerService: PollerService = app.getDecorator(kPoller);
 
-    const poller = app.poller.create({
+    const poller = pollerService.create({
       primary: "s1",
       fetchOne: async () => "ok",
       onRound: noop,
@@ -137,6 +148,9 @@ describe("poller plugin", () => {
 
   it("integrates with the Undici GET client transport with fallback", async (t) => {
     const app = await build(t);
+    const pollerService: PollerService = app.getDecorator(kPoller);
+    const undiciGetClient: UndiciGetClientService =
+      app.getDecorator(kUndiciGetClient);
 
     const fastState = { count: 0 };
     const fastServer = createServer((req, res) => {
@@ -166,7 +180,7 @@ describe("poller plugin", () => {
 
     type Response = { server: string; round: number };
 
-    const client = app.undiciGetClient.create();
+    const client = undiciGetClient.create();
     const observed: Response[] = [];
 
     let done: (() => void) | null = null;
@@ -174,7 +188,7 @@ describe("poller plugin", () => {
       done = resolve;
     });
 
-    const poller = app.poller.create({
+    const poller = pollerService.create({
       primary: `http://127.0.0.1:${failingAddr.port}`,
       fallback: `http://127.0.0.1:${fastAddr.port}`,
       fetchOne: (server, signal) =>
@@ -205,6 +219,7 @@ describe("poller plugin", () => {
 
   it("keeps running when both primary and fallback fail", async (t) => {
     const app = await build(t);
+    const pollerService: PollerService = app.getDecorator(kPoller);
 
     const primary = "primary";
     const fallback = "fallback";
@@ -218,7 +233,7 @@ describe("poller plugin", () => {
       done = resolve;
     });
 
-    const poller = app.poller.create({
+    const poller = pollerService.create({
       primary,
       fallback,
       fetchOne: async () => {
