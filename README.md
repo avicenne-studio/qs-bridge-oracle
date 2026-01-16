@@ -2,6 +2,10 @@
 
 This repository hosts the Oracle responsible for validating Solana <-> Qubic bridge transactions.
 
+## Governance
+
+This project is open source and maintained by Avicenne as part of the Qubic incubation program.
+
 ## Documentation
 
 - `CONTRIBUTING.md` describes the contribution process and requirements.
