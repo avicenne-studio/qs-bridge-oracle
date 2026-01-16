@@ -44,6 +44,11 @@ const contractAddressBytes = new Uint8Array(
 
 type WebSocketFactory = (url: string) => WebSocketLike;
 
+type SolanaWsFactoryOwner = {
+  solanaWsFactory?: WebSocketFactory;
+  parent?: SolanaWsFactoryOwner;
+};
+
 export function createDefaultSolanaWsFactory(
   WebSocketCtor: typeof WebSocket = WebSocket
 ): WebSocketFactory {
@@ -51,10 +56,7 @@ export function createDefaultSolanaWsFactory(
 }
 
 export function resolveSolanaWsFactory(
-  instance: FastifyInstance & {
-    solanaWsFactory?: WebSocketFactory;
-    parent?: FastifyInstance & { solanaWsFactory?: WebSocketFactory };
-  },
+  instance: SolanaWsFactoryOwner,
   defaultFactory: WebSocketFactory
 ): WebSocketFactory {
   return (
@@ -175,10 +177,7 @@ export default fp(
     };
 
     fastify.addHook("onReady", async () => {
-      const instance = fastify as FastifyInstance & {
-        solanaWsFactory?: WebSocketFactory;
-        parent?: FastifyInstance & { solanaWsFactory?: WebSocketFactory };
-      };
+      const instance = fastify as SolanaWsFactoryOwner;
       const wsFactory = resolveSolanaWsFactory(
         instance,
         createDefaultSolanaWsFactory()

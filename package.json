@@ -17,6 +17,7 @@
     "generate-solana-keypair": "node scripts/generate-solana-keypair.js",
     "add-oracle": "node scripts/add-oracle.js",
     "delete-oracle": "node scripts/delete-oracle.js",
+    "claim-oracle-fee": "node scripts/claim-oracle-fee.js",
     "claim-protocol-fee": "node scripts/claim-protocol-fee.js",
     "send-inbound-order": "node scripts/send-inbound-order.js",
     "test": "c8 npm run test:run",

@@ -10,7 +10,9 @@ import {
   createSolanaRpcSubscriptions,
   createTransactionMessage,
   createSignableMessage,
+  AccountRole,
   getAddressEncoder,
+  getBase64EncodedWireTransaction,
   getBytesEncoder,
   getProgramDerivedAddress,
   getSignatureFromTransaction,
@@ -34,9 +36,8 @@ const DEFAULT_WS_URL = "wss://api.devnet.solana.com";
 const TOKEN_PROGRAM_ADDRESS = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const ASSOCIATED_TOKEN_PROGRAM_ADDRESS =
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
-const COMPUTE_BUDGET_PROGRAM_ADDRESS =
-  "ComputeBudget111111111111111111111111111111";
-const COMPUTE_UNITS = 300_000;
+const SYSTEM_PROGRAM_ADDRESS = "11111111111111111111111111111111";
+const RENT_SYSVAR_ADDRESS = "SysvarRent111111111111111111111111111111111";
 const ORACLE_THRESHOLD_PERCENT = 60;
 const DEFAULT_PROTOCOL_NAME = "QubicBridge";
 const DEFAULT_PROTOCOL_VERSION = "1";
@@ -131,14 +132,32 @@ async function findAssociatedTokenAddress(owner, mint, tokenProgram, associatedT
   return ata;
 }
 
-function getComputeUnitLimitInstruction(units) {
+function getCreateAssociatedTokenAccountInstruction({
+  payerSigner,
+  ata,
+  owner,
+  mint,
+  tokenProgram,
+  associatedTokenProgram,
+  systemProgram,
+  rentSysvar,
+}) {
   return {
-    programAddress: COMPUTE_BUDGET_PROGRAM_ADDRESS,
-    accounts: [],
-    data: concatBytes([
-      new Uint8Array([2]),
-      new Uint8Array(getU32Encoder().encode(units)),
-    ]),
+    programAddress: associatedTokenProgram,
+    accounts: [
+      {
+        address: payerSigner.address,
+        role: AccountRole.WRITABLE_SIGNER,
+        signer: payerSigner,
+      },
+      { address: ata, role: AccountRole.WRITABLE },
+      { address: owner, role: AccountRole.READONLY },
+      { address: mint, role: AccountRole.READONLY },
+      { address: systemProgram, role: AccountRole.READONLY },
+      { address: tokenProgram, role: AccountRole.READONLY },
+      { address: rentSysvar, role: AccountRole.READONLY },
+    ],
+    data: new Uint8Array(),
   };
 }
 
@@ -148,6 +167,15 @@ function padToLength(items, length, filler) {
   }
   const padding = Array.from({ length: length - items.length }, () => filler);
   return items.concat(padding);
+}
+
+async function checkAccountExists(rpc, account, label) {
+  const result = await rpc.getAccountInfo(account, { encoding: "base64" }).send();
+  if (!result?.value) {
+    process.stderr.write(`Missing account: ${label} (${account})\n`);
+    return false;
+  }
+  return true;
 }
 
 async function main() {
@@ -207,6 +235,8 @@ async function main() {
 
   const tokenProgram = TOKEN_PROGRAM_ADDRESS;
   const associatedTokenProgram = ASSOCIATED_TOKEN_PROGRAM_ADDRESS;
+  const systemProgram = SYSTEM_PROGRAM_ADDRESS;
+  const rentSysvar = RENT_SYSVAR_ADDRESS;
 
   const recipientAta = await findAssociatedTokenAddress(
     recipient,
@@ -220,6 +250,47 @@ async function main() {
     tokenProgram,
     associatedTokenProgram
   );
+
+  const ataTargets = [
+    { label: "recipientAta", address: recipientAta, owner: recipient },
+    {
+      label: "relayerAta",
+      address: relayerAta,
+      owner: relayerSigner.address,
+    },
+  ];
+
+  for (const target of ataTargets) {
+    const accountInfo = await rpc
+      .getAccountInfo(target.address, { encoding: "base64" })
+      .send();
+    if (!accountInfo?.value) {
+      const ix = getCreateAssociatedTokenAccountInstruction({
+        payerSigner: relayerSigner,
+        ata: target.address,
+        owner: target.owner,
+        mint: tokenMint,
+        tokenProgram,
+        associatedTokenProgram,
+        systemProgram,
+        rentSysvar,
+      });
+      const { value: blockhash } = await rpc.getLatestBlockhash().send();
+      const ataMessage = appendTransactionMessageInstruction(
+        ix,
+        setTransactionMessageLifetimeUsingBlockhash(
+          blockhash,
+          setTransactionMessageFeePayer(
+            relayerSigner.address,
+            createTransactionMessage({ version: "legacy" })
+          )
+        )
+      );
+      const ataTx = await signTransactionMessageWithSigners(ataMessage);
+      await sendAndConfirmTransaction(ataTx, { commitment: "confirmed" });
+      process.stdout.write(`Created ${target.label}: ${target.address}\n`);
+    }
+  }
 
   const contractAddressBytes = new Uint8Array(
     getAddressEncoder().encode(address(QS_BRIDGE_PROGRAM_ADDRESS))
@@ -241,10 +312,16 @@ async function main() {
   };
 
   const oracleCount = globalState.data.oracleCount;
-  const signatureCount = Math.min(
-    Math.max(1, Math.ceil(oracleCount * (ORACLE_THRESHOLD_PERCENT / 100))),
-    6
-  );
+  const signatureOverride = process.env.SIGNATURE_COUNT
+    ? Number(process.env.SIGNATURE_COUNT)
+    : null;
+  const signatureCount =
+    signatureOverride && Number.isFinite(signatureOverride)
+      ? Math.max(1, Math.min(6, Math.floor(signatureOverride)))
+      : Math.min(
+          Math.max(1, Math.ceil(oracleCount * (ORACLE_THRESHOLD_PERCENT / 100))),
+          6
+        );
   if (oracleSigners.length < signatureCount) {
     throw new Error(
       `Need ${signatureCount} oracle keys, got ${oracleSigners.length}`
@@ -257,11 +334,36 @@ async function main() {
     signatures.push(await signInboundOrder(orderPayload, signer));
   }
 
-  const oracleAddresses = oracleSigners.map((signer) => signer.address);
+  const oracleAddresses = signingOracles.map((signer) => signer.address);
   const oraclePdas = await Promise.all(
-    oracleAddresses.map((oracle) => findOraclePda({ oracle }))
+    oracleAddresses.map(async (oracle) => {
+      const [oraclePda] = await findOraclePda({ oracle });
+      return oraclePda;
+    })
   );
   const paddedOraclePdas = padToLength(oraclePdas, 6, oraclePdas[0]);
+
+  const requiredAccounts = [
+    { label: "globalState", address: globalStatePda },
+    { label: "tokenMint", address: tokenMint },
+    { label: "recipientAta", address: recipientAta },
+    { label: "relayerAta", address: relayerAta },
+  ];
+  const oracleAccountChecks = paddedOraclePdas.map((oraclePda, index) => ({
+    label: `oraclePda${index + 1}`,
+    address: oraclePda,
+  }));
+  const missingChecks = await Promise.all(
+    requiredAccounts
+      .concat(oracleAccountChecks)
+      .map((entry) => checkAccountExists(rpc, entry.address, entry.label))
+  );
+  if (missingChecks.some((exists) => !exists)) {
+    process.stderr.write(
+      "Create missing accounts (or ensure oracles are added) before retrying.\n"
+    );
+    return;
+  }
 
   const [inboundOrderPda] = await findInboundOrderPda({
     networkIn,
@@ -315,14 +417,35 @@ async function main() {
       createTransactionMessage({ version: "legacy" })
     )
   );
-  message = appendTransactionMessageInstruction(
-    getComputeUnitLimitInstruction(COMPUTE_UNITS),
-    message
-  );
   message = appendTransactionMessageInstruction(instruction, message);
 
   const signedTransaction = await signTransactionMessageWithSigners(message);
   const signature = getSignatureFromTransaction(signedTransaction);
+
+  if (typeof rpc.simulateTransaction === "function") {
+    const encoded = getBase64EncodedWireTransaction(signedTransaction);
+    const simulation = await rpc
+      .simulateTransaction(encoded, {
+        encoding: "base64",
+        sigVerify: false,
+        replaceRecentBlockhash: true,
+      })
+      .send();
+    if (simulation?.value?.err) {
+      process.stderr.write(
+        `Simulation error: ${JSON.stringify(
+          simulation.value.err,
+          (_key, value) => (typeof value === "bigint" ? value.toString() : value)
+        )}\n`
+      );
+      if (simulation.value.logs?.length) {
+        process.stderr.write(
+          `Simulation logs:\n${simulation.value.logs.join("\n")}\n`
+        );
+      }
+      return;
+    }
+  }
 
   await sendAndConfirmTransaction(signedTransaction, { commitment: "confirmed" });
 

@@ -6,7 +6,7 @@ This is the shortest path to add oracles and submit an inbound order on devnet u
 
 ```bash
 mkdir -p .temp
-for i in 1 2 3 4 5 6; do
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   OUT=.temp/oracle-${i}.json node scripts/generate-solana-keypair.js > .temp/oracle-${i}.keys.json
   echo "oracle-${i} generated"
 done
@@ -17,7 +17,7 @@ done
 ```bash
 node <<'NODE'
 const fs = require('fs');
-const files = [1,2,3,4,5,6].map(i => `.temp/oracle-${i}.json`);
+const files = [1,2,3,4,5,6,7,8,9,10,11,12].map(i => `.temp/oracle-${i}.json`);
 const data = files.map(f => JSON.parse(fs.readFileSync(f, 'utf8')));
 fs.writeFileSync('.temp/oracle-keys.json', JSON.stringify(data, null, 2));
 NODE
@@ -46,10 +46,10 @@ fs.writeFileSync('.temp/order.json', JSON.stringify(order, null, 2));
 NODE
 ```
 
-## 4) Add the 6 oracles on-chain
+## 4) Add the 12 oracles on-chain
 
 ```bash
-for i in 1 2 3 4 5 6; do
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   PUB=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.temp/oracle-${i}.keys.json','utf8')).pKey)")
   npm run add-oracle -- "$PUB"
 done

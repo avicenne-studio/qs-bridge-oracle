@@ -32,19 +32,13 @@ class MockWebSocket {
   sent: string[] = [];
   private listeners = new Map<keyof WsEventMap, Set<WsEventHandler>>();
 
-  addEventListener<K extends keyof WsEventMap>(
-    type: K,
-    listener: (event: WsEventMap[K]) => void
-  ) {
+  addEventListener(type: keyof WsEventMap, listener: WsEventHandler) {
     const bucket = this.listeners.get(type) ?? new Set<WsEventHandler>();
-    bucket.add(listener as WsEventHandler);
+    bucket.add(listener);
     this.listeners.set(type, bucket);
   }
 
-  removeEventListener<K extends keyof WsEventMap>(
-    type: K,
-    listener: (event: WsEventMap[K]) => void
-  ) {
+  removeEventListener(type: keyof WsEventMap, listener: WsEventHandler) {
     const bucket = this.listeners.get(type);
     if (!bucket) {
       return;
