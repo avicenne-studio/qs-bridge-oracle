@@ -4,11 +4,11 @@ import fastify from "fastify";
 import { Type } from "@sinclair/typebox";
 import validationPlugin, {
   formatFirstError,
-} from "../../../src/plugins/infra/validation.js";
+} from "../../../src/plugins/app/common/validation.js";
 import {
   kValidation,
   type ValidationService,
-} from "../../../src/plugins/infra/validation.js";
+} from "../../../src/plugins/app/common/validation.js";
 
 describe("validation plugin", () => {
   it("uses fallback message when schema errors are empty", () => {

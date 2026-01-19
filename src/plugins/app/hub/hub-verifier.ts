@@ -7,7 +7,7 @@ import {
   kHubNoncesRepository,
   type HubNoncesRepository,
 } from "./hub-nonces.repository.js";
-import { kValidation, type ValidationService } from "../../infra/validation.js";
+import { kValidation, type ValidationService } from "../common/validation.js";
 
 export const HUB_AUTH_TIME_SKEW_SECONDS = 60;
 export const HUB_NONCE_CLEANUP_INTERVAL_MS = 2 * 60 * 1000;

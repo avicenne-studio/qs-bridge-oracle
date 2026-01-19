@@ -3,7 +3,7 @@ import { FastifyInstance } from "fastify";
 import { Static, Type } from "@sinclair/typebox";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import { kFileManager, type FileManager } from "../../infra/@file-manager.js";
-import { kValidation, type ValidationService } from "../../infra/validation.js";
+import { kValidation, type ValidationService } from "../common/validation.js";
 
 const HubKeySchema = Type.Object({
   kid: Type.String({ minLength: 1 }),
@@ -28,8 +28,8 @@ async function readHubKeysFromFile(
   fastify: FastifyInstance
 ): Promise<HubKeysFile> {
   const prefix = "HubKeys";
-  const fileManager: FileManager = fastify.getDecorator(kFileManager);
-  const validation: ValidationService = fastify.getDecorator(kValidation);
+  const fileManager = fastify.getDecorator<FileManager>(kFileManager);
+  const validation: ValidationService = fastify.getDecorator<ValidationService>(kValidation);
   const parsed = await fileManager.readJsonFile(prefix, filePath);
   validation.assertValid<HubKeysFile>(HubKeysFileSchema, parsed, prefix);
   return parsed;

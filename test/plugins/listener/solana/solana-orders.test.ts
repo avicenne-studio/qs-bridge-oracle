@@ -4,44 +4,10 @@ import {
   createSolanaOrderHandlers,
 } from "../../../../src/plugins/app/listener/solana/solana-orders.js";
 import { bytesToHex } from "../../../../src/plugins/app/listener/solana/bytes.js";
-import { type OracleOrder } from "../../../../src/plugins/app/indexer/schemas/order.js";
 import { type SolanaOrderToSign } from "../../../../src/plugins/app/signer/signer.service.js";
+import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 
 type Repo = ReturnType<typeof createInMemoryOrders>;
-
-function createInMemoryOrders(initial: OracleOrder[] = []) {
-  const store = new Map<string, OracleOrder>();
-  for (const order of initial) {
-    store.set(order.id, order);
-  }
-  return {
-    store,
-    async findById(id: string) {
-      return store.get(id) ?? null;
-    },
-    async findBySourceNonce(sourceNonce: string) {
-      for (const order of store.values()) {
-        if (order.source_nonce === sourceNonce) {
-          return order;
-        }
-      }
-      return null;
-    },
-    async create(order: OracleOrder) {
-      store.set(order.id, order);
-      return order;
-    },
-    async update(id: string, changes: Partial<OracleOrder>) {
-      const existing = store.get(id);
-      if (!existing) {
-        return null;
-      }
-      const updated = { ...existing, ...changes };
-      store.set(id, updated);
-      return updated;
-    },
-  };
-}
 
 function createLogger() {
   const entries: Array<{ level: string; payload: unknown; message?: string }> =
@@ -89,7 +55,7 @@ function createHandlers(repo: Repo, signerCalls: SolanaOrderToSign[]) {
   const { logger, entries } = createLogger();
   return {
     ...createSolanaOrderHandlers({
-      ordersRepository: repo,
+      ordersRepository: repo as never,
       signerService: {
         async signSolanaOrder(order) {
           signerCalls.push(order);

@@ -12,7 +12,7 @@ export type ValidationService = {
   ): asserts value is T;
 };
 
-export const kValidation = Symbol("infra.validation");
+export const kValidation = Symbol("app.validation");
 
 export function formatFirstError(schema: TSchema, value: unknown) {
   for (const error of Value.Errors(schema, value)) {

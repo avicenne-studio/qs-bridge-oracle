@@ -21,7 +21,7 @@ import envPlugin, {
   autoConfig as envAutoConfig,
 } from "../../../src/plugins/infra/env.js";
 import fmPlugin from "../../../src/plugins/infra/@file-manager.js";
-import validationPlugin from "../../../src/plugins/infra/validation.js";
+import validationPlugin from "../../../src/plugins/app/common/validation.js";
 import signerService, {
   decodeSecretKey,
   normalizeSignatureValue,

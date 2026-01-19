@@ -17,7 +17,7 @@ import {
 } from "./schemas/keys.js";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import { kFileManager, type FileManager } from "../../infra/@file-manager.js";
-import { kValidation, type ValidationService } from "../../infra/validation.js";
+import { kValidation, type ValidationService } from "../common/validation.js";
 
 const MAX_U64 = (1n << 64n) - 1n;
 

@@ -11,7 +11,7 @@ import {
   kUndiciGetClient,
   type UndiciGetClientService,
 } from "../../infra/undici-get-client.js";
-import { kValidation, type ValidationService } from "../../infra/validation.js";
+import { kValidation, type ValidationService } from "../common/validation.js";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import {
   kOrdersRepository,
