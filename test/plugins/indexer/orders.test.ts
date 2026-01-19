@@ -33,7 +33,7 @@ const mockSolanaTx: SolanaTransaction = {
 describe("OracleOrder utilities", () => {
   it("should accept valid orders with different source and dest", () => {
     const order: OracleOrder = {
-      id: 101,
+      id: "00000000-0000-4000-8000-000000000101",
       source: "solana",
       dest: "qubic",
       from: "A",
@@ -50,7 +50,7 @@ describe("OracleOrder utilities", () => {
 
   it("should reject orders where source === dest", () => {
     const order: OracleOrder = {
-      id: 102,
+      id: "00000000-0000-4000-8000-000000000102",
       source: "qubic",
       dest: "qubic",
       from: "A",
@@ -70,13 +70,13 @@ describe("OracleOrder utilities", () => {
 
   it("should construct an order from a Qubic transaction", () => {
     const order = orderFromQubic(
-      201,
+      "00000000-0000-4000-8000-000000000201",
       mockQubicTx,
       "solana",
       "QUBIC_SIGNATURE_1"
     );
 
-    assert.strictEqual(order.id, 201);
+    assert.strictEqual(order.id, "00000000-0000-4000-8000-000000000201");
     assert.strictEqual(order.source, "qubic");
     assert.strictEqual(order.dest, "solana");
     assert.strictEqual(order.from, mockQubicTx.sender);
@@ -90,14 +90,26 @@ describe("OracleOrder utilities", () => {
 
   it("should throw when Qubic order has identical source and dest", () => {
     assert.throws(
-      () => orderFromQubic(202, mockQubicTx, "qubic", "SIG"),
+      () =>
+        orderFromQubic(
+          "00000000-0000-4000-8000-000000000202",
+          mockQubicTx,
+          "qubic",
+          "SIG"
+        ),
       /source and dest must differ/
     );
   });
 
   it("should throw because normalizeBridgeInstruction is not implemented", () => {
     assert.throws(
-      () => orderFromSolana(203, mockSolanaTx, "qubic", "SIG"),
+      () =>
+        orderFromSolana(
+          "00000000-0000-4000-8000-000000000203",
+          mockSolanaTx,
+          "qubic",
+          "SIG"
+        ),
       /not implemented/
     );
   });

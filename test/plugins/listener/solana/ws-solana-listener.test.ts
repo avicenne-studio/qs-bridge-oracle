@@ -117,20 +117,28 @@ function createLogsNotification(lines: string[]) {
 }
 
 function createInMemoryOrders(initial: OracleOrder[] = []) {
-  const store = new Map<number, OracleOrder>();
+  const store = new Map<string, OracleOrder>();
   for (const order of initial) {
     store.set(order.id, order);
   }
   return {
     store,
-    async findById(id: number) {
+    async findById(id: string) {
       return store.get(id) ?? null;
+    },
+    async findBySourceNonce(sourceNonce: string) {
+      for (const order of store.values()) {
+        if (order.source_nonce === sourceNonce) {
+          return order;
+        }
+      }
+      return null;
     },
     async create(order: OracleOrder) {
       store.set(order.id, order);
       return order;
     },
-    async update(id: number, changes: Partial<OracleOrder>) {
+    async update(id: string, changes: Partial<OracleOrder>) {
       const existing = store.get(id);
       if (!existing) {
         return null;
@@ -362,12 +370,15 @@ describe("ws solana listener plugin", () => {
     ws.emit("error", { data: "boom" });
     ws.emit("message", { data: "{bad json" });
 
-    await waitFor(() => {
-      const order = ordersRepository.store.get(1);
-      return order?.signature === "sig-2";
-    });
+    await waitFor(() =>
+      [...ordersRepository.store.values()].some(
+        (order) => order.signature === "sig-2"
+      )
+    );
 
-    const stored = ordersRepository.store.get(1);
+    const stored = [...ordersRepository.store.values()].find(
+      (order) => order.signature === "sig-2"
+    );
     assert.ok(stored);
     assert.strictEqual(stored.relayerFee, 7);
     assert.strictEqual(signerCalls.length, 2);

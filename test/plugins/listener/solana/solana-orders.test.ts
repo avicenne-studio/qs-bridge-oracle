@@ -10,20 +10,28 @@ import { type SolanaOrderToSign } from "../../../../src/plugins/app/signer/signe
 type Repo = ReturnType<typeof createInMemoryOrders>;
 
 function createInMemoryOrders(initial: OracleOrder[] = []) {
-  const store = new Map<number, OracleOrder>();
+  const store = new Map<string, OracleOrder>();
   for (const order of initial) {
     store.set(order.id, order);
   }
   return {
     store,
-    async findById(id: number) {
+    async findById(id: string) {
       return store.get(id) ?? null;
+    },
+    async findBySourceNonce(sourceNonce: string) {
+      for (const order of store.values()) {
+        if (order.source_nonce === sourceNonce) {
+          return order;
+        }
+      }
+      return null;
     },
     async create(order: OracleOrder) {
       store.set(order.id, order);
       return order;
     },
-    async update(id: number, changes: Partial<OracleOrder>) {
+    async update(id: string, changes: Partial<OracleOrder>) {
       const existing = store.get(id);
       if (!existing) {
         return null;
@@ -119,7 +127,7 @@ describe("solana order handlers", () => {
     const event = createOutboundEvent();
     await handleOutboundEvent(event);
 
-    const stored = await repo.findById(1);
+    const stored = await repo.findBySourceNonce(bytesToHex(event.nonce));
     assert.ok(stored);
     assert.strictEqual(stored.source, "solana");
     assert.strictEqual(stored.dest, "qubic");
@@ -158,9 +166,10 @@ describe("solana order handlers", () => {
   });
 
   it("skips outbound events for existing orders", async () => {
+    const existingNonce = bytesToHex(createOutboundEvent().nonce);
     const repo = createInMemoryOrders([
       {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         source: "solana",
         dest: "qubic",
         from: "aa",
@@ -170,6 +179,7 @@ describe("solana order handlers", () => {
         signature: "sig",
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
+        source_nonce: existingNonce,
       },
     ]);
     const signerCalls: SolanaOrderToSign[] = [];
@@ -189,11 +199,14 @@ describe("solana order handlers", () => {
       signerCalls
     );
 
-    await handleOverrideOutboundEvent(createOverrideEvent());
+    const overrideEvent = createOverrideEvent();
+    const overrideNonce = bytesToHex(overrideEvent.nonce);
+    await handleOverrideOutboundEvent(overrideEvent);
     assert.strictEqual(signerCalls.length, 0);
 
-    repo.store.set(1, {
-      id: 1,
+    repo.store.clear();
+    repo.store.set("00000000-0000-4000-8000-000000000002", {
+      id: "00000000-0000-4000-8000-000000000002",
       source: "solana",
       dest: "qubic",
       from: "aa",
@@ -203,13 +216,15 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: overrideNonce,
     });
 
-    await handleOverrideOutboundEvent(createOverrideEvent());
+    await handleOverrideOutboundEvent(overrideEvent);
     assert.strictEqual(signerCalls.length, 0);
 
-    repo.store.set(1, {
-      id: 1,
+    repo.store.clear();
+    repo.store.set("00000000-0000-4000-8000-000000000003", {
+      id: "00000000-0000-4000-8000-000000000003",
       source: "solana",
       dest: "qubic",
       from: "aa",
@@ -219,14 +234,16 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: overrideNonce,
       source_payload: JSON.stringify({ v: 2 }),
     });
 
-    await handleOverrideOutboundEvent(createOverrideEvent());
+    await handleOverrideOutboundEvent(overrideEvent);
     assert.strictEqual(signerCalls.length, 0);
 
-    repo.store.set(1, {
-      id: 1,
+    repo.store.clear();
+    repo.store.set("00000000-0000-4000-8000-000000000004", {
+      id: "00000000-0000-4000-8000-000000000004",
       source: "solana",
       dest: "qubic",
       from: "aa",
@@ -236,10 +253,11 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: overrideNonce,
       source_payload: "{bad",
     });
 
-    await handleOverrideOutboundEvent(createOverrideEvent());
+    await handleOverrideOutboundEvent(overrideEvent);
     assert.strictEqual(signerCalls.length, 0);
     assert.ok(
       entries.some((entry) => entry.message?.includes("override event"))
@@ -260,7 +278,7 @@ describe("solana order handlers", () => {
     const override = createOverrideEvent();
     await handleOverrideOutboundEvent(override);
 
-    const stored = await repo.findById(1);
+    const stored = await repo.findBySourceNonce(bytesToHex(override.nonce));
     assert.ok(stored);
     assert.strictEqual(stored.signature, "sig-2");
     assert.strictEqual(stored.to, bytesToHex(override.toAddress));

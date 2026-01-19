@@ -14,6 +14,8 @@ import {
 
 const HUB_PRIMARY_PORT = 6101;
 const HUB_FALLBACK_PORT = 6102;
+const makeId = (value: number) =>
+  `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 
 async function startHubServer(
   t: { after: (fn: () => void) => void },
@@ -82,7 +84,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
     const knex = app.getDecorator<KnexAccessor>(kKnex).get();
 
     const order1 = await ordersRepository.create({
-      id: 901,
+      id: makeId(901),
       source: "solana",
       dest: "qubic",
       from: "HubA",
@@ -94,7 +96,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       oracle_accept_to_relay: true,
     });
     const order2 = await ordersRepository.create({
-      id: 902,
+      id: makeId(902),
       source: "qubic",
       dest: "solana",
       from: "HubC",
@@ -160,7 +162,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       app.getDecorator(kOrdersRepository);
 
     const order = await ordersRepository.create({
-      id: 903,
+      id: makeId(903),
       source: "solana",
       dest: "qubic",
       from: "HubE",
@@ -217,7 +219,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       app.getDecorator(kOrdersRepository);
 
     const order = await ordersRepository.create({
-      id: 904,
+      id: makeId(904),
       source: "qubic",
       dest: "solana",
       from: "HubG",
@@ -276,7 +278,12 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
-            data: [{ orderId: 1, signatures: ["sig-1"] }],
+            data: [
+              {
+                orderId: "00000000-0000-4000-8000-000000000001",
+                signatures: ["sig-1"],
+              },
+            ],
           })
         );
         return;

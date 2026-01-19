@@ -5,7 +5,11 @@ import {
 import {
   SolanaTransaction,
 } from "./solana-transaction.js";
-import { SignatureSchema, StringSchema } from "../../common/schemas/common.js";
+import {
+  IdSchema,
+  SignatureSchema,
+  StringSchema,
+} from "../../common/schemas/common.js";
 
 export const OracleChain = Type.Union([
   Type.Literal("qubic"),
@@ -15,7 +19,7 @@ export const OracleChain = Type.Union([
 export const OracleOrderStatus = Type.Union([Type.Literal("ready-for-relay")]);
 
 export const OracleOrderSchema = Type.Object({
-  id: Type.Integer({ minimum: 1 }),
+  id: IdSchema,
   source: OracleChain,
   dest: OracleChain,
   from: StringSchema,
@@ -25,6 +29,7 @@ export const OracleOrderSchema = Type.Object({
   signature: SignatureSchema,
   status: OracleOrderStatus,
   oracle_accept_to_relay: Type.Boolean(),
+  source_nonce: Type.Optional(StringSchema),
   source_payload: Type.Optional(StringSchema),
 });
 
@@ -37,7 +42,7 @@ export function assertValidOracleOrder(order: OracleOrder) {
 }
 
 export function orderFromQubic(
-  id: number,
+  id: string,
   tx: QubicTransaction,
   dest: Static<typeof OracleChain>,
   signature: string
@@ -59,7 +64,7 @@ export function orderFromQubic(
 }
 
 export function orderFromSolana(
-  id: number,
+  id: string,
   tx: SolanaTransaction,
   dest: Static<typeof OracleChain>,
   signature: string

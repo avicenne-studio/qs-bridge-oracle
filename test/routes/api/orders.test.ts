@@ -7,10 +7,13 @@ import {
   type OrdersRepository,
 } from "../../../src/plugins/app/indexer/orders.repository.js";
 
+const makeId = (value: number) =>
+  `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
+
 async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
   const ordersRepository: OrdersRepository = app.getDecorator(kOrdersRepository);
   await ordersRepository.create({
-    id: 1,
+    id: makeId(1),
     source: "solana",
     dest: "qubic",
     from: "A",
@@ -22,7 +25,7 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     oracle_accept_to_relay: true,
   });
   await ordersRepository.create({
-    id: 2,
+    id: makeId(2),
     source: "qubic",
     dest: "solana",
     from: "C",

@@ -50,13 +50,14 @@ export default fp(
       const hasTable = await knexInstance.schema.hasTable(ORDERS_TABLE_NAME);
       if (!hasTable) {
         await knexInstance.schema.createTable(ORDERS_TABLE_NAME, (table) => {
-          table.integer("id").primary().notNullable();
+          table.string("id").primary().notNullable();
           table.string("source").notNullable();
           table.string("dest").notNullable();
           table.string("from").notNullable();
           table.string("to").notNullable();
           table.float("amount").notNullable();
           table.float("relayerFee").notNullable().defaultTo(0);
+          table.string("source_nonce").nullable().unique();
           table.string("source_payload").nullable();
           table.string("signature", SIGNATURE_MAX_LENGTH).notNullable();
           table.string("status").notNullable().defaultTo("ready-for-relay");
@@ -74,8 +75,8 @@ export default fp(
         await knexInstance.schema.createTable(
           ORDER_SIGNATURES_TABLE_NAME,
           (table) => {
-            table.increments("id");
-            table.integer("order_id").notNullable();
+            table.string("id").primary().notNullable();
+            table.string("order_id").notNullable();
             table.string("signature").notNullable();
             table.unique(["order_id", "signature"]);
           }

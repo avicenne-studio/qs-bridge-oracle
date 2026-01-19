@@ -76,10 +76,12 @@ describe("env", () => {
   it("rejects when HOST is invalid", async () => {
     const hosts = [
       "http://localhost",
-      "256.0.0.1",
+      "bad_host",
       "example..com",
       "-bad.example",
       "bad-.example",
+      ".example",
+      "example.com.",
       "",
     ];
 

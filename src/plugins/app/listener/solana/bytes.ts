@@ -39,17 +39,3 @@ export function toSafeBigInt(value: number, field: string): bigint {
   }
   return BigInt(value);
 }
-
-export function nonceToOrderId(nonce: ReadonlyUint8Array): number {
-  if (nonce.length !== 32) {
-    throw new Error("SolanaListener: nonce must be 32 bytes");
-  }
-  const hex = bytesToHex(nonce);
-  const numeric = BigInt(`0x${hex}`);
-  if (numeric < 1n || numeric > MAX_SAFE_BIGINT) {
-    throw new Error("SolanaListener: nonce does not fit into order id");
-  }
-  return Number(numeric);
-}
-
-export const autoload = false

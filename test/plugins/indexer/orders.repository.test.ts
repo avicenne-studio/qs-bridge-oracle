@@ -6,13 +6,16 @@ import {
   type OrdersRepository,
 } from "../../../src/plugins/app/indexer/orders.repository.js";
 
+const makeId = (value: number) =>
+  `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
+
 describe("ordersRepository", () => {
   it("should create and retrieve an order by id", async (t) => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
-      id: 101,
+      id: makeId(101),
       source: "solana",
       dest: "qubic",
       from: "Alice",
@@ -25,7 +28,7 @@ describe("ordersRepository", () => {
     });
 
     assert.ok(created);
-    assert.strictEqual(created?.id, 101);
+    assert.strictEqual(created?.id, makeId(101));
     assert.strictEqual(created?.source, "solana");
     assert.strictEqual(created?.dest, "qubic");
     assert.strictEqual(created?.from, "Alice");
@@ -45,7 +48,7 @@ describe("ordersRepository", () => {
 
     // Insert 3 orders
     const order1 = await repo.create({
-      id: 201,
+      id: makeId(201),
       source: "solana",
       dest: "qubic",
       from: "A",
@@ -57,7 +60,7 @@ describe("ordersRepository", () => {
       oracle_accept_to_relay: true,
     });
     const order2 = await repo.create({
-      id: 202,
+      id: makeId(202),
       source: "solana",
       dest: "qubic",
       from: "C",
@@ -69,7 +72,7 @@ describe("ordersRepository", () => {
       oracle_accept_to_relay: true,
     });
     await repo.create({
-      id: 203,
+      id: makeId(203),
       source: "qubic",
       dest: "solana",
       from: "E",
@@ -100,7 +103,7 @@ describe("ordersRepository", () => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
-    const ids = Array.from({ length: 101 }, (_, i) => i + 1);
+    const ids = Array.from({ length: 101 }, (_, i) => makeId(i + 1));
     await assert.rejects(() => repo.byIds(ids), /Cannot request more than 100/);
   });
 
@@ -110,7 +113,7 @@ describe("ordersRepository", () => {
 
     for (let i = 1; i <= 55; i += 1) {
       await repo.create({
-        id: i,
+        id: makeId(i),
         source: "solana",
         dest: "qubic",
         from: `A-${i}`,
@@ -124,7 +127,7 @@ describe("ordersRepository", () => {
     }
 
     await repo.create({
-      id: 1001,
+      id: makeId(1001),
       source: "qubic",
       dest: "solana",
       from: "SkipA",
@@ -138,8 +141,8 @@ describe("ordersRepository", () => {
 
     const pending = await repo.findPendingOrders();
     assert.strictEqual(pending.length, 50);
-    assert.strictEqual(pending[0].id, 1);
-    assert.strictEqual(pending[49].id, 50);
+    assert.strictEqual(pending[0].id, makeId(1));
+    assert.strictEqual(pending[49].id, makeId(50));
   });
 
   it("should update an order", async (t) => {
@@ -147,7 +150,7 @@ describe("ordersRepository", () => {
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
-      id: 301,
+      id: makeId(301),
       source: "solana",
       dest: "qubic",
       from: "A",
@@ -173,7 +176,7 @@ describe("ordersRepository", () => {
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
-      id: 311,
+      id: makeId(311),
       source: "solana",
       dest: "qubic",
       from: "ReadyA",
@@ -195,7 +198,7 @@ describe("ordersRepository", () => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
-    const updated = await repo.markReadyForRelay(9999);
+    const updated = await repo.markReadyForRelay(makeId(9999));
     assert.strictEqual(updated, null);
   });
 
@@ -203,7 +206,7 @@ describe("ordersRepository", () => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
-    const updated = await repo.update(9999, { amount: 100 });
+    const updated = await repo.update(makeId(9999), { amount: 100 });
     assert.strictEqual(updated, null);
   });
 
@@ -212,7 +215,7 @@ describe("ordersRepository", () => {
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
-      id: 401,
+      id: makeId(401),
       source: "solana",
       dest: "qubic",
       from: "DeleteA",
@@ -235,7 +238,7 @@ describe("ordersRepository", () => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
-    const removed = await repo.delete(9999);
+    const removed = await repo.delete(makeId(9999));
     assert.strictEqual(removed, false);
   });
 
@@ -244,7 +247,7 @@ describe("ordersRepository", () => {
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
-      id: 501,
+      id: makeId(501),
       source: "solana",
       dest: "qubic",
       from: "SigA",
@@ -272,7 +275,7 @@ describe("ordersRepository", () => {
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const created = await repo.create({
-      id: 601,
+      id: makeId(601),
       source: "solana",
       dest: "qubic",
       from: "EmptySigA",
@@ -293,7 +296,7 @@ describe("ordersRepository", () => {
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
     const relayable = await repo.create({
-      id: 701,
+      id: makeId(701),
       source: "solana",
       dest: "qubic",
       from: "RelayA",
@@ -306,7 +309,7 @@ describe("ordersRepository", () => {
     });
 
     const notRelayable = await repo.create({
-      id: 702,
+      id: makeId(702),
       source: "qubic",
       dest: "solana",
       from: "SkipA",
@@ -325,5 +328,30 @@ describe("ordersRepository", () => {
     assert.strictEqual(results.length, 1);
     assert.strictEqual(results[0].id, relayable!.id);
     assert.deepStrictEqual(results[0].signatures.sort(), ["sig-a", "sig-b"]);
+  });
+
+  it("should find orders by source nonce", async (t) => {
+    const app = await build(t);
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
+
+    const created = await repo.create({
+      id: makeId(801),
+      source: "solana",
+      dest: "qubic",
+      from: "NonceA",
+      to: "NonceB",
+      amount: 13,
+      relayerFee: 0,
+      signature: "sig-nonce",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      source_nonce: "deadbeef",
+    });
+
+    const found = await repo.findBySourceNonce("deadbeef");
+    assert.deepStrictEqual(found, created);
+
+    const missing = await repo.findBySourceNonce("missing");
+    assert.strictEqual(missing, null);
   });
 });

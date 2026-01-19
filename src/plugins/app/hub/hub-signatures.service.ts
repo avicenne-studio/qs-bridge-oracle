@@ -1,7 +1,7 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { Type } from "@sinclair/typebox";
-import { SignatureSchema } from "../common/schemas/common.js";
+import { IdSchema, SignatureSchema } from "../common/schemas/common.js";
 import {
   kPoller,
   RECOMMENDED_POLLING_DEFAULTS,
@@ -19,7 +19,7 @@ import {
 } from "../indexer/orders.repository.js";
 
 type OrderSignature = {
-  orderId: number;
+  orderId: string;
   signatures: string[];
 };
 
@@ -28,7 +28,7 @@ type OrderSignaturesResponse = {
 };
 
 const RelayableSignatureSchema = Type.Object({
-  orderId: Type.Integer({ minimum: 1 }),
+  orderId: IdSchema,
   signatures: Type.Array(SignatureSchema, { minItems: 1 }),
 });
 
