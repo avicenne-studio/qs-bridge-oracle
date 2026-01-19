@@ -38,8 +38,8 @@ describe("OracleOrder utilities", () => {
       dest: "qubic",
       from: "A",
       to: "B",
-      amount: 10,
-      relayerFee: 0,
+      amount: "10",
+      relayerFee: "0",
       signature: "SOLANA_SIGNATURE_EXAMPLE",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -55,8 +55,8 @@ describe("OracleOrder utilities", () => {
       dest: "qubic",
       from: "A",
       to: "B",
-      amount: 1,
-      relayerFee: 0,
+      amount: "1",
+      relayerFee: "0",
       signature: "QUBIC_SIGNATURE_EXAMPLE",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -81,8 +81,8 @@ describe("OracleOrder utilities", () => {
     assert.strictEqual(order.dest, "solana");
     assert.strictEqual(order.from, mockQubicTx.sender);
     assert.strictEqual(order.to, mockQubicTx.recipient);
-    assert.strictEqual(order.amount, mockQubicTx.amount);
-    assert.strictEqual(order.relayerFee, 0);
+    assert.strictEqual(order.amount, String(mockQubicTx.amount));
+    assert.strictEqual(order.relayerFee, "0");
     assert.strictEqual(order.signature, "QUBIC_SIGNATURE_1");
     assert.strictEqual(order.status, "ready-for-relay");
     assert.strictEqual(order.oracle_accept_to_relay, true);

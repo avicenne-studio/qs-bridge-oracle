@@ -5,6 +5,7 @@ import {
   hexToBytes,
   toSafeBigInt,
   toSafeNumber,
+  toU64BigInt,
 } from "../../../../src/plugins/app/listener/solana/bytes.js";
 
 describe("solana listener bytes helpers", () => {
@@ -37,6 +38,17 @@ describe("solana listener bytes helpers", () => {
     assert.throws(
       () => toSafeBigInt(Number.MAX_SAFE_INTEGER + 1, "amount"),
       /exceeds max safe/
+    );
+  });
+
+  it("converts decimal strings to u64 bigint", () => {
+    assert.strictEqual(toU64BigInt("0", "amount"), 0n);
+    assert.strictEqual(toU64BigInt("42", "amount"), 42n);
+    assert.throws(() => toU64BigInt("1.2", "amount"), /integer string/);
+    assert.throws(() => toU64BigInt("-1", "amount"), /integer string/);
+    assert.throws(
+      () => toU64BigInt("18446744073709551616", "amount"),
+      /exceeds uint64/
     );
   });
 

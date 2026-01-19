@@ -132,8 +132,8 @@ describe("solana order handlers", () => {
     assert.strictEqual(stored.source, "solana");
     assert.strictEqual(stored.dest, "qubic");
     assert.strictEqual(stored.signature, "sig-1");
-    assert.strictEqual(stored.amount, 10);
-    assert.strictEqual(stored.relayerFee, 2);
+    assert.strictEqual(stored.amount, "10");
+    assert.strictEqual(stored.relayerFee, "2");
     assert.strictEqual(stored.from, bytesToHex(event.fromAddress));
     assert.strictEqual(stored.to, bytesToHex(event.toAddress));
 
@@ -174,8 +174,8 @@ describe("solana order handlers", () => {
         dest: "qubic",
         from: "aa",
         to: "bb",
-        amount: 1,
-        relayerFee: 0,
+        amount: "1",
+        relayerFee: "0",
         signature: "sig",
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
@@ -211,8 +211,8 @@ describe("solana order handlers", () => {
       dest: "qubic",
       from: "aa",
       to: "bb",
-      amount: 1,
-      relayerFee: 0,
+      amount: "1",
+      relayerFee: "0",
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -229,8 +229,8 @@ describe("solana order handlers", () => {
       dest: "qubic",
       from: "aa",
       to: "bb",
-      amount: 1,
-      relayerFee: 0,
+      amount: "1",
+      relayerFee: "0",
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -248,8 +248,8 @@ describe("solana order handlers", () => {
       dest: "qubic",
       from: "aa",
       to: "bb",
-      amount: 1,
-      relayerFee: 0,
+      amount: "1",
+      relayerFee: "0",
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -282,7 +282,7 @@ describe("solana order handlers", () => {
     assert.ok(stored);
     assert.strictEqual(stored.signature, "sig-2");
     assert.strictEqual(stored.to, bytesToHex(override.toAddress));
-    assert.strictEqual(stored.relayerFee, 7);
+    assert.strictEqual(stored.relayerFee, "7");
     assert.strictEqual(signerCalls.length, 2);
     assert.strictEqual(
       (signerCalls[1].toAddress as Uint8Array)[0],

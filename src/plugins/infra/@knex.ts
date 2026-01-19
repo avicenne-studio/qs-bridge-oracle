@@ -54,8 +54,8 @@ export default fp(
           table.string("dest").notNullable();
           table.string("from").notNullable();
           table.string("to").notNullable();
-          table.float("amount").notNullable();
-          table.float("relayerFee").notNullable().defaultTo(0);
+          table.string("amount").notNullable();
+          table.string("relayerFee").notNullable().defaultTo("0");
           table.string("source_nonce").nullable().unique();
           table.string("source_payload").nullable();
           table.string("signature", SIGNATURE_MAX_LENGTH).notNullable();

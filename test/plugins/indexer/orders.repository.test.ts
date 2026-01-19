@@ -20,8 +20,8 @@ describe("ordersRepository", () => {
       dest: "qubic",
       from: "Alice",
       to: "Bob",
-      amount: 123,
-      relayerFee: 0,
+      amount: "123",
+      relayerFee: "0",
       signature: "sig-solana-1",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -33,7 +33,7 @@ describe("ordersRepository", () => {
     assert.strictEqual(created?.dest, "qubic");
     assert.strictEqual(created?.from, "Alice");
     assert.strictEqual(created?.to, "Bob");
-    assert.strictEqual(created?.amount, 123);
+    assert.strictEqual(created?.amount, "123");
     assert.strictEqual(created?.signature, "sig-solana-1");
     assert.strictEqual(created?.status, "ready-for-relay");
     assert.strictEqual(created?.oracle_accept_to_relay, true);
@@ -53,8 +53,8 @@ describe("ordersRepository", () => {
       dest: "qubic",
       from: "A",
       to: "B",
-      amount: 10,
-      relayerFee: 0,
+      amount: "10",
+      relayerFee: "0",
       signature: "sig-a",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -65,8 +65,8 @@ describe("ordersRepository", () => {
       dest: "qubic",
       from: "C",
       to: "D",
-      amount: 20,
-      relayerFee: 0,
+      amount: "20",
+      relayerFee: "0",
       signature: "sig-b",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -77,8 +77,8 @@ describe("ordersRepository", () => {
       dest: "solana",
       from: "E",
       to: "F",
-      amount: 30,
-      relayerFee: 0,
+      amount: "30",
+      relayerFee: "0",
       signature: "sig-c",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -118,8 +118,8 @@ describe("ordersRepository", () => {
         dest: "qubic",
         from: `A-${i}`,
         to: `B-${i}`,
-        amount: i,
-        relayerFee: 0,
+        amount: String(i),
+        relayerFee: "0",
         signature: `sig-${i}`,
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
@@ -132,8 +132,8 @@ describe("ordersRepository", () => {
       dest: "solana",
       from: "SkipA",
       to: "SkipB",
-      amount: 1,
-      relayerFee: 0,
+      amount: "1",
+      relayerFee: "0",
       signature: "sig-skip",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
@@ -155,20 +155,20 @@ describe("ordersRepository", () => {
       dest: "qubic",
       from: "A",
       to: "B",
-      amount: 50,
-      relayerFee: 0,
+      amount: "50",
+      relayerFee: "0",
       signature: "sig-update",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
     });
 
-    const updated = await repo.update(created!.id, { amount: 42 });
+    const updated = await repo.update(created!.id, { amount: "42" });
 
     assert.ok(updated);
-    assert.strictEqual(updated?.amount, 42);
+    assert.strictEqual(updated?.amount, "42");
 
     const fetched = await repo.findById(created!.id);
-    assert.strictEqual(fetched?.amount, 42);
+    assert.strictEqual(fetched?.amount, "42");
   });
 
   it("should mark an order ready for relay", async (t) => {
@@ -181,8 +181,8 @@ describe("ordersRepository", () => {
       dest: "qubic",
       from: "ReadyA",
       to: "ReadyB",
-      amount: 33,
-      relayerFee: 0,
+      amount: "33",
+      relayerFee: "0",
       signature: "sig-ready",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
@@ -206,7 +206,7 @@ describe("ordersRepository", () => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
-    const updated = await repo.update(makeId(9999), { amount: 100 });
+    const updated = await repo.update(makeId(9999), { amount: "100" });
     assert.strictEqual(updated, null);
   });
 
@@ -220,8 +220,8 @@ describe("ordersRepository", () => {
       dest: "qubic",
       from: "DeleteA",
       to: "DeleteB",
-      amount: 7,
-      relayerFee: 0,
+      amount: "7",
+      relayerFee: "0",
       signature: "sig-delete",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -252,8 +252,8 @@ describe("ordersRepository", () => {
       dest: "qubic",
       from: "SigA",
       to: "SigB",
-      amount: 5,
-      relayerFee: 0,
+      amount: "5",
+      relayerFee: "0",
       signature: "sig-main",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -280,8 +280,8 @@ describe("ordersRepository", () => {
       dest: "qubic",
       from: "EmptySigA",
       to: "EmptySigB",
-      amount: 9,
-      relayerFee: 0,
+      amount: "9",
+      relayerFee: "0",
       signature: "sig-empty",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -301,8 +301,8 @@ describe("ordersRepository", () => {
       dest: "qubic",
       from: "RelayA",
       to: "RelayB",
-      amount: 11,
-      relayerFee: 0,
+      amount: "11",
+      relayerFee: "0",
       signature: "sig-relay",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -314,8 +314,8 @@ describe("ordersRepository", () => {
       dest: "solana",
       from: "SkipA",
       to: "SkipB",
-      amount: 12,
-      relayerFee: 0,
+      amount: "12",
+      relayerFee: "0",
       signature: "sig-skip",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
@@ -340,8 +340,8 @@ describe("ordersRepository", () => {
       dest: "qubic",
       from: "NonceA",
       to: "NonceB",
-      amount: 13,
-      relayerFee: 0,
+      amount: "13",
+      relayerFee: "0",
       signature: "sig-nonce",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,

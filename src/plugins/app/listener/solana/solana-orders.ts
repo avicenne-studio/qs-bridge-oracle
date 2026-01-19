@@ -6,8 +6,7 @@ import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import {
   bytesToHex,
   hexToBytes,
-  toSafeBigInt,
-  toSafeNumber,
+  toU64BigInt,
 } from "./bytes.js";
 import { randomUUID } from "node:crypto";
 
@@ -116,8 +115,8 @@ function createOrderFromOutboundEvent(
     dest: "qubic",
     from: bytesToHex(event.fromAddress),
     to: bytesToHex(event.toAddress),
-    amount: toSafeNumber(event.amount, "amount"),
-    relayerFee: toSafeNumber(event.relayerFee, "relayerFee"),
+    amount: event.amount.toString(),
+    relayerFee: event.relayerFee.toString(),
     signature,
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
@@ -156,7 +155,7 @@ function normalizeOverrideEvent(
     tokenOut: hexToBytes(payload.tokenOut),
     fromAddress: hexToBytes(existing.from),
     toAddress: new Uint8Array(event.toAddress),
-    amount: toSafeBigInt(existing.amount, "amount"),
+    amount: toU64BigInt(existing.amount, "amount"),
     relayerFee: event.relayerFee,
     bpsFee,
     nonce: new Uint8Array(event.nonce),
@@ -226,7 +225,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     }
 
     const updatedTo = bytesToHex(event.toAddress);
-    const updatedRelayerFee = toSafeNumber(event.relayerFee, "relayerFee");
+    const updatedRelayerFee = event.relayerFee.toString();
 
     const signature = await signerService.signSolanaOrder(
       toSignerPayload(

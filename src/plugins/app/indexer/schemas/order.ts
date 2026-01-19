@@ -17,6 +17,7 @@ export const OracleChain = Type.Union([
 ]);
 
 export const OracleOrderStatus = Type.Union([Type.Literal("ready-for-relay")]);
+const AmountSchema = Type.String({ pattern: "^[0-9]+$" });
 
 export const OracleOrderSchema = Type.Object({
   id: IdSchema,
@@ -24,8 +25,8 @@ export const OracleOrderSchema = Type.Object({
   dest: OracleChain,
   from: StringSchema,
   to: StringSchema,
-  amount: Type.Number(),
-  relayerFee: Type.Number(),
+  amount: AmountSchema,
+  relayerFee: AmountSchema,
   signature: SignatureSchema,
   status: OracleOrderStatus,
   oracle_accept_to_relay: Type.Boolean(),
@@ -53,8 +54,8 @@ export function orderFromQubic(
     dest,
     from: tx.sender,
     to: tx.recipient,
-    amount: tx.amount,
-    relayerFee: 0,
+    amount: String(tx.amount),
+    relayerFee: "0",
     signature,
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
@@ -77,8 +78,8 @@ export function orderFromSolana(
     dest,
     from: decoded.from,
     to: decoded.to,
-    amount: decoded.amount,
-    relayerFee: 0,
+    amount: String(decoded.amount),
+    relayerFee: "0",
     signature,
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
@@ -91,7 +92,7 @@ export function orderFromSolana(
 export function normalizeBridgeInstruction(_data: string): {
   from: string;
   to: string;
-  amount: number;
+  amount: string;
 } {
   throw new Error("normalizeBridgeInstruction not implemented");
 }

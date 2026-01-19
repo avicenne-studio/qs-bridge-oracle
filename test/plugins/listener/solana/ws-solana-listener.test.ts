@@ -409,7 +409,7 @@ describe("ws solana listener plugin", () => {
       (order) => order.signature === "sig-2"
     );
     assert.ok(stored);
-    assert.strictEqual(stored.relayerFee, 7);
+    assert.strictEqual(stored.relayerFee, "7");
     assert.strictEqual(signerCalls.length, 2);
 
     await app.close();
