@@ -15,6 +15,7 @@
     "simulated": "node dist/server.js",
     "simulation": "node scripts/simulation.js",
     "generate-solana-keypair": "node scripts/generate-solana-keypair.js",
+    "airdrop-solana": "node scripts/airdrop-solana.js",
     "add-oracle": "node scripts/add-oracle.js",
     "delete-oracle": "node scripts/delete-oracle.js",
     "claim-oracle-fee": "node scripts/claim-oracle-fee.js",

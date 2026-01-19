@@ -178,6 +178,10 @@ async function checkAccountExists(rpc, account, label) {
   return true;
 }
 
+function logSection(title) {
+  process.stdout.write(`\n[send-inbound-order] ${title}\n`);
+}
+
 async function main() {
   const orderPath = process.argv[2];
   const oracleKeysPath = process.argv[3];
@@ -233,6 +237,27 @@ async function main() {
 
   const tokenOut = parseBytes32(tokenMint, "tokenOut");
 
+  logSection("Inputs");
+  process.stdout.write(
+    JSON.stringify(
+      {
+        orderPath,
+        oracleKeysPath,
+        relayerKeyPath,
+        relayer: relayerSigner.address,
+        recipient,
+        tokenMint,
+        networkIn,
+        networkOut,
+        amount: amount.toString(),
+        relayerFee: relayerFee.toString(),
+        nonce: Buffer.from(nonce).toString("hex"),
+      },
+      null,
+      2
+    ) + "\n"
+  );
+
   const tokenProgram = TOKEN_PROGRAM_ADDRESS;
   const associatedTokenProgram = ASSOCIATED_TOKEN_PROGRAM_ADDRESS;
   const systemProgram = SYSTEM_PROGRAM_ADDRESS;
@@ -251,6 +276,30 @@ async function main() {
     associatedTokenProgram
   );
 
+  logSection("Owner accounts");
+  const relayerAccount = await rpc
+    .getAccountInfo(relayerSigner.address, { encoding: "base64" })
+    .send();
+  const recipientAccount = await rpc
+    .getAccountInfo(recipient, { encoding: "base64" })
+    .send();
+  process.stdout.write(
+    `relayer exists: ${!!relayerAccount?.value}\n` +
+      `recipient exists: ${!!recipientAccount?.value}\n`
+  );
+  if (!relayerAccount?.value) {
+    process.stderr.write(
+      "Relayer account not found. Fund the relayer address with devnet SOL.\n"
+    );
+    return;
+  }
+  if (!recipientAccount?.value) {
+    process.stderr.write(
+      "Recipient account not found. Fund the recipient address with devnet SOL.\n"
+    );
+    return;
+  }
+
   const ataTargets = [
     { label: "recipientAta", address: recipientAta, owner: recipient },
     {
@@ -265,6 +314,7 @@ async function main() {
       .getAccountInfo(target.address, { encoding: "base64" })
       .send();
     if (!accountInfo?.value) {
+      logSection(`Creating ${target.label}`);
       const ix = getCreateAssociatedTokenAccountInstruction({
         payerSigner: relayerSigner,
         ata: target.address,
@@ -287,8 +337,38 @@ async function main() {
         )
       );
       const ataTx = await signTransactionMessageWithSigners(ataMessage);
+      const ataSig = getSignatureFromTransaction(ataTx);
+      if (typeof rpc.simulateTransaction === "function") {
+        const encodedAta = getBase64EncodedWireTransaction(ataTx);
+        const simulation = await rpc
+          .simulateTransaction(encodedAta, {
+            encoding: "base64",
+            sigVerify: false,
+            replaceRecentBlockhash: true,
+          })
+          .send();
+        if (simulation?.value?.err) {
+          process.stderr.write(
+            `ATA simulation error: ${JSON.stringify(
+              simulation.value.err,
+              (_key, value) =>
+                typeof value === "bigint" ? value.toString() : value
+            )}\n`
+          );
+          if (simulation.value.logs?.length) {
+            process.stderr.write(
+              `ATA simulation logs:\n${simulation.value.logs.join("\n")}\n`
+            );
+          }
+          return;
+        }
+      }
       await sendAndConfirmTransaction(ataTx, { commitment: "confirmed" });
       process.stdout.write(`Created ${target.label}: ${target.address}\n`);
+      process.stdout.write(
+        `ATA tx: ${ataSig}\n` +
+          `Explorer: https://solscan.io/tx/${ataSig}?cluster=devnet\n`
+      );
     }
   }
 
@@ -322,6 +402,19 @@ async function main() {
           Math.max(1, Math.ceil(oracleCount * (ORACLE_THRESHOLD_PERCENT / 100))),
           6
         );
+  logSection("Oracle threshold");
+  process.stdout.write(
+    JSON.stringify(
+      {
+        oracleCount,
+        thresholdPercent: ORACLE_THRESHOLD_PERCENT,
+        signatureOverride,
+        signatureCount,
+      },
+      null,
+      2
+    ) + "\n"
+  );
   if (oracleSigners.length < signatureCount) {
     throw new Error(
       `Need ${signatureCount} oracle keys, got ${oracleSigners.length}`
@@ -342,6 +435,10 @@ async function main() {
     })
   );
   const paddedOraclePdas = padToLength(oraclePdas, 6, oraclePdas[0]);
+  logSection("Oracle PDAs");
+  paddedOraclePdas.forEach((oraclePda, index) => {
+    process.stdout.write(`oracle${index + 1}: ${oraclePda}\n`);
+  });
 
   const requiredAccounts = [
     { label: "globalState", address: globalStatePda },
@@ -369,6 +466,8 @@ async function main() {
     networkIn,
     nonce,
   });
+  logSection("Inbound order PDA");
+  process.stdout.write(`inboundOrderPda: ${inboundOrderPda}\n`);
   const existingInbound = await rpc
     .getAccountInfo(inboundOrderPda, { encoding: "base64" })
     .send();
@@ -421,6 +520,9 @@ async function main() {
 
   const signedTransaction = await signTransactionMessageWithSigners(message);
   const signature = getSignatureFromTransaction(signedTransaction);
+
+  logSection("Transaction");
+  process.stdout.write(`signature: ${signature}\n`);
 
   if (typeof rpc.simulateTransaction === "function") {
     const encoded = getBase64EncodedWireTransaction(signedTransaction);
