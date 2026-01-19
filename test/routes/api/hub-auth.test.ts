@@ -31,7 +31,7 @@ test("rejects requests missing hub auth headers", async (t) => {
 test("rejects empty hub auth headers", async (t) => {
   const app = await build(t);
   const headers = await signHubHeaders({ method: "GET", url: "/api/health" });
-  headers["X-Hub-Id"] = "";
+  headers["X-Hub-Id"] = "" as never;
 
   const res = await app.inject({
     url: "/api/health",
@@ -216,7 +216,7 @@ test("rejects unknown hub ids", async (t) => {
   const app = await build(t);
 
   const headers = await signHubHeaders({ method: "GET", url: "/api/health" });
-  headers["X-Hub-Id"] = "unknown-hub";
+  headers["X-Hub-Id"] = "unknown-hub" as never;
 
   const res = await app.inject({
     url: "/api/health",

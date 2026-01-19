@@ -79,7 +79,9 @@ export default fp(
 
     let ws: WebSocketLike | null = null;
     let subscriptionId: number | null = null;
-    const queue = new AsyncQueue();
+    const queue = new AsyncQueue((error) => {
+      fastify.log.error({ err: error }, "Solana listener async task failed");
+    });
     const rpc = createJsonRpcClient((payload) => {
       if (ws) {
         ws.send(payload);
@@ -151,6 +153,7 @@ export default fp(
               { err: error },
               "Solana listener failed to process event"
             );
+            throw error;
           }
         });
       }

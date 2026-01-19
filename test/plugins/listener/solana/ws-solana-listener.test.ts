@@ -321,6 +321,35 @@ describe("ws solana listener plugin", () => {
     await app.close();
   });
 
+  it("logs queue errors from async tasks", async (t) => {
+    const { app, ws } = await buildListenerApp({
+      signerImpl: async () => {
+        throw new Error("queue-fail");
+      },
+    });
+    const { mock: logMock } = t.mock.method(app.log, "error");
+
+    ws.emit("open", {});
+
+    const outboundBytes = createOutboundEventBytes();
+    const payload = createLogsNotification([
+      `Program data: ${Buffer.from(outboundBytes).toString("base64")}`,
+    ]);
+    ws.emit("message", { data: payload });
+
+    await waitFor(() => {
+      const hasAsyncLog = logMock.calls.some(
+        (call) => call.arguments[1] === "Solana listener async task failed"
+      );
+      const hasProcessLog = logMock.calls.some(
+        (call) => call.arguments[1] === "Solana listener failed to process event"
+      );
+      return hasAsyncLog && hasProcessLog;
+    });
+
+    await app.close();
+  });
+
   it("clears subscription state on close events", async () => {
     const { app, ws } = await buildListenerApp();
 
