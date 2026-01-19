@@ -3,14 +3,16 @@ import { FastifyInstance } from "fastify";
 import { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
-declare module "fastify" {
-  interface FastifyInstance {
-    validation: {
-      isValid<T>(schema: TSchema, value: unknown): value is T;
-      assertValid<T>(schema: TSchema, value: unknown, prefix: string): asserts value is T;
-    };
-  }
-}
+export type ValidationService = {
+  isValid<T>(schema: TSchema, value: unknown): value is T;
+  assertValid<T>(
+    schema: TSchema,
+    value: unknown,
+    prefix: string
+  ): asserts value is T;
+};
+
+export const kValidation = Symbol("app.validation");
 
 export function formatFirstError(schema: TSchema, value: unknown) {
   for (const error of Value.Errors(schema, value)) {
@@ -35,7 +37,7 @@ function createValidation() {
 
 export default fp(
   async function validationPlugin(fastify: FastifyInstance) {
-    fastify.decorate("validation", createValidation());
+    fastify.decorate(kValidation, createValidation());
   },
   { name: "validation" }
 );

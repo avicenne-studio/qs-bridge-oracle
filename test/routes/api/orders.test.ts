@@ -2,28 +2,36 @@ import { test } from "node:test";
 import assert from "node:assert";
 import { build } from "../../helper.js";
 import { signHubHeaders } from "../../utils/hub-signing.js";
+import {
+  kOrdersRepository,
+  type OrdersRepository,
+} from "../../../src/plugins/app/indexer/orders.repository.js";
+
+const makeId = (value: number) =>
+  `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 
 async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
-  await app.ordersRepository.create({
-    id: 1,
+  const ordersRepository: OrdersRepository = app.getDecorator(kOrdersRepository);
+  await ordersRepository.create({
+    id: makeId(1),
     source: "solana",
     dest: "qubic",
     from: "A",
     to: "B",
-    amount: 10,
-    relayerFee: 0,
+    amount: "10",
+    relayerFee: "0",
     signature: "sig-1",
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
   });
-  await app.ordersRepository.create({
-    id: 2,
+  await ordersRepository.create({
+    id: makeId(2),
     source: "qubic",
     dest: "solana",
     from: "C",
     to: "D",
-    amount: 25,
-    relayerFee: 0,
+    amount: "25",
+    relayerFee: "0",
     signature: "sig-2",
     status: "ready-for-relay",
     oracle_accept_to_relay: false,
@@ -51,7 +59,7 @@ test("GET /api/orders returns pending orders", async (t) => {
 test("GET /api/orders handles repository errors", async (t) => {
   const app = await build(t);
   const { mock: repoMock } = t.mock.method(
-    app.ordersRepository,
+    app.getDecorator<OrdersRepository>(kOrdersRepository),
     "findPendingOrders"
   );
   repoMock.mockImplementation(() => {

@@ -15,6 +15,9 @@ import {
   SignerKeys,
   SignerKeysSchema,
 } from "./schemas/keys.js";
+import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
+import { kFileManager, type FileManager } from "../../infra/@file-manager.js";
+import { kValidation, type ValidationService } from "../common/validation.js";
 
 const MAX_U64 = (1n << 64n) - 1n;
 
@@ -57,15 +60,11 @@ type SolanaOrderMessage = {
   nonce: Uint8Array;
 };
 
-type SignerService = {
+export type SignerService = {
   signSolanaOrder: (order: SolanaOrderToSign) => Promise<string>;
 };
 
-declare module "fastify" {
-  interface FastifyInstance {
-    signerService: SignerService;
-  }
-}
+export const kSignerService = Symbol("app.signerService");
 
 async function readKeysFromFile(
   variableName: "SOLANA_KEYS" | "QUBIC_KEYS",
@@ -73,8 +72,10 @@ async function readKeysFromFile(
   fastify: FastifyInstance
 ): Promise<SignerKeys> {
   const prefix = `SignerService(${variableName})`;
-  const parsed = await fastify.fileManager.readJsonFile(prefix, filePath);
-  fastify.validation.assertValid<SignerKeys>(SignerKeysSchema, parsed, prefix);
+  const fileManager: FileManager = fastify.getDecorator(kFileManager);
+  const validation: ValidationService = fastify.getDecorator(kValidation);
+  const parsed = await fileManager.readJsonFile(prefix, filePath);
+  validation.assertValid<SignerKeys>(SignerKeysSchema, parsed, prefix);
   return parsed;
 }
 
@@ -216,14 +217,15 @@ export async function signSolanaOrderWithSigner(
 
 export default fp(
   async function signerService(fastify: FastifyInstance) {
+    const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
     const solana = await readKeysFromFile(
       "SOLANA_KEYS",
-      fastify.config.SOLANA_KEYS,
+      config.SOLANA_KEYS,
       fastify
     );
     await readKeysFromFile(
       "QUBIC_KEYS",
-      fastify.config.QUBIC_KEYS,
+      config.QUBIC_KEYS,
       fastify
     );
 
@@ -235,7 +237,7 @@ export default fp(
       return signSolanaOrderWithSigner(order, cachedSigner);
     };
 
-    fastify.decorate("signerService", { signSolanaOrder });
+    fastify.decorate(kSignerService, { signSolanaOrder });
   },
   {
     name: "signer-service",

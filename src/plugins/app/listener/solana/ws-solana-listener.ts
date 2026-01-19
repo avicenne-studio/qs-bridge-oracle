@@ -18,6 +18,15 @@ import {
   createJsonRpcClient,
   parseJsonRpcMessage,
 } from "./solana-ws-json-rpc.js";
+import { kEnvConfig, type EnvConfig } from "../../../infra/env.js";
+import {
+  kOrdersRepository,
+  type OrdersRepository,
+} from "../../indexer/orders.repository.js";
+import {
+  kSignerService,
+  type SignerService,
+} from "../../signer/signer.service.js";
 
 type WebSocketListener = (event: { data?: unknown }) => void;
 
@@ -57,14 +66,22 @@ export function resolveSolanaWsFactory(
 
 export default fp(
   async function wsSolanaListener(fastify: FastifyInstance) {
-    if (!fastify.config.SOLANA_LISTENER_ENABLED) {
+    const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
+    if (!config.SOLANA_LISTENER_ENABLED) {
       fastify.log.info("Solana WS listener disabled by configuration");
       return;
     }
 
+    const ordersRepository =
+      fastify.getDecorator<OrdersRepository>(kOrdersRepository);
+    const signerService =
+      fastify.getDecorator<SignerService>(kSignerService);
+
     let ws: WebSocketLike | null = null;
     let subscriptionId: number | null = null;
-    const queue = new AsyncQueue();
+    const queue = new AsyncQueue((error) => {
+      fastify.log.error({ err: error }, "Solana listener async task failed");
+    });
     const rpc = createJsonRpcClient((payload) => {
       if (ws) {
         ws.send(payload);
@@ -75,9 +92,9 @@ export default fp(
     const seenUnknownEventSizes = new Set<number>();
     const { handleOutboundEvent, handleOverrideOutboundEvent } =
       createSolanaOrderHandlers({
-        ordersRepository: fastify.ordersRepository,
-        signerService: fastify.signerService,
-        config: { SOLANA_BPS_FEE: fastify.config.SOLANA_BPS_FEE },
+        ordersRepository,
+        signerService,
+        config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
         logger: fastify.log,
         contractAddressBytes,
       });
@@ -136,6 +153,7 @@ export default fp(
               { err: error },
               "Solana listener failed to process event"
             );
+            throw error;
           }
         });
       }
@@ -165,7 +183,7 @@ export default fp(
         instance,
         createDefaultSolanaWsFactory()
       );
-      ws = wsFactory(fastify.config.SOLANA_WS_URL);
+      ws = wsFactory(config.SOLANA_WS_URL);
       ws.addEventListener("open", onOpen);
       ws.addEventListener("message", onMessage);
       ws.addEventListener("error", onError);

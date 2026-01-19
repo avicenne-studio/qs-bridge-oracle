@@ -7,8 +7,11 @@ import envPlugin, {
   autoConfig as envAutoConfig,
 } from "../../../src/plugins/infra/env.js";
 import fmPlugin from "../../../src/plugins/infra/@file-manager.js";
-import validationPlugin from "../../../src/plugins/infra/validation.js";
-import hubKeysPlugin from "../../../src/plugins/app/hub/hub-keys.js";
+import validationPlugin from "../../../src/plugins/app/common/validation.js";
+import hubKeysPlugin, {
+  kHubKeys,
+  type HubKeysFile,
+} from "../../../src/plugins/app/hub/hub-keys.js";
 
 const fixturesDir = path.join(process.cwd(), "test/fixtures");
 const signerFixturesDir = path.join(process.cwd(), "test/fixtures/signer");
@@ -103,8 +106,9 @@ describe("hub-keys", () => {
   it("decorates hubKeys when inputs are valid", async (t) => {
     const app = await buildHubKeysApp();
     t.after(() => app.close());
+    const hubKeys: HubKeysFile = app.getDecorator(kHubKeys);
 
-    assert.strictEqual(app.hubKeys.primary.current.kid, "primary-current");
-    assert.strictEqual(app.hubKeys.fallback.next.kid, "fallback-next");
+    assert.strictEqual(hubKeys.primary.current.kid, "primary-current");
+    assert.strictEqual(hubKeys.fallback.next.kid, "fallback-next");
   });
 });

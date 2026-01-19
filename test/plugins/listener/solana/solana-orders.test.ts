@@ -4,36 +4,10 @@ import {
   createSolanaOrderHandlers,
 } from "../../../../src/plugins/app/listener/solana/solana-orders.js";
 import { bytesToHex } from "../../../../src/plugins/app/listener/solana/bytes.js";
-import { type OracleOrder } from "../../../../src/plugins/app/indexer/schemas/order.js";
 import { type SolanaOrderToSign } from "../../../../src/plugins/app/signer/signer.service.js";
+import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 
 type Repo = ReturnType<typeof createInMemoryOrders>;
-
-function createInMemoryOrders(initial: OracleOrder[] = []) {
-  const store = new Map<number, OracleOrder>();
-  for (const order of initial) {
-    store.set(order.id, order);
-  }
-  return {
-    store,
-    async findById(id: number) {
-      return store.get(id) ?? null;
-    },
-    async create(order: OracleOrder) {
-      store.set(order.id, order);
-      return order;
-    },
-    async update(id: number, changes: Partial<OracleOrder>) {
-      const existing = store.get(id);
-      if (!existing) {
-        return null;
-      }
-      const updated = { ...existing, ...changes };
-      store.set(id, updated);
-      return updated;
-    },
-  };
-}
 
 function createLogger() {
   const entries: Array<{ level: string; payload: unknown; message?: string }> =
@@ -81,7 +55,7 @@ function createHandlers(repo: Repo, signerCalls: SolanaOrderToSign[]) {
   const { logger, entries } = createLogger();
   return {
     ...createSolanaOrderHandlers({
-      ordersRepository: repo,
+      ordersRepository: repo as never,
       signerService: {
         async signSolanaOrder(order) {
           signerCalls.push(order);
@@ -119,13 +93,13 @@ describe("solana order handlers", () => {
     const event = createOutboundEvent();
     await handleOutboundEvent(event);
 
-    const stored = await repo.findById(1);
+    const stored = await repo.findBySourceNonce(bytesToHex(event.nonce));
     assert.ok(stored);
     assert.strictEqual(stored.source, "solana");
     assert.strictEqual(stored.dest, "qubic");
     assert.strictEqual(stored.signature, "sig-1");
-    assert.strictEqual(stored.amount, 10);
-    assert.strictEqual(stored.relayerFee, 2);
+    assert.strictEqual(stored.amount, "10");
+    assert.strictEqual(stored.relayerFee, "2");
     assert.strictEqual(stored.from, bytesToHex(event.fromAddress));
     assert.strictEqual(stored.to, bytesToHex(event.toAddress));
 
@@ -158,18 +132,20 @@ describe("solana order handlers", () => {
   });
 
   it("skips outbound events for existing orders", async () => {
+    const existingNonce = bytesToHex(createOutboundEvent().nonce);
     const repo = createInMemoryOrders([
       {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         source: "solana",
         dest: "qubic",
         from: "aa",
         to: "bb",
-        amount: 1,
-        relayerFee: 0,
+        amount: "1",
+        relayerFee: "0",
         signature: "sig",
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
+        source_nonce: existingNonce,
       },
     ]);
     const signerCalls: SolanaOrderToSign[] = [];
@@ -189,57 +165,65 @@ describe("solana order handlers", () => {
       signerCalls
     );
 
-    await handleOverrideOutboundEvent(createOverrideEvent());
+    const overrideEvent = createOverrideEvent();
+    const overrideNonce = bytesToHex(overrideEvent.nonce);
+    await handleOverrideOutboundEvent(overrideEvent);
     assert.strictEqual(signerCalls.length, 0);
 
-    repo.store.set(1, {
-      id: 1,
+    repo.store.clear();
+    repo.store.set("00000000-0000-4000-8000-000000000002", {
+      id: "00000000-0000-4000-8000-000000000002",
       source: "solana",
       dest: "qubic",
       from: "aa",
       to: "bb",
-      amount: 1,
-      relayerFee: 0,
+      amount: "1",
+      relayerFee: "0",
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: overrideNonce,
     });
 
-    await handleOverrideOutboundEvent(createOverrideEvent());
+    await handleOverrideOutboundEvent(overrideEvent);
     assert.strictEqual(signerCalls.length, 0);
 
-    repo.store.set(1, {
-      id: 1,
+    repo.store.clear();
+    repo.store.set("00000000-0000-4000-8000-000000000003", {
+      id: "00000000-0000-4000-8000-000000000003",
       source: "solana",
       dest: "qubic",
       from: "aa",
       to: "bb",
-      amount: 1,
-      relayerFee: 0,
+      amount: "1",
+      relayerFee: "0",
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: overrideNonce,
       source_payload: JSON.stringify({ v: 2 }),
     });
 
-    await handleOverrideOutboundEvent(createOverrideEvent());
+    await handleOverrideOutboundEvent(overrideEvent);
     assert.strictEqual(signerCalls.length, 0);
 
-    repo.store.set(1, {
-      id: 1,
+    repo.store.clear();
+    repo.store.set("00000000-0000-4000-8000-000000000004", {
+      id: "00000000-0000-4000-8000-000000000004",
       source: "solana",
       dest: "qubic",
       from: "aa",
       to: "bb",
-      amount: 1,
-      relayerFee: 0,
+      amount: "1",
+      relayerFee: "0",
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: overrideNonce,
       source_payload: "{bad",
     });
 
-    await handleOverrideOutboundEvent(createOverrideEvent());
+    await handleOverrideOutboundEvent(overrideEvent);
     assert.strictEqual(signerCalls.length, 0);
     assert.ok(
       entries.some((entry) => entry.message?.includes("override event"))
@@ -260,11 +244,11 @@ describe("solana order handlers", () => {
     const override = createOverrideEvent();
     await handleOverrideOutboundEvent(override);
 
-    const stored = await repo.findById(1);
+    const stored = await repo.findBySourceNonce(bytesToHex(override.nonce));
     assert.ok(stored);
     assert.strictEqual(stored.signature, "sig-2");
     assert.strictEqual(stored.to, bytesToHex(override.toAddress));
-    assert.strictEqual(stored.relayerFee, 7);
+    assert.strictEqual(stored.relayerFee, "7");
     assert.strictEqual(signerCalls.length, 2);
     assert.strictEqual(
       (signerCalls[1].toAddress as Uint8Array)[0],

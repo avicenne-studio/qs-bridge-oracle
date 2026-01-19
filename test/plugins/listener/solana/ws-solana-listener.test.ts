@@ -10,8 +10,11 @@ import wsSolanaListener, {
 import { waitFor } from "../../../helper.js";
 import { getOutboundEventEncoder } from "../../../../src/clients/js/types/outboundEvent.js";
 import { getOverrideOutboundEventEncoder } from "../../../../src/clients/js/types/overrideOutboundEvent.js";
-import { type OracleOrder } from "../../../../src/plugins/app/indexer/schemas/order.js";
 import { type SolanaOrderToSign } from "../../../../src/plugins/app/signer/signer.service.js";
+import { kEnvConfig } from "../../../../src/plugins/infra/env.js";
+import { kOrdersRepository } from "../../../../src/plugins/app/indexer/orders.repository.js";
+import { kSignerService } from "../../../../src/plugins/app/signer/signer.service.js";
+import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 
 type WsEventMap = {
   open: Record<string, never>;
@@ -113,32 +116,6 @@ function createLogsNotification(lines: string[]) {
   });
 }
 
-function createInMemoryOrders(initial: OracleOrder[] = []) {
-  const store = new Map<number, OracleOrder>();
-  for (const order of initial) {
-    store.set(order.id, order);
-  }
-  return {
-    store,
-    async findById(id: number) {
-      return store.get(id) ?? null;
-    },
-    async create(order: OracleOrder) {
-      store.set(order.id, order);
-      return order;
-    },
-    async update(id: number, changes: Partial<OracleOrder>) {
-      const existing = store.get(id);
-      if (!existing) {
-        return null;
-      }
-      const updated = { ...existing, ...changes };
-      store.set(id, updated);
-      return updated;
-    },
-  };
-}
-
 type ListenerAppOptions = {
   enabled?: boolean;
   ws?: MockWebSocket;
@@ -157,7 +134,7 @@ async function buildListenerApp({
   app.register(
     fp(
       async (instance) => {
-        instance.decorate("config", {
+        instance.decorate(kEnvConfig, {
           SOLANA_LISTENER_ENABLED: enabled,
           SOLANA_WS_URL: "ws://localhost:8900",
           SOLANA_BPS_FEE: 25,
@@ -170,7 +147,7 @@ async function buildListenerApp({
   app.register(
     fp(
       async (instance) => {
-        instance.decorate("signerService", {
+        instance.decorate(kSignerService, {
           async signSolanaOrder(order: SolanaOrderToSign) {
             signerCalls.push(order);
             if (signerImpl) {
@@ -187,7 +164,7 @@ async function buildListenerApp({
   app.register(
     fp(
       async (instance) => {
-        instance.decorate("ordersRepository", ordersRepository);
+        instance.decorate(kOrdersRepository, ordersRepository);
       },
       { name: "orders-repository" }
     )
@@ -208,7 +185,7 @@ describe("ws solana listener plugin", () => {
 
     app.register(
       fp(async (instance) => {
-        instance.decorate("config", {
+        instance.decorate(kEnvConfig, {
           SOLANA_LISTENER_ENABLED: false,
           SOLANA_WS_URL: "ws://localhost:8900",
           SOLANA_BPS_FEE: 25,
@@ -217,12 +194,12 @@ describe("ws solana listener plugin", () => {
     );
     app.register(
       fp(async (instance) => {
-        instance.decorate("signerService", { signSolanaOrder: async () => "sig" });
+        instance.decorate(kSignerService, { signSolanaOrder: async () => "sig" });
       }, { name: "signer-service" })
     );
     app.register(
       fp(async (instance) => {
-        instance.decorate("ordersRepository", createInMemoryOrders());
+        instance.decorate(kOrdersRepository, createInMemoryOrders());
       }, { name: "orders-repository" })
     );
     app.decorate("solanaWsFactory", () => {
@@ -268,7 +245,7 @@ describe("ws solana listener plugin", () => {
     const app = fastify({ logger: false });
     app.register(
       fp(async (instance) => {
-        instance.decorate("config", {
+        instance.decorate(kEnvConfig, {
           SOLANA_LISTENER_ENABLED: true,
           SOLANA_WS_URL: "ws://localhost:8900",
           SOLANA_BPS_FEE: 25,
@@ -277,12 +254,12 @@ describe("ws solana listener plugin", () => {
     );
     app.register(
       fp(async (instance) => {
-        instance.decorate("signerService", { signSolanaOrder: async () => "sig" });
+        instance.decorate(kSignerService, { signSolanaOrder: async () => "sig" });
       }, { name: "signer-service" })
     );
     app.register(
       fp(async (instance) => {
-        instance.decorate("ordersRepository", createInMemoryOrders());
+        instance.decorate(kOrdersRepository, createInMemoryOrders());
       }, { name: "orders-repository" })
     );
     app.register(wsSolanaListener);
@@ -306,6 +283,35 @@ describe("ws solana listener plugin", () => {
     ws.emit("message", { data: payload });
 
     await waitFor(() => signerCalls.length === 1);
+
+    await app.close();
+  });
+
+  it("logs queue errors from async tasks", async (t) => {
+    const { app, ws } = await buildListenerApp({
+      signerImpl: async () => {
+        throw new Error("queue-fail");
+      },
+    });
+    const { mock: logMock } = t.mock.method(app.log, "error");
+
+    ws.emit("open", {});
+
+    const outboundBytes = createOutboundEventBytes();
+    const payload = createLogsNotification([
+      `Program data: ${Buffer.from(outboundBytes).toString("base64")}`,
+    ]);
+    ws.emit("message", { data: payload });
+
+    await waitFor(() => {
+      const hasAsyncLog = logMock.calls.some(
+        (call) => call.arguments[1] === "Solana listener async task failed"
+      );
+      const hasProcessLog = logMock.calls.some(
+        (call) => call.arguments[1] === "Solana listener failed to process event"
+      );
+      return hasAsyncLog && hasProcessLog;
+    });
 
     await app.close();
   });
@@ -359,14 +365,17 @@ describe("ws solana listener plugin", () => {
     ws.emit("error", { data: "boom" });
     ws.emit("message", { data: "{bad json" });
 
-    await waitFor(() => {
-      const order = ordersRepository.store.get(1);
-      return order?.signature === "sig-2";
-    });
+    await waitFor(() =>
+      [...ordersRepository.store.values()].some(
+        (order) => order.signature === "sig-2"
+      )
+    );
 
-    const stored = ordersRepository.store.get(1);
+    const stored = [...ordersRepository.store.values()].find(
+      (order) => order.signature === "sig-2"
+    );
     assert.ok(stored);
-    assert.strictEqual(stored.relayerFee, 7);
+    assert.strictEqual(stored.relayerFee, "7");
     assert.strictEqual(signerCalls.length, 2);
 
     await app.close();

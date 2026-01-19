@@ -5,7 +5,11 @@ import {
 import {
   SolanaTransaction,
 } from "./solana-transaction.js";
-import { SignatureSchema, StringSchema } from "../../common/schemas/common.js";
+import {
+  IdSchema,
+  SignatureSchema,
+  StringSchema,
+} from "../../common/schemas/common.js";
 
 export const OracleChain = Type.Union([
   Type.Literal("qubic"),
@@ -13,18 +17,20 @@ export const OracleChain = Type.Union([
 ]);
 
 export const OracleOrderStatus = Type.Union([Type.Literal("ready-for-relay")]);
+const AmountSchema = Type.String({ pattern: "^[0-9]+$" });
 
 export const OracleOrderSchema = Type.Object({
-  id: Type.Integer({ minimum: 1 }),
+  id: IdSchema,
   source: OracleChain,
   dest: OracleChain,
   from: StringSchema,
   to: StringSchema,
-  amount: Type.Number(),
-  relayerFee: Type.Number(),
+  amount: AmountSchema,
+  relayerFee: AmountSchema,
   signature: SignatureSchema,
   status: OracleOrderStatus,
   oracle_accept_to_relay: Type.Boolean(),
+  source_nonce: Type.Optional(StringSchema),
   source_payload: Type.Optional(StringSchema),
 });
 
@@ -37,7 +43,7 @@ export function assertValidOracleOrder(order: OracleOrder) {
 }
 
 export function orderFromQubic(
-  id: number,
+  id: string,
   tx: QubicTransaction,
   dest: Static<typeof OracleChain>,
   signature: string
@@ -48,8 +54,8 @@ export function orderFromQubic(
     dest,
     from: tx.sender,
     to: tx.recipient,
-    amount: tx.amount,
-    relayerFee: 0,
+    amount: String(tx.amount),
+    relayerFee: "0",
     signature,
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
@@ -59,7 +65,7 @@ export function orderFromQubic(
 }
 
 export function orderFromSolana(
-  id: number,
+  id: string,
   tx: SolanaTransaction,
   dest: Static<typeof OracleChain>,
   signature: string
@@ -72,8 +78,8 @@ export function orderFromSolana(
     dest,
     from: decoded.from,
     to: decoded.to,
-    amount: decoded.amount,
-    relayerFee: 0,
+    amount: String(decoded.amount),
+    relayerFee: "0",
     signature,
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
@@ -86,7 +92,7 @@ export function orderFromSolana(
 export function normalizeBridgeInstruction(_data: string): {
   from: string;
   to: string;
-  amount: number;
+  amount: string;
 } {
   throw new Error("normalizeBridgeInstruction not implemented");
 }

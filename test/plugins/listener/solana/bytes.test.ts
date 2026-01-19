@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import {
   bytesToHex,
   hexToBytes,
-  nonceToOrderId,
   toSafeBigInt,
   toSafeNumber,
+  toU64BigInt,
 } from "../../../../src/plugins/app/listener/solana/bytes.js";
 
 describe("solana listener bytes helpers", () => {
@@ -41,14 +41,15 @@ describe("solana listener bytes helpers", () => {
     );
   });
 
-  it("derives order id from nonce", () => {
-    const nonce = new Uint8Array(32);
-    nonce[31] = 1;
-    assert.strictEqual(nonceToOrderId(nonce), 1);
-    assert.throws(() => nonceToOrderId(new Uint8Array(31)), /nonce must be 32/);
-    assert.throws(() => nonceToOrderId(new Uint8Array(32)), /nonce does not fit/);
-    const huge = new Uint8Array(32);
-    huge[0] = 1;
-    assert.throws(() => nonceToOrderId(huge), /nonce does not fit/);
+  it("converts decimal strings to u64 bigint", () => {
+    assert.strictEqual(toU64BigInt("0", "amount"), 0n);
+    assert.strictEqual(toU64BigInt("42", "amount"), 42n);
+    assert.throws(() => toU64BigInt("1.2", "amount"), /integer string/);
+    assert.throws(() => toU64BigInt("-1", "amount"), /integer string/);
+    assert.throws(
+      () => toU64BigInt("18446744073709551616", "amount"),
+      /exceeds uint64/
+    );
   });
+
 });

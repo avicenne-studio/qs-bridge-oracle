@@ -1,28 +1,18 @@
 import { OracleOrder } from "../../indexer/schemas/order.js";
 import { type OutboundEvent } from "../../../../clients/js/types/outboundEvent.js";
 import { type OverrideOutboundEvent } from "../../../../clients/js/types/overrideOutboundEvent.js";
-import { type SolanaOrderToSign } from "../../signer/signer.service.js";
+import { type SolanaOrderToSign, type SignerService } from "../../signer/signer.service.js";
+import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import {
   bytesToHex,
   hexToBytes,
-  nonceToOrderId,
-  toSafeBigInt,
-  toSafeNumber,
+  toU64BigInt,
 } from "./bytes.js";
+import { randomUUID } from "node:crypto";
 
 export const SOLANA_PROTOCOL_NAME = "qs-bridge";
 export const SOLANA_PROTOCOL_VERSION = "1";
 export const QUBIC_NETWORK_ID = 1;
-
-type OrdersRepository = {
-  findById: (id: number) => Promise<OracleOrder | null>;
-  create: (order: OracleOrder) => Promise<OracleOrder | null>;
-  update: (id: number, changes: Partial<OracleOrder>) => Promise<OracleOrder | null>;
-};
-
-type SignerService = {
-  signSolanaOrder: (order: SolanaOrderToSign) => Promise<string>;
-};
 
 type Logger = {
   info: (payload: unknown, message?: string) => void;
@@ -116,7 +106,8 @@ function buildSourcePayload(
 function createOrderFromOutboundEvent(
   event: OutboundEvent,
   signature: string,
-  orderId: number
+  orderId: string,
+  sourceNonce: string
 ): OracleOrder {
   return {
     id: orderId,
@@ -124,11 +115,12 @@ function createOrderFromOutboundEvent(
     dest: "qubic",
     from: bytesToHex(event.fromAddress),
     to: bytesToHex(event.toAddress),
-    amount: toSafeNumber(event.amount, "amount"),
-    relayerFee: toSafeNumber(event.relayerFee, "relayerFee"),
+    amount: event.amount.toString(),
+    relayerFee: event.relayerFee.toString(),
     signature,
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
+    source_nonce: sourceNonce,
   };
 }
 
@@ -163,7 +155,7 @@ function normalizeOverrideEvent(
     tokenOut: hexToBytes(payload.tokenOut),
     fromAddress: hexToBytes(existing.from),
     toAddress: new Uint8Array(event.toAddress),
-    amount: toSafeBigInt(existing.amount, "amount"),
+    amount: toU64BigInt(existing.amount, "amount"),
     relayerFee: event.relayerFee,
     bpsFee,
     nonce: new Uint8Array(event.nonce),
@@ -188,13 +180,14 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       return;
     }
 
-    const orderId = nonceToOrderId(event.nonce);
-    const existing = await ordersRepository.findById(orderId);
+    const sourceNonce = bytesToHex(event.nonce);
+    const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (existing) {
-      logger.info({ orderId }, "Solana outbound order already exists");
+      logger.info({ orderId: existing.id }, "Solana outbound order already exists");
       return;
     }
 
+    const orderId = randomUUID();
     const signature = await signerService.signSolanaOrder(
       toSignerPayload(
         normalizeOutboundEvent(event, config.SOLANA_BPS_FEE),
@@ -202,17 +195,22 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       )
     );
 
-    const order = createOrderFromOutboundEvent(event, signature, orderId);
+    const order = createOrderFromOutboundEvent(
+      event,
+      signature,
+      orderId,
+      sourceNonce
+    );
     order.source_payload = serializeSourcePayload(buildSourcePayload(event));
     await ordersRepository.create(order);
   };
 
   const handleOverrideOutboundEvent = async (event: OverrideOutboundEvent) => {
-    const orderId = nonceToOrderId(event.nonce);
-    const existing = await ordersRepository.findById(orderId);
+    const sourceNonce = bytesToHex(event.nonce);
+    const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (!existing) {
       logger.warn(
-        { orderId },
+        { orderId: sourceNonce },
         "Solana override event received for unknown order"
       );
       return;
@@ -220,14 +218,14 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     const sourcePayload = parseSourcePayload(existing.source_payload);
     if (!sourcePayload) {
       logger.warn(
-        { orderId },
+        { orderId: existing.id },
         "Solana override event ignored because order metadata is missing"
       );
       return;
     }
 
     const updatedTo = bytesToHex(event.toAddress);
-    const updatedRelayerFee = toSafeNumber(event.relayerFee, "relayerFee");
+    const updatedRelayerFee = event.relayerFee.toString();
 
     const signature = await signerService.signSolanaOrder(
       toSignerPayload(
@@ -241,7 +239,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       )
     );
 
-    await ordersRepository.update(orderId, {
+    await ordersRepository.update(existing.id, {
       to: updatedTo,
       relayerFee: updatedRelayerFee,
       signature,

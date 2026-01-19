@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fastify from "fastify";
 import fp from "fastify-plugin";
 import hubNoncesCleaner from "../../../src/plugins/app/hub/hub-nonces-cleaner.js";
+import { kHubNoncesRepository } from "../../../src/plugins/app/hub/hub-nonces.repository.js";
 
 describe("hub-nonces-cleaner", () => {
   it("runs cleanup without logging on success", async (t) => {
@@ -12,7 +13,7 @@ describe("hub-nonces-cleaner", () => {
     await app.register(
       fp(
         async function fakeNoncesRepo(instance) {
-          instance.decorate("hubNoncesRepository", {
+          instance.decorate(kHubNoncesRepository, {
             exists: async () => false,
             insert: async () => {},
             deleteExpired: async () => 1,
@@ -35,7 +36,7 @@ describe("hub-nonces-cleaner", () => {
     await app.register(
       fp(
         async function fakeNoncesRepo(instance) {
-          instance.decorate("hubNoncesRepository", {
+          instance.decorate(kHubNoncesRepository, {
             exists: async () => false,
             insert: async () => {},
             deleteExpired: async () => {

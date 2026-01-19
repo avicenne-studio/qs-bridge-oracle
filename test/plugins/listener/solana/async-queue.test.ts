@@ -23,4 +23,18 @@ describe("async queue", () => {
 
     assert.deepStrictEqual(order, [1, 2, 3]);
   });
+
+  it("logs when tasks fail", async () => {
+    const errors: unknown[] = [];
+    const queue = new AsyncQueue((error) => {
+      errors.push(error);
+    });
+
+    await queue.push(async () => {
+      throw new Error("boom");
+    });
+
+    assert.strictEqual(errors.length, 1);
+    assert.strictEqual((errors[0] as Error).message, "boom");
+  });
 });

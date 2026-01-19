@@ -1,11 +1,25 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { Type } from "@sinclair/typebox";
-import { SignatureSchema } from "../common/schemas/common.js";
-import { RECOMMENDED_POLLING_DEFAULTS } from "../../infra/poller.js";
+import { IdSchema, SignatureSchema } from "../common/schemas/common.js";
+import {
+  kPoller,
+  RECOMMENDED_POLLING_DEFAULTS,
+  type PollerService,
+} from "../../infra/poller.js";
+import {
+  kUndiciGetClient,
+  type UndiciGetClientService,
+} from "../../infra/undici-get-client.js";
+import { kValidation, type ValidationService } from "../common/validation.js";
+import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
+import {
+  kOrdersRepository,
+  type OrdersRepository,
+} from "../indexer/orders.repository.js";
 
 type OrderSignature = {
-  orderId: number;
+  orderId: string;
   signatures: string[];
 };
 
@@ -14,7 +28,7 @@ type OrderSignaturesResponse = {
 };
 
 const RelayableSignatureSchema = Type.Object({
-  orderId: Type.Integer({ minimum: 1 }),
+  orderId: IdSchema,
   signatures: Type.Array(SignatureSchema, { minItems: 1 }),
 });
 
@@ -35,10 +49,17 @@ function startHubSignaturePolling(
 ) {
   const primary = urls[0];
   const fallback = urls[1];
-  const client = fastify.undiciGetClient.create();
+  const undiciGetClient =
+    fastify.getDecorator<UndiciGetClientService>(kUndiciGetClient);
+  const poller = fastify.getDecorator<PollerService>(kPoller);
+  const validation = fastify.getDecorator<ValidationService>(kValidation);
+  const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
+  const ordersRepository =
+    fastify.getDecorator<OrdersRepository>(kOrdersRepository);
+  const client = undiciGetClient.create();
   const defaults = RECOMMENDED_POLLING_DEFAULTS;
 
-  const poller = fastify.poller.create({
+  const pollerHandle = poller.create({
     primary,
     fallback,
     fetchOne: (server, signal) =>
@@ -56,7 +77,7 @@ function startHubSignaturePolling(
         return;
       }
 
-      if (!fastify.validation.isValid(RelayableSignaturesSchema, response)) {
+      if (!validation.isValid(RelayableSignaturesSchema, response)) {
         fastify.log.warn(
           { hubUsed: context.used },
           "Invalid hub signatures payload"
@@ -66,22 +87,22 @@ function startHubSignaturePolling(
 
       const threshold = Math.max(
         1,
-        Math.floor(fastify.config.ORACLE_SIGNATURE_THRESHOLD)
+        Math.floor(config.ORACLE_SIGNATURE_THRESHOLD)
       );
 
       const results = await Promise.all(
         response.data.map(async (order) => {
           try {
-            const added = await fastify.ordersRepository.addSignatures(
+            const added = await ordersRepository.addSignatures(
               order.orderId,
               order.signatures
             );
             let markedReady = false;
             if (order.signatures.length >= threshold) {
-              const updated = await fastify.ordersRepository.markReadyForRelay(
+              const updated = await ordersRepository.markReadyForRelay(
                 order.orderId
               );
-              markedReady = updated !== null
+              markedReady = updated !== null;
             }
             return {
               orderId: order.orderId,
@@ -118,12 +139,13 @@ function startHubSignaturePolling(
     jitterMs: defaults.jitterMs,
   });
 
-  poller.start();
+  pollerHandle.start();
 }
 
 export default fp(
   async function hubSignatureService(fastify: FastifyInstance) {
-    const urls = parseHubUrls(fastify.config.HUB_URLS);
+    const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
+    const urls = parseHubUrls(config.HUB_URLS);
     startHubSignaturePolling(fastify, urls);
   },
   {

@@ -85,20 +85,18 @@ export class UndiciGetClient {
   }
 }
 
-declare module "fastify" {
-  interface FastifyInstance {
-    undiciGetClient: {
-      defaults: Readonly<ResolvedOptions>;
-      create(options?: UndiciGetClientOptions): UndiciGetClient;
-    };
-  }
-}
+export type UndiciGetClientService = {
+  defaults: Readonly<ResolvedOptions>;
+  create(options?: UndiciGetClientOptions): UndiciGetClient;
+};
+
+export const kUndiciGetClient = Symbol("infra.undiciGetClient");
 
 export default fp(
   function undiciGetClientPlugin(fastify: FastifyInstance) {
     const clients = new Set<UndiciGetClient>();
 
-    fastify.decorate("undiciGetClient", {
+    fastify.decorate(kUndiciGetClient, {
       defaults: DEFAULT_GET_CLIENT_OPTIONS,
       create(options?: UndiciGetClientOptions) {
         const client = new UndiciGetClient(options);

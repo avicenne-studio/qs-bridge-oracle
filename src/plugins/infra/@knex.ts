@@ -1,6 +1,7 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import knex, { Knex } from "knex";
+import { EnvConfig, kEnvConfig } from "./env.js";
 import { SIGNATURE_MAX_LENGTH } from "../app/common/schemas/common.js";
 import {
   ORDER_SIGNATURES_TABLE_NAME,
@@ -8,14 +9,15 @@ import {
 } from "../app/indexer/orders.repository.js";
 import { HUB_NONCES_TABLE_NAME } from "../app/hub/hub-nonces.repository.js";
 
-declare module "fastify" {
-  export interface FastifyInstance {
-    knex: Knex;
-  }
-}
+export type KnexAccessor = {
+  get(): Knex;
+};
+
+export const kKnex = Symbol("infra.knex");
 
 export const autoConfig = (fastify: FastifyInstance): Knex.Config => {
-  const filename = fastify.config.SQLITE_DB_FILE;
+  const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
+  const filename = config.SQLITE_DB_FILE;
 
   return {
     client: "better-sqlite3",
@@ -30,59 +32,67 @@ export const autoConfig = (fastify: FastifyInstance): Knex.Config => {
 export default fp(
   async (fastify: FastifyInstance, opts: Knex.Config) => {
     const db = knex(opts);
-    fastify.decorate("knex", db);
+    const accessor: KnexAccessor = {
+      // Knex is callable; wrapping avoids getDecorator binding it to Fastify.
+      get: () => db,
+    };
+
+    fastify.decorate(kKnex, accessor);
 
     fastify.addHook("onClose", async (instance) => {
-      await instance.knex.destroy();
+      const knexInstance = instance.getDecorator<KnexAccessor>(kKnex).get();
+      await knexInstance.destroy();
     });
 
     fastify.addHook("onReady", async () => {
-      const hasTable = await fastify.knex.schema.hasTable(ORDERS_TABLE_NAME);
+      const knexInstance = fastify.getDecorator<KnexAccessor>(kKnex).get();
+      const hasTable = await knexInstance.schema.hasTable(ORDERS_TABLE_NAME);
       if (!hasTable) {
-        await fastify.knex.schema.createTable(ORDERS_TABLE_NAME, (table) => {
-          table.integer("id").primary().notNullable();
+        await knexInstance.schema.createTable(ORDERS_TABLE_NAME, (table) => {
+          table.string("id").primary().notNullable();
           table.string("source").notNullable();
           table.string("dest").notNullable();
           table.string("from").notNullable();
           table.string("to").notNullable();
-          table.float("amount").notNullable();
-          table.float("relayerFee").notNullable().defaultTo(0);
+          table.string("amount").notNullable();
+          table.string("relayerFee").notNullable().defaultTo("0");
+          table.string("source_nonce").nullable().unique();
           table.string("source_payload").nullable();
           table.string("signature", SIGNATURE_MAX_LENGTH).notNullable();
           table.string("status").notNullable().defaultTo("ready-for-relay");
-          table
-            .boolean("oracle_accept_to_relay")
-            .notNullable()
-            .defaultTo(true);
+          table.boolean("oracle_accept_to_relay").notNullable().defaultTo(true);
         });
       }
-      
-      const hasSignaturesTable = await fastify.knex.schema.hasTable(
+
+      const hasSignaturesTable = await knexInstance.schema.hasTable(
         ORDER_SIGNATURES_TABLE_NAME
       );
       if (!hasSignaturesTable) {
-        await fastify.knex.schema.createTable(
+        await knexInstance.schema.createTable(
           ORDER_SIGNATURES_TABLE_NAME,
           (table) => {
-            table.increments("id");
-            table.integer("order_id").notNullable();
+            table.string("id").primary().notNullable();
+            table.string("order_id").notNullable();
             table.string("signature").notNullable();
             table.unique(["order_id", "signature"]);
           }
         );
       }
 
-      const hasNoncesTable = await fastify.knex.schema.hasTable(
+      const hasNoncesTable = await knexInstance.schema.hasTable(
         HUB_NONCES_TABLE_NAME
       );
       if (!hasNoncesTable) {
-        await fastify.knex.schema.createTable(HUB_NONCES_TABLE_NAME, (table) => {
-          table.string("hubId").notNullable();
-          table.string("kid").notNullable();
-          table.string("nonce").notNullable();
-          table.integer("ts").notNullable();
-          table.primary(["hubId", "kid", "nonce"]);
-        });
+        await knexInstance.schema.createTable(
+          HUB_NONCES_TABLE_NAME,
+          (table) => {
+            table.string("hubId").notNullable();
+            table.string("kid").notNullable();
+            table.string("nonce").notNullable();
+            table.integer("ts").notNullable();
+            table.primary(["hubId", "kid", "nonce"]);
+          }
+        );
       }
     });
   },

@@ -6,6 +6,10 @@ import {
   HUB_AUTH_TIME_SKEW_SECONDS,
   HUB_NONCE_CLEANUP_BUFFER_SECONDS,
 } from "../../../src/plugins/app/hub/hub-verifier.js";
+import {
+  kHubNoncesRepository,
+  type HubNoncesRepository,
+} from "../../../src/plugins/app/hub/hub-nonces.repository.js";
 
 test("rejects requests missing hub auth headers", async (t) => {
   const app = await build(t);
@@ -27,7 +31,7 @@ test("rejects requests missing hub auth headers", async (t) => {
 test("rejects empty hub auth headers", async (t) => {
   const app = await build(t);
   const headers = await signHubHeaders({ method: "GET", url: "/api/health" });
-  headers["X-Hub-Id"] = "";
+  headers["X-Hub-Id"] = "" as never;
 
   const res = await app.inject({
     url: "/api/health",
@@ -95,6 +99,8 @@ test("rejects replayed nonces within the window", async (t) => {
 
 test("allows nonce reuse after cleanup with a valid timestamp", async (t) => {
   const app = await build(t);
+  const hubNoncesRepository: HubNoncesRepository =
+    app.getDecorator(kHubNoncesRepository);
   const nowSeconds = Math.floor(Date.now() / 1000);
   const nonce = Buffer.from("cleanup").toString("base64");
   const headers = await signHubHeaders({
@@ -104,7 +110,7 @@ test("allows nonce reuse after cleanup with a valid timestamp", async (t) => {
     timestamp: nowSeconds.toString(),
   });
 
-  await app.hubNoncesRepository.insert({
+  await hubNoncesRepository.insert({
     hubId: headers["X-Hub-Id"],
     kid: headers["X-Key-Id"],
     nonce,
@@ -115,7 +121,7 @@ test("allows nonce reuse after cleanup with a valid timestamp", async (t) => {
       5,
   });
 
-  await app.hubNoncesRepository.deleteExpired(
+  await hubNoncesRepository.deleteExpired(
     nowSeconds - HUB_AUTH_TIME_SKEW_SECONDS - HUB_NONCE_CLEANUP_BUFFER_SECONDS
   );
 
@@ -210,7 +216,7 @@ test("rejects unknown hub ids", async (t) => {
   const app = await build(t);
 
   const headers = await signHubHeaders({ method: "GET", url: "/api/health" });
-  headers["X-Hub-Id"] = "unknown-hub";
+  headers["X-Hub-Id"] = "unknown-hub" as never;
 
   const res = await app.inject({
     url: "/api/health",
@@ -224,7 +230,7 @@ test("rejects unknown hub ids", async (t) => {
 test("rejects requests when nonce insert fails", async (t) => {
   const app = await build(t);
   const { mock: insertMock } = t.mock.method(
-    app.hubNoncesRepository,
+    app.getDecorator<HubNoncesRepository>(kHubNoncesRepository),
     "insert"
   );
   insertMock.mockImplementation(() => {
@@ -259,4 +265,24 @@ test("rejects invalid signatures", async (t) => {
     return message === "Unauthorized hub request" && payload.reason === "invalid-signature";
   });
   assert.ok(hasLog);
+});
+
+test("does not insert nonce when signature verification fails", async (t) => {
+  const app = await build(t);
+  const { mock: insertMock } = t.mock.method(
+    app.getDecorator<HubNoncesRepository>(kHubNoncesRepository),
+    "insert"
+  );
+
+  const headers = await signHubHeaders({ method: "GET", url: "/api/health" });
+  headers["X-Signature"] = "invalid-signature";
+
+  const res = await app.inject({
+    url: "/api/health",
+    method: "GET",
+    headers,
+  });
+
+  assert.strictEqual(res.statusCode, 401);
+  assert.strictEqual(insertMock.calls.length, 0);
 });

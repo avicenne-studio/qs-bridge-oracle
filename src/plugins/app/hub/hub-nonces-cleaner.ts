@@ -5,9 +5,15 @@ import {
   HUB_NONCE_CLEANUP_BUFFER_SECONDS,
   HUB_NONCE_CLEANUP_INTERVAL_MS,
 } from "./hub-verifier.js";
+import {
+  kHubNoncesRepository,
+  type HubNoncesRepository,
+} from "./hub-nonces.repository.js";
 
 export default fp(
   async function hubNoncesCleanerPlugin(fastify: FastifyInstance) {
+    const hubNoncesRepository =
+      fastify.getDecorator<HubNoncesRepository>(kHubNoncesRepository);
     let interval: NodeJS.Timeout | null = null;
 
     const cleanup = async () => {
@@ -15,7 +21,7 @@ export default fp(
       const cutoff =
         nowSeconds - HUB_AUTH_TIME_SKEW_SECONDS - HUB_NONCE_CLEANUP_BUFFER_SECONDS;
       try {
-        await fastify.hubNoncesRepository.deleteExpired(cutoff);
+        await hubNoncesRepository.deleteExpired(cutoff);
       } catch (error) {
         fastify.log.warn({ err: error }, "Failed to cleanup hub nonces");
       }

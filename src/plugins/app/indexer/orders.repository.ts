@@ -1,20 +1,19 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
+import { kKnex, type KnexAccessor } from "../../infra/@knex.js";
 
 import { OracleOrder } from "./schemas/order.js";
 
 export const ORDERS_TABLE_NAME = "orders";
 export const ORDER_SIGNATURES_TABLE_NAME = "order_signatures";
-
-declare module "fastify" {
-  interface FastifyInstance {
-    ordersRepository: ReturnType<typeof createRepository>;
-  }
-}
+export const kOrdersRepository = Symbol("app.ordersRepository");
+export type OrdersRepository = ReturnType<typeof createRepository>;
 
 type PersistedOrder = OracleOrder;
 type PersistedSignature = {
-  order_id: number;
+  id: string;
+  order_id: string;
   signature: string;
 };
 type StoredOrder = OracleOrder;
@@ -33,10 +32,10 @@ function normalizeOrderRow(row: StoredOrder): StoredOrder {
 }
 
 function createRepository(fastify: FastifyInstance) {
-  const knex = fastify.knex;
+  const knex = fastify.getDecorator<KnexAccessor>(kKnex).get();
 
   return {
-    async findById(id: number) {
+    async findById(id: string) {
       const row = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .select("*")
         .where("id", id)
@@ -45,13 +44,11 @@ function createRepository(fastify: FastifyInstance) {
     },
 
     async create(newOrder: CreateOrder) {
-      const [id] = await knex<PersistedOrder>(ORDERS_TABLE_NAME).insert(
-        newOrder
-      );
-      return this.findById(Number(id));
+      await knex<PersistedOrder>(ORDERS_TABLE_NAME).insert(newOrder);
+      return this.findById(newOrder.id);
     },
 
-    async update(id: number, changes: UpdateOrder) {
+    async update(id: string, changes: UpdateOrder) {
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("id", id)
         .update(changes);
@@ -63,7 +60,7 @@ function createRepository(fastify: FastifyInstance) {
       return this.findById(id);
     },
 
-    async markReadyForRelay(id: number) {
+    async markReadyForRelay(id: string) {
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("id", id)
         .update({ status: "ready-for-relay", oracle_accept_to_relay: true });
@@ -75,7 +72,7 @@ function createRepository(fastify: FastifyInstance) {
       return this.findById(id);
     },
 
-    async delete(id: number) {
+    async delete(id: string) {
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("id", id)
         .delete();
@@ -83,7 +80,7 @@ function createRepository(fastify: FastifyInstance) {
       return affectedRows > 0;
     },
 
-    async byIds(ids: number[]) {
+    async byIds(ids: string[]) {
       const uniqueIds = [...new Set(ids)];
       if (uniqueIds.length === 0) {
         return [];
@@ -111,7 +108,7 @@ function createRepository(fastify: FastifyInstance) {
       return rows.map((row) => normalizeOrderRow(row as StoredOrder));
     },
 
-    async addSignatures(orderId: number, signatures: string[]) {
+    async addSignatures(orderId: string, signatures: string[]) {
       const unique = [...new Set(signatures)];
       if (unique.length === 0) {
         return [];
@@ -135,6 +132,7 @@ function createRepository(fastify: FastifyInstance) {
 
       await knex<PersistedSignature>(ORDER_SIGNATURES_TABLE_NAME).insert(
         toInsert.map((signature) => ({
+          id: randomUUID(),
           order_id: orderId,
           signature,
         }))
@@ -168,11 +166,11 @@ function createRepository(fastify: FastifyInstance) {
         .where("orders.oracle_accept_to_relay", 1)
         .orderBy("orders.id", "asc");
 
-      const orders = new Map<number, StoredOrderWithSignatures>();
+      const orders = new Map<string, StoredOrderWithSignatures>();
       for (const row of rows as Array<
         StoredOrder & { order_signature: string | null }
       >) {
-        const id = Number(row.id);
+        const id = String(row.id);
         const existing = orders.get(id);
         if (!existing) {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -189,12 +187,20 @@ function createRepository(fastify: FastifyInstance) {
 
       return [...orders.values()];
     },
+
+    async findBySourceNonce(sourceNonce: string) {
+      const row = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
+        .select("*")
+        .where("source_nonce", sourceNonce)
+        .first();
+      return row ? normalizeOrderRow(row as StoredOrder) : null;
+    },
   };
 }
 
 export default fp(
   function (fastify) {
-    fastify.decorate("ordersRepository", createRepository(fastify));
+    fastify.decorate(kOrdersRepository, createRepository(fastify));
   },
   {
     name: "orders-repository",

@@ -2,10 +2,20 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { build, waitFor } from "../helper.js";
-import { ORDER_SIGNATURES_TABLE_NAME } from "../../src/plugins/app/indexer/orders.repository.js";
+import {
+  ORDER_SIGNATURES_TABLE_NAME,
+  kOrdersRepository,
+  type OrdersRepository,
+} from "../../src/plugins/app/indexer/orders.repository.js";
+import {
+  kKnex,
+  type KnexAccessor,
+} from "../../src/plugins/infra/@knex.js";
 
 const HUB_PRIMARY_PORT = 6101;
 const HUB_FALLBACK_PORT = 6102;
+const makeId = (value: number) =>
+  `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 
 async function startHubServer(
   t: { after: (fn: () => void) => void },
@@ -69,27 +79,30 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
 
     const app = await build(t);
     t.after(() => app.close());
+    const ordersRepository: OrdersRepository =
+      app.getDecorator(kOrdersRepository);
+    const knex = app.getDecorator<KnexAccessor>(kKnex).get();
 
-    const order1 = await app.ordersRepository.create({
-      id: 901,
+    const order1 = await ordersRepository.create({
+      id: makeId(901),
       source: "solana",
       dest: "qubic",
       from: "HubA",
       to: "HubB",
-      amount: 10,
-      relayerFee: 0,
+      amount: "10",
+      relayerFee: "0",
       signature: "sig-hub-1",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
     });
-    const order2 = await app.ordersRepository.create({
-      id: 902,
+    const order2 = await ordersRepository.create({
+      id: makeId(902),
       source: "qubic",
       dest: "solana",
       from: "HubC",
       to: "HubD",
-      amount: 20,
-      relayerFee: 0,
+      amount: "20",
+      relayerFee: "0",
       signature: "sig-hub-2",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -108,8 +121,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
         return false;
       }
 
-      stored = await app
-        .knex(ORDER_SIGNATURES_TABLE_NAME)
+      stored = await knex(ORDER_SIGNATURES_TABLE_NAME)
         .select("order_id", "signature")
         .whereIn("order_id", [order1!.id, order2!.id])
         .orderBy("order_id", "asc");
@@ -146,15 +158,17 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
 
     const app = await build(t);
     t.after(() => app.close());
+    const ordersRepository: OrdersRepository =
+      app.getDecorator(kOrdersRepository);
 
-    const order = await app.ordersRepository.create({
-      id: 903,
+    const order = await ordersRepository.create({
+      id: makeId(903),
       source: "solana",
       dest: "qubic",
       from: "HubE",
       to: "HubF",
-      amount: 30,
-      relayerFee: 0,
+      amount: "30",
+      relayerFee: "0",
       signature: "sig-hub-3",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
@@ -170,7 +184,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
         return false;
       }
 
-      const updated = await app.ordersRepository.findById(order!.id);
+      const updated = await ordersRepository.findById(order!.id);
       relayAccepted = updated?.oracle_accept_to_relay === true
       return relayAccepted;
     });
@@ -201,15 +215,17 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
 
     const app = await build(t);
     t.after(() => app.close());
+    const ordersRepository: OrdersRepository =
+      app.getDecorator(kOrdersRepository);
 
-    const order = await app.ordersRepository.create({
-      id: 904,
+    const order = await ordersRepository.create({
+      id: makeId(904),
       source: "qubic",
       dest: "solana",
       from: "HubG",
       to: "HubH",
-      amount: 40,
-      relayerFee: 0,
+      amount: "40",
+      relayerFee: "0",
       signature: "sig-hub-4",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
@@ -219,7 +235,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
 
     await waitFor(() => hitCount > 0);
 
-    const updated = await app.ordersRepository.findById(order!.id);
+    const updated = await ordersRepository.findById(order!.id);
     assert.strictEqual(updated?.oracle_accept_to_relay, false);
   });
 
@@ -262,7 +278,12 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
-            data: [{ orderId: 1, signatures: ["sig-1"] }],
+            data: [
+              {
+                orderId: "00000000-0000-4000-8000-000000000001",
+                signatures: ["sig-1"],
+              },
+            ],
           })
         );
         return;
@@ -279,10 +300,12 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
 
     const app = await build(t);
     t.after(() => app.close());
+    const ordersRepository: OrdersRepository =
+      app.getDecorator(kOrdersRepository);
 
     const { mock: errorMock } = t.mock.method(app.log, "error");
     const { mock: addMock } = t.mock.method(
-      app.ordersRepository,
+      ordersRepository,
       "addSignatures"
     );
     addMock.mockImplementation(async () => {
