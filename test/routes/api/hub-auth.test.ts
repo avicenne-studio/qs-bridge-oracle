@@ -266,3 +266,23 @@ test("rejects invalid signatures", async (t) => {
   });
   assert.ok(hasLog);
 });
+
+test("does not insert nonce when signature verification fails", async (t) => {
+  const app = await build(t);
+  const { mock: insertMock } = t.mock.method(
+    app.getDecorator<HubNoncesRepository>(kHubNoncesRepository),
+    "insert"
+  );
+
+  const headers = await signHubHeaders({ method: "GET", url: "/api/health" });
+  headers["X-Signature"] = "invalid-signature";
+
+  const res = await app.inject({
+    url: "/api/health",
+    method: "GET",
+    headers,
+  });
+
+  assert.strictEqual(res.statusCode, 401);
+  assert.strictEqual(insertMock.calls.length, 0);
+});

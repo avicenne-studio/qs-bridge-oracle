@@ -10,7 +10,6 @@ import {
 import { HUB_NONCES_TABLE_NAME } from "../app/hub/hub-nonces.repository.js";
 
 export type KnexAccessor = {
-  // Knex is callable; wrapping avoids getDecorator binding it to Fastify.
   get(): Knex;
 };
 
@@ -34,7 +33,7 @@ export default fp(
   async (fastify: FastifyInstance, opts: Knex.Config) => {
     const db = knex(opts);
     const accessor: KnexAccessor = {
-      // Avoid Fastify binding callable decorators (knex) to the instance.
+      // Knex is callable; wrapping avoids getDecorator binding it to Fastify.
       get: () => db,
     };
 
@@ -61,13 +60,10 @@ export default fp(
           table.string("source_payload").nullable();
           table.string("signature", SIGNATURE_MAX_LENGTH).notNullable();
           table.string("status").notNullable().defaultTo("ready-for-relay");
-          table
-            .boolean("oracle_accept_to_relay")
-            .notNullable()
-            .defaultTo(true);
+          table.boolean("oracle_accept_to_relay").notNullable().defaultTo(true);
         });
       }
-      
+
       const hasSignaturesTable = await knexInstance.schema.hasTable(
         ORDER_SIGNATURES_TABLE_NAME
       );
@@ -87,13 +83,16 @@ export default fp(
         HUB_NONCES_TABLE_NAME
       );
       if (!hasNoncesTable) {
-        await knexInstance.schema.createTable(HUB_NONCES_TABLE_NAME, (table) => {
-          table.string("hubId").notNullable();
-          table.string("kid").notNullable();
-          table.string("nonce").notNullable();
-          table.integer("ts").notNullable();
-          table.primary(["hubId", "kid", "nonce"]);
-        });
+        await knexInstance.schema.createTable(
+          HUB_NONCES_TABLE_NAME,
+          (table) => {
+            table.string("hubId").notNullable();
+            table.string("kid").notNullable();
+            table.string("nonce").notNullable();
+            table.integer("ts").notNullable();
+            table.primary(["hubId", "kid", "nonce"]);
+          }
+        );
       }
     });
   },
