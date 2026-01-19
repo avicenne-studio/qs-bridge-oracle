@@ -3,6 +3,7 @@ import fp from "fastify-plugin";
 import { kFileManager, type FileManager } from "./@file-manager.js";
 
 export type EnvConfig = {
+  HOST: string;
   PORT: number;
   RATE_LIMIT_MAX: number;
   SQLITE_DB_FILE: string;
@@ -23,6 +24,7 @@ const schema = {
   type: "object",
   required: [
     "SQLITE_DB_FILE",
+    "HOST",
     "PORT",
     "SOLANA_KEYS",
     "QUBIC_KEYS",
@@ -39,6 +41,11 @@ const schema = {
     },
     SQLITE_DB_FILE: {
       type: "string",
+    },
+    HOST: {
+      type: "string",
+      pattern:
+        "^(?:localhost|(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)|(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*|\\[[0-9A-Fa-f:.]+\\])$",
     },
     PORT: {
       type: "number",
