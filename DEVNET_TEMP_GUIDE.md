@@ -5,22 +5,22 @@ This is the shortest path to add oracles and submit an inbound order on devnet u
 ## 1) Generate 6 oracle keypairs
 
 ```bash
-mkdir -p .temp
-for i in 1 2 3 4 5 6; do
-  OUT=.temp/oracle-${i}.json node scripts/generate-solana-keypair.js > .temp/oracle-${i}.keys.json
-  echo "oracle-${i} generated"
-done
+# mkdir -p .temp
+# for i in 1 2 3 4 5 6; do
+#   OUT=.temp/oracle-${i}.json node scripts/generate-solana-keypair.js > .temp/oracle-${i}.keys.json
+#   echo "oracle-${i} generated"
+# done
 ```
 
 ## 2) Bundle oracle keys
 
 ```bash
-node <<'NODE'
-const fs = require('fs');
-const files = [1,2,3,4,5,6].map(i => `.temp/oracle-${i}.json`);
-const data = files.map(f => JSON.parse(fs.readFileSync(f, 'utf8')));
-fs.writeFileSync('.temp/oracle-keys.json', JSON.stringify(data, null, 2));
-NODE
+# node <<'NODE'
+# const fs = require('fs');
+# const files = [1,2,3,4,5,6].map(i => `.temp/oracle-${i}.json`);
+# const data = files.map(f => JSON.parse(fs.readFileSync(f, 'utf8')));
+# fs.writeFileSync('.temp/oracle-keys.json', JSON.stringify(data, null, 2));
+# NODE
 ```
 
 ## 3) Create `.temp/order.json`
@@ -39,7 +39,7 @@ const order = {
   amount: '1000000',
   relayerFee: '1000',
   nonce: '0x' + randomBytes(32).toString('hex'),
-  recipient: '4zP2HeDb7qGWNxpXm6JqjQW3Zp2uDU2tc3Nwdbu4BjvW',
+  recipient: '46F9i1Bzv8kwShyG8xbtdkA7nEoYmzyueKwjXyDgtAQV',
   protocolName: 'QubicBridge',
   protocolVersion: '1',
 };
@@ -67,7 +67,33 @@ Notes:
 - You can override the signature count: `SIGNATURE_COUNT=4 npm run send-inbound-order -- ...`
 - The script will create missing recipient/relayer ATAs automatically.
 
-## 6) Claim protocol fee (protocol fee recipient only)
+## 6) Send an outbound order (unlock/burn)
+
+Create a minimal outbound order payload (Qubic destination uses 32-byte hex):
+
+```bash
+node <<'NODE'
+const fs = require('fs');
+const { randomBytes } = require('crypto');
+const order = {
+  networkOut: 1, // Qubic
+  tokenOut: "0x" + "00".repeat(32), // Qubic token address (hex)
+  toAddress: '0x' + '44'.repeat(32), // Qubic destination (hex)
+  amount: '500000', // in token base units
+  relayerFee: '1000',
+  nonce: '0x' + randomBytes(32).toString('hex'),
+};
+fs.writeFileSync('.temp/outbound-order.json', JSON.stringify(order, null, 2));
+NODE
+```
+
+Then send (user signs with the key that received tokens):
+
+```bash
+npm run send-outbound-order -- .temp/outbound-order.json .temp/recipient.json
+```
+
+## 7) Claim protocol fee (protocol fee recipient only)
 
 ```bash
 npm run claim-protocol-fee -- .temp/protocol-fee-recipient.json
@@ -75,7 +101,7 @@ npm run claim-protocol-fee -- .temp/protocol-fee-recipient.json
 
 Note: this claims **protocol fee**, not oracle claimable balances.
 
-## 7) Re-run with a new nonce
+## 8) Re-run with a new nonce
 
 Inbound orders are one-time per nonce. To submit a new one, update the nonce:
 

@@ -70,10 +70,10 @@ function startHubSignaturePolling(
       ),
     onRound: async (response, context) => {
       if (!response) {
-        fastify.log.warn(
-          { primary: context.primary, fallback: context.fallback },
-          "Hub signatures poll failed"
-        );
+        // fastify.log.warn(
+        //   { primary: context.primary, fallback: context.fallback },
+        //   "Hub signatures poll failed"
+        // );
         return;
       }
 
