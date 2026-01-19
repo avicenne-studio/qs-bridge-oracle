@@ -118,25 +118,9 @@ export default fp(
         return sendUnauthorized(request, reply, "timestamp-skew");
       }
 
-      const exists = await hubNoncesRepository.exists(
-        hubId,
-        kid,
-        nonce
-      );
+      const exists = await hubNoncesRepository.exists(hubId, kid, nonce);
       if (exists) {
         return sendUnauthorized(request, reply, "nonce-replay");
-      }
-
-      try {
-        await hubNoncesRepository.insert({
-          hubId,
-          kid,
-          nonce,
-          ts: timestamp,
-        });
-      } catch (error) {
-        request.log.warn({ err: error }, "Failed to store hub nonce");
-        return sendUnauthorized(request, reply, "nonce-store-failed");
       }
 
       const bodyHash = hashBody();
@@ -169,6 +153,18 @@ export default fp(
 
       if (!signatureOk) {
         return sendUnauthorized(request, reply, "invalid-signature");
+      }
+
+      try {
+        await hubNoncesRepository.insert({
+          hubId,
+          kid,
+          nonce,
+          ts: timestamp,
+        });
+      } catch (error) {
+        request.log.warn({ err: error }, "Failed to store hub nonce");
+        return sendUnauthorized(request, reply, "nonce-store-failed");
       }
     });
   },
