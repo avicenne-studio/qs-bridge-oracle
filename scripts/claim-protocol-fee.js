@@ -1,16 +1,10 @@
-import { readFile } from "node:fs/promises";
 import process from "node:process";
 import {
   address,
   appendTransactionMessageInstruction,
   createKeyPairSignerFromBytes,
-  createSolanaRpc,
-  createSolanaRpcSubscriptions,
   createTransactionMessage,
-  getAddressEncoder,
-  getProgramDerivedAddress,
   getSignatureFromTransaction,
-  sendAndConfirmTransactionFactory,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
@@ -18,33 +12,15 @@ import {
 import { getClaimProtocolFeeInstruction } from "../dist/clients/js/instructions/claimProtocolFee.js";
 import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
 import { fetchGlobalState } from "../dist/clients/js/accounts/globalState.js";
-
-const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
-const DEFAULT_WS_URL = "wss://api.devnet.solana.com";
-const TOKEN_PROGRAM_ADDRESS = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const ASSOCIATED_TOKEN_PROGRAM_ADDRESS =
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
-
-async function readKeypairBytes(filePath) {
-  const raw = await readFile(filePath, "utf-8");
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed) || parsed.length !== 64) {
-    throw new Error("Keypair file must be a JSON array of 64 bytes");
-  }
-  return new Uint8Array(parsed);
-}
-
-async function findAssociatedTokenAddress(owner, mint, tokenProgram, associatedTokenProgram) {
-  const [ata] = await getProgramDerivedAddress({
-    programAddress: associatedTokenProgram,
-    seeds: [
-      getAddressEncoder().encode(owner),
-      getAddressEncoder().encode(tokenProgram),
-      getAddressEncoder().encode(mint),
-    ],
-  });
-  return ata;
-}
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
+  TOKEN_PROGRAM_ADDRESS,
+  createRpcClients,
+  findAssociatedTokenAddress,
+  readKeypairBytes,
+  resolveRpcUrl,
+  resolveWsUrl,
+} from "./utils.js";
 
 async function main() {
   const protocolFeeRecipientKeyPath = process.argv[2];
@@ -54,18 +30,16 @@ async function main() {
     );
   }
 
-  const rpcUrl = process.env.SOLANA_RPC_URL || DEFAULT_RPC_URL;
-  const wsUrl = process.env.SOLANA_WS_URL || DEFAULT_WS_URL;
+  const rpcUrl = resolveRpcUrl();
+  const wsUrl = resolveWsUrl();
 
-  const recipientBytes = await readKeypairBytes(protocolFeeRecipientKeyPath);
+  const recipientBytes = await readKeypairBytes(
+    protocolFeeRecipientKeyPath,
+    "Protocol fee recipient keypair file"
+  );
   const recipientSigner = await createKeyPairSignerFromBytes(recipientBytes);
 
-  const rpc = createSolanaRpc(rpcUrl);
-  const rpcSubscriptions = createSolanaRpcSubscriptions(wsUrl);
-  const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({
-    rpc,
-    rpcSubscriptions,
-  });
+  const { rpc, sendAndConfirmTransaction } = createRpcClients(rpcUrl, wsUrl);
 
   const [globalStatePda] = await findGlobalStatePda();
   const globalState = await fetchGlobalState(rpc, globalStatePda);

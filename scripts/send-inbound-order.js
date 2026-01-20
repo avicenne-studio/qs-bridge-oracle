@@ -6,20 +6,16 @@ import {
   address,
   appendTransactionMessageInstruction,
   createKeyPairSignerFromBytes,
-  createSolanaRpc,
-  createSolanaRpcSubscriptions,
   createTransactionMessage,
   createSignableMessage,
   AccountRole,
   getAddressEncoder,
   getBase64EncodedWireTransaction,
   getBytesEncoder,
-  getProgramDerivedAddress,
   getSignatureFromTransaction,
   getU32Encoder,
   getU64Encoder,
   getUtf8Encoder,
-  sendAndConfirmTransactionFactory,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
@@ -30,14 +26,17 @@ import { findInboundOrderPda } from "../dist/clients/js/pdas/inboundOrder.js";
 import { getInboundInstruction } from "../dist/clients/js/instructions/inbound.js";
 import { QS_BRIDGE_PROGRAM_ADDRESS } from "../dist/clients/js/programs/qsBridge.js";
 import { fetchGlobalState } from "../dist/clients/js/accounts/globalState.js";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
+  RENT_SYSVAR_ADDRESS,
+  SYSTEM_PROGRAM_ADDRESS,
+  TOKEN_PROGRAM_ADDRESS,
+  createRpcClients,
+  findAssociatedTokenAddress,
+  resolveRpcUrl,
+  resolveWsUrl,
+} from "./utils.js";
 
-const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
-const DEFAULT_WS_URL = "wss://api.devnet.solana.com";
-const TOKEN_PROGRAM_ADDRESS = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const ASSOCIATED_TOKEN_PROGRAM_ADDRESS =
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
-const SYSTEM_PROGRAM_ADDRESS = "11111111111111111111111111111111";
-const RENT_SYSVAR_ADDRESS = "SysvarRent111111111111111111111111111111111";
 const ORACLE_THRESHOLD_PERCENT = 60;
 const DEFAULT_PROTOCOL_NAME = "QubicBridge";
 const DEFAULT_PROTOCOL_VERSION = "1";
@@ -120,18 +119,6 @@ async function signInboundOrder(payload, signer) {
   return new Uint8Array(signature);
 }
 
-async function findAssociatedTokenAddress(owner, mint, tokenProgram, associatedTokenProgram) {
-  const [ata] = await getProgramDerivedAddress({
-    programAddress: associatedTokenProgram,
-    seeds: [
-      getAddressEncoder().encode(owner),
-      getAddressEncoder().encode(tokenProgram),
-      getAddressEncoder().encode(mint),
-    ],
-  });
-  return ata;
-}
-
 function getCreateAssociatedTokenAccountInstruction({
   payerSigner,
   ata,
@@ -192,8 +179,8 @@ async function main() {
     );
   }
 
-  const rpcUrl = process.env.SOLANA_RPC_URL || DEFAULT_RPC_URL;
-  const wsUrl = process.env.SOLANA_WS_URL || DEFAULT_WS_URL;
+  const rpcUrl = resolveRpcUrl();
+  const wsUrl = resolveWsUrl();
 
   const order = await readJson(orderPath);
   const oracleKeys = await readJson(oracleKeysPath);
@@ -224,12 +211,7 @@ async function main() {
 
   const recipient = address(order.recipient);
 
-  const rpc = createSolanaRpc(rpcUrl);
-  const rpcSubscriptions = createSolanaRpcSubscriptions(wsUrl);
-  const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({
-    rpc,
-    rpcSubscriptions,
-  });
+  const { rpc, sendAndConfirmTransaction } = createRpcClients(rpcUrl, wsUrl);
 
   const [globalStatePda] = await findGlobalStatePda();
   const globalState = await fetchGlobalState(rpc, globalStatePda);

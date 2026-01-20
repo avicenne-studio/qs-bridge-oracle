@@ -2,17 +2,11 @@ import { readFile } from "node:fs/promises";
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import {
-  address,
   appendTransactionMessageInstruction,
   createKeyPairSignerFromBytes,
-  createSolanaRpc,
-  createSolanaRpcSubscriptions,
   createTransactionMessage,
-  getAddressEncoder,
   getBase64EncodedWireTransaction,
-  getProgramDerivedAddress,
   getSignatureFromTransaction,
-  sendAndConfirmTransactionFactory,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
@@ -21,13 +15,15 @@ import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
 import { findOutboundOrderPda } from "../dist/clients/js/pdas/outboundOrder.js";
 import { getOutboundInstruction } from "../dist/clients/js/instructions/outbound.js";
 import { fetchGlobalState } from "../dist/clients/js/accounts/globalState.js";
-
-const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
-const DEFAULT_WS_URL = "wss://api.devnet.solana.com";
-const TOKEN_PROGRAM_ADDRESS = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const ASSOCIATED_TOKEN_PROGRAM_ADDRESS =
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
-const SYSTEM_PROGRAM_ADDRESS = "11111111111111111111111111111111";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
+  SYSTEM_PROGRAM_ADDRESS,
+  TOKEN_PROGRAM_ADDRESS,
+  createRpcClients,
+  findAssociatedTokenAddress,
+  resolveRpcUrl,
+  resolveWsUrl,
+} from "./utils.js";
 
 const HEX_PATTERN = /^[0-9a-fA-F]+$/;
 
@@ -54,23 +50,6 @@ function parseHexBytes32(value, field) {
   return new Uint8Array(Buffer.from(normalized, "hex"));
 }
 
-async function findAssociatedTokenAddress(
-  owner,
-  mint,
-  tokenProgram,
-  associatedTokenProgram
-) {
-  const [ata] = await getProgramDerivedAddress({
-    programAddress: associatedTokenProgram,
-    seeds: [
-      getAddressEncoder().encode(owner),
-      getAddressEncoder().encode(tokenProgram),
-      getAddressEncoder().encode(mint),
-    ],
-  });
-  return ata;
-}
-
 function logSection(title) {
   process.stdout.write(`\n[send-outbound-order] ${title}\n`);
 }
@@ -84,8 +63,8 @@ async function main() {
     );
   }
 
-  const rpcUrl = process.env.SOLANA_RPC_URL || DEFAULT_RPC_URL;
-  const wsUrl = process.env.SOLANA_WS_URL || DEFAULT_WS_URL;
+  const rpcUrl = resolveRpcUrl();
+  const wsUrl = resolveWsUrl();
 
   const order = await readJson(orderPath);
   const userKey = await readJson(userKeyPath);
@@ -100,12 +79,7 @@ async function main() {
   const relayerFee = BigInt(order.relayerFee);
   const nonce = parseHexBytes32(order.nonce, "nonce");
 
-  const rpc = createSolanaRpc(rpcUrl);
-  const rpcSubscriptions = createSolanaRpcSubscriptions(wsUrl);
-  const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({
-    rpc,
-    rpcSubscriptions,
-  });
+  const { rpc, sendAndConfirmTransaction } = createRpcClients(rpcUrl, wsUrl);
 
   const [globalStatePda] = await findGlobalStatePda();
   const globalState = await fetchGlobalState(rpc, globalStatePda);

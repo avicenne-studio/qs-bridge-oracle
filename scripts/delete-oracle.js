@@ -1,16 +1,12 @@
-import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   address,
   appendTransactionMessageInstruction,
   createKeyPairSignerFromBytes,
-  createSolanaRpc,
-  createSolanaRpcSubscriptions,
   createTransactionMessage,
   getBase64EncodedWireTransaction,
   getSignatureFromTransaction,
-  sendAndConfirmTransactionFactory,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
@@ -18,19 +14,14 @@ import {
 import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
 import { findOraclePda } from "../dist/clients/js/pdas/oracle.js";
 import { getRemoveOracleInstruction } from "../dist/clients/js/instructions/removeOracle.js";
+import {
+  createRpcClients,
+  readKeypairBytes,
+  resolveRpcUrl,
+  resolveWsUrl,
+} from "./utils.js";
 
 const DEFAULT_ADMIN_KEYPAIR = "./test/fixtures/solana-admin.json";
-const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
-const DEFAULT_WS_URL = "wss://api.devnet.solana.com";
-
-async function readKeypairBytes(filePath) {
-  const raw = await readFile(filePath, "utf-8");
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed) || parsed.length !== 64) {
-    throw new Error("Admin keypair file must be a JSON array of 64 bytes");
-  }
-  return new Uint8Array(parsed);
-}
 
 async function waitForRemoval(rpc, oraclePda, retries) {
   for (let i = 0; i < retries; i += 1) {
@@ -54,17 +45,20 @@ async function main() {
     );
   }
 
-  const rpcUrl = process.env.SOLANA_RPC_URL || DEFAULT_RPC_URL;
-  const wsUrl = process.env.SOLANA_WS_URL || DEFAULT_WS_URL;
+  const rpcUrl = resolveRpcUrl();
+  const wsUrl = resolveWsUrl();
 
-  const adminBytes = await readKeypairBytes(adminKeyPath);
+  const adminBytes = await readKeypairBytes(
+    adminKeyPath,
+    "Admin keypair file"
+  );
   const adminSigner = await createKeyPairSignerFromBytes(adminBytes);
   const oracleAddress = address(oraclePubkeyRaw);
 
   const [globalStatePda] = await findGlobalStatePda();
   const [oraclePda] = await findOraclePda({ oracle: oracleAddress });
 
-  const rpc = createSolanaRpc(rpcUrl);
+  const { rpc, sendAndConfirmTransaction } = createRpcClients(rpcUrl, wsUrl);
   const existing = await rpc
     .getAccountInfo(oraclePda, { encoding: "base64" })
     .send();
@@ -77,12 +71,6 @@ async function main() {
     admin: adminSigner,
     globalState: globalStatePda,
     oraclePda,
-  });
-
-  const rpcSubscriptions = createSolanaRpcSubscriptions(wsUrl);
-  const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({
-    rpc,
-    rpcSubscriptions,
   });
 
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();

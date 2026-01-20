@@ -1,13 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { stat } from "node:fs/promises";
 import process from "node:process";
+import { setTimeout } from "node:timers";
 import {
   address,
   createKeyPairSignerFromBytes,
   createSolanaRpc,
 } from "@solana/kit";
+import { resolveRpcUrl } from "./utils.js";
 
-const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
 const DEFAULT_LAMPORTS = 1_000_000_000n;
 const DEFAULT_RETRIES = 5;
 const DEFAULT_RETRY_DELAY_MS = 1000;
@@ -48,7 +49,7 @@ async function main() {
     );
   }
 
-  const rpcUrl = process.env.SOLANA_RPC_URL || DEFAULT_RPC_URL;
+  const rpcUrl = resolveRpcUrl();
   const lamports = amountRaw ? BigInt(amountRaw) : DEFAULT_LAMPORTS;
   if (lamports <= 0n) {
     throw new Error("Lamports must be greater than 0");

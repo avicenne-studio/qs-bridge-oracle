@@ -4,7 +4,6 @@ import {
   createSolanaOrderHandlers,
 } from "../../../../src/plugins/app/listener/solana/solana-orders.js";
 import { bytesToHex } from "../../../../src/plugins/app/listener/solana/bytes.js";
-import { type SolanaOrderToSign } from "../../../../src/plugins/app/signer/signer.service.js";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 
 type Repo = ReturnType<typeof createInMemoryOrders>;
@@ -20,6 +19,7 @@ function createLogger() {
     logger: {
       info: log("info"),
       warn: log("warn"),
+      debug: log("debug"),
       error: log("error"),
     },
   };
@@ -51,20 +51,13 @@ function createOverrideEvent() {
   };
 }
 
-function createHandlers(repo: Repo, signerCalls: SolanaOrderToSign[]) {
+function createHandlers(repo: Repo) {
   const { logger, entries } = createLogger();
   return {
     ...createSolanaOrderHandlers({
       ordersRepository: repo as never,
-      signerService: {
-        async signSolanaOrder(order) {
-          signerCalls.push(order);
-          return `sig-${signerCalls.length}`;
-        },
-      },
       config: { SOLANA_BPS_FEE: 25 },
       logger,
-      contractAddressBytes: new Uint8Array(32).fill(8),
     }),
     logger,
     entries,
@@ -74,21 +67,18 @@ function createHandlers(repo: Repo, signerCalls: SolanaOrderToSign[]) {
 describe("solana order handlers", () => {
   it("ignores outbound events for unsupported networks", async () => {
     const repo = createInMemoryOrders();
-    const signerCalls: SolanaOrderToSign[] = [];
-    const { handleOutboundEvent } = createHandlers(repo, signerCalls);
+    const { handleOutboundEvent } = createHandlers(repo);
 
     const event = createOutboundEvent();
     event.networkOut = 99;
     await handleOutboundEvent(event);
 
     assert.strictEqual(repo.store.size, 0);
-    assert.strictEqual(signerCalls.length, 0);
   });
 
   it("creates a new order from outbound events", async () => {
     const repo = createInMemoryOrders();
-    const signerCalls: SolanaOrderToSign[] = [];
-    const { handleOutboundEvent } = createHandlers(repo, signerCalls);
+    const { handleOutboundEvent, entries } = createHandlers(repo);
 
     const event = createOutboundEvent();
     await handleOutboundEvent(event);
@@ -97,11 +87,20 @@ describe("solana order handlers", () => {
     assert.ok(stored);
     assert.strictEqual(stored.source, "solana");
     assert.strictEqual(stored.dest, "qubic");
-    assert.strictEqual(stored.signature, "sig-1");
     assert.strictEqual(stored.amount, "10");
     assert.strictEqual(stored.relayerFee, "2");
     assert.strictEqual(stored.from, bytesToHex(event.fromAddress));
     assert.strictEqual(stored.to, bytesToHex(event.toAddress));
+
+    assert.match(
+      stored.signature,
+      new RegExp(`^dummy-qubic-${stored.id}-[0-9a-f]{16}$`)
+    );
+    assert.ok(
+      entries.some((entry) =>
+        entry.message?.includes("dummy Qubic signature")
+      )
+    );
 
     const sourcePayload = JSON.parse(stored.source_payload ?? "{}");
     assert.deepStrictEqual(sourcePayload, {
@@ -111,23 +110,6 @@ describe("solana order handlers", () => {
       tokenIn: bytesToHex(event.tokenIn),
       tokenOut: bytesToHex(event.tokenOut),
       nonce: bytesToHex(event.nonce),
-    });
-
-    assert.strictEqual(signerCalls.length, 1);
-    assert.deepStrictEqual(signerCalls[0], {
-      protocolName: "qs-bridge",
-      protocolVersion: "1",
-      contractAddress: new Uint8Array(32).fill(8),
-      networkIn: 1,
-      networkOut: 1,
-      tokenIn: new Uint8Array(event.tokenIn),
-      tokenOut: new Uint8Array(event.tokenOut),
-      fromAddress: new Uint8Array(event.fromAddress),
-      toAddress: new Uint8Array(event.toAddress),
-      amount: 10n,
-      relayerFee: 2n,
-      bpsFee: 25,
-      nonce: new Uint8Array(event.nonce),
     });
   });
 
@@ -148,27 +130,20 @@ describe("solana order handlers", () => {
         source_nonce: existingNonce,
       },
     ]);
-    const signerCalls: SolanaOrderToSign[] = [];
-    const { handleOutboundEvent } = createHandlers(repo, signerCalls);
+    const { handleOutboundEvent } = createHandlers(repo);
 
     await handleOutboundEvent(createOutboundEvent());
 
     assert.strictEqual(repo.store.size, 1);
-    assert.strictEqual(signerCalls.length, 0);
   });
 
   it("warns when override events cannot be applied", async () => {
     const repo = createInMemoryOrders();
-    const signerCalls: SolanaOrderToSign[] = [];
-    const { handleOverrideOutboundEvent, entries } = createHandlers(
-      repo,
-      signerCalls
-    );
+    const { handleOverrideOutboundEvent, entries } = createHandlers(repo);
 
     const overrideEvent = createOverrideEvent();
     const overrideNonce = bytesToHex(overrideEvent.nonce);
     await handleOverrideOutboundEvent(overrideEvent);
-    assert.strictEqual(signerCalls.length, 0);
 
     repo.store.clear();
     repo.store.set("00000000-0000-4000-8000-000000000002", {
@@ -186,7 +161,6 @@ describe("solana order handlers", () => {
     });
 
     await handleOverrideOutboundEvent(overrideEvent);
-    assert.strictEqual(signerCalls.length, 0);
 
     repo.store.clear();
     repo.store.set("00000000-0000-4000-8000-000000000003", {
@@ -205,7 +179,6 @@ describe("solana order handlers", () => {
     });
 
     await handleOverrideOutboundEvent(overrideEvent);
-    assert.strictEqual(signerCalls.length, 0);
 
     repo.store.clear();
     repo.store.set("00000000-0000-4000-8000-000000000004", {
@@ -224,7 +197,6 @@ describe("solana order handlers", () => {
     });
 
     await handleOverrideOutboundEvent(overrideEvent);
-    assert.strictEqual(signerCalls.length, 0);
     assert.ok(
       entries.some((entry) => entry.message?.includes("override event"))
     );
@@ -232,11 +204,8 @@ describe("solana order handlers", () => {
 
   it("updates orders for override events", async () => {
     const repo = createInMemoryOrders();
-    const signerCalls: SolanaOrderToSign[] = [];
-    const { handleOutboundEvent, handleOverrideOutboundEvent } = createHandlers(
-      repo,
-      signerCalls
-    );
+    const { handleOutboundEvent, handleOverrideOutboundEvent } =
+      createHandlers(repo);
 
     const outbound = createOutboundEvent();
     await handleOutboundEvent(outbound);
@@ -246,13 +215,11 @@ describe("solana order handlers", () => {
 
     const stored = await repo.findBySourceNonce(bytesToHex(override.nonce));
     assert.ok(stored);
-    assert.strictEqual(stored.signature, "sig-2");
+    assert.match(
+      stored.signature,
+      new RegExp(`^dummy-qubic-${stored.id}-[0-9a-f]{16}$`)
+    );
     assert.strictEqual(stored.to, bytesToHex(override.toAddress));
     assert.strictEqual(stored.relayerFee, "7");
-    assert.strictEqual(signerCalls.length, 2);
-    assert.strictEqual(
-      (signerCalls[1].toAddress as Uint8Array)[0],
-      override.toAddress[0]
-    );
   });
 });

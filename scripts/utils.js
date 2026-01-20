@@ -1,0 +1,61 @@
+import { readFile } from "node:fs/promises";
+import process from "node:process";
+import {
+  createSolanaRpc,
+  createSolanaRpcSubscriptions,
+  getAddressEncoder,
+  getProgramDerivedAddress,
+  sendAndConfirmTransactionFactory,
+} from "@solana/kit";
+
+export const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
+export const DEFAULT_WS_URL = "wss://api.devnet.solana.com";
+export const TOKEN_PROGRAM_ADDRESS = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+export const ASSOCIATED_TOKEN_PROGRAM_ADDRESS =
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+export const SYSTEM_PROGRAM_ADDRESS = "11111111111111111111111111111111";
+export const RENT_SYSVAR_ADDRESS = "SysvarRent111111111111111111111111111111111";
+
+export function resolveRpcUrl() {
+  return process.env.SOLANA_RPC_URL || DEFAULT_RPC_URL;
+}
+
+export function resolveWsUrl() {
+  return process.env.SOLANA_WS_URL || DEFAULT_WS_URL;
+}
+
+export function createRpcClients(rpcUrl = resolveRpcUrl(), wsUrl = resolveWsUrl()) {
+  const rpc = createSolanaRpc(rpcUrl);
+  const rpcSubscriptions = createSolanaRpcSubscriptions(wsUrl);
+  const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({
+    rpc,
+    rpcSubscriptions,
+  });
+  return { rpc, rpcSubscriptions, sendAndConfirmTransaction };
+}
+
+export async function readKeypairBytes(filePath, label = "Keypair") {
+  const raw = await readFile(filePath, "utf-8");
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed) || parsed.length !== 64) {
+    throw new Error(`${label} must be a JSON array of 64 bytes`);
+  }
+  return new Uint8Array(parsed);
+}
+
+export async function findAssociatedTokenAddress(
+  owner,
+  mint,
+  tokenProgram = TOKEN_PROGRAM_ADDRESS,
+  associatedTokenProgram = ASSOCIATED_TOKEN_PROGRAM_ADDRESS
+) {
+  const [ata] = await getProgramDerivedAddress({
+    programAddress: associatedTokenProgram,
+    seeds: [
+      getAddressEncoder().encode(owner),
+      getAddressEncoder().encode(tokenProgram),
+      getAddressEncoder().encode(mint),
+    ],
+  });
+  return ata;
+}
