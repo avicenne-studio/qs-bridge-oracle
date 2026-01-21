@@ -138,6 +138,7 @@ async function buildListenerApp({
           SOLANA_LISTENER_ENABLED: enabled,
           SOLANA_WS_URL: "ws://localhost:8900",
           SOLANA_BPS_FEE: 25,
+          RELAYER_FEE_RATIO_MIN: "1000",
         });
       },
       { name: "env" }
@@ -189,6 +190,7 @@ describe("ws solana listener plugin", () => {
           SOLANA_LISTENER_ENABLED: false,
           SOLANA_WS_URL: "ws://localhost:8900",
           SOLANA_BPS_FEE: 25,
+          RELAYER_FEE_RATIO_MIN: "1000",
         });
       }, { name: "env" })
     );
@@ -249,6 +251,7 @@ describe("ws solana listener plugin", () => {
           SOLANA_LISTENER_ENABLED: true,
           SOLANA_WS_URL: "ws://localhost:8900",
           SOLANA_BPS_FEE: 25,
+          RELAYER_FEE_RATIO_MIN: "1000",
         });
       }, { name: "env" })
     );

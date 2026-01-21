@@ -42,6 +42,7 @@ async function buildHubKeysApp(overrides: HubKeysEnvOverrides = {}) {
       SOLANA_WS_URL: "ws://localhost:8900",
       SOLANA_LISTENER_ENABLED: false,
       SOLANA_BPS_FEE: 25,
+      RELAYER_FEE_RATIO_MIN: "1000",
     },
   };
 
