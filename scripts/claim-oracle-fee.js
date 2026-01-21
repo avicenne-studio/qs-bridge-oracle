@@ -25,7 +25,7 @@ import {
   resolveWsUrl,
 } from "./utils.js";
 
-const DEFAULT_ADMIN_KEYPAIR = "./test/fixtures/solana-admin.json";
+const DEFAULT_ADMIN_KEYPAIR = "./.temp/solana-admin.json";
 
 async function main() {
   const oraclePubkeyRaw = process.argv[2];

@@ -21,7 +21,7 @@ import {
   resolveWsUrl,
 } from "./utils.js";
 
-const DEFAULT_ADMIN_KEYPAIR = "./test/fixtures/solana-admin.json";
+const DEFAULT_ADMIN_KEYPAIR = "./.temp/solana-admin.json";
 
 async function waitForRemoval(rpc, oraclePda, retries) {
   for (let i = 0; i < retries; i += 1) {

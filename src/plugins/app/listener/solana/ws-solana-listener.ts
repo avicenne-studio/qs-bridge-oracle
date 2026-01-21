@@ -38,6 +38,29 @@ type SolanaWsFactoryOwner = {
   parent?: SolanaWsFactoryOwner;
 };
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function extractSignatureSlot(value: unknown) {
+  if (!isObject(value)) {
+    return { signature: undefined, slot: undefined };
+  }
+  const signature =
+    typeof value.signature === "string" ? value.signature : undefined;
+  const slot = typeof value.slot === "number" ? value.slot : undefined;
+  return { signature, slot };
+}
+
+function extractErrorMetadata(event: unknown) {
+  if (!isObject(event)) {
+    return { reason: undefined, code: undefined };
+  }
+  const reason = typeof event.reason === "string" ? event.reason : undefined;
+  const code = typeof event.code === "number" ? event.code : undefined;
+  return { reason, code };
+}
+
 export function createDefaultSolanaWsFactory(
   WebSocketCtor: typeof WebSocket = WebSocket
 ): WebSocketFactory {
@@ -118,8 +141,7 @@ export default fp(
         return;
       }
 
-      const signature = (parsed.value as { signature?: string }).signature;
-      const slot = (parsed.value as { slot?: number }).slot;
+      const { signature, slot } = extractSignatureSlot(parsed.value);
       fastify.log.debug(
         {
           signature,
@@ -198,13 +220,14 @@ export default fp(
     };
 
     const onError = (event: { data?: unknown }) => {
+      const errorMeta = extractErrorMetadata(event);
       fastify.log.error(
         {
           event,
           wsUrl,
           readyState: ws?.readyState,
-          reason: (event as { reason?: string }).reason,
-          code: (event as { code?: number }).code,
+          reason: errorMeta.reason,
+          code: errorMeta.code,
         },
         "Solana listener WebSocket error"
       );
