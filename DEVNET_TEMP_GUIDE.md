@@ -23,7 +23,18 @@ This is the shortest path to add oracles and submit an inbound order on devnet u
 # NODE
 ```
 
-## 3) Create `.temp/order.json`
+
+## 3) Add the 6 oracles on-chain
+
+```bash
+# for i in 1 2 3 4 5 6; do
+#   PUB=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.temp/oracle-${i}.keys.json','utf8')).pKey)")
+#   npm run add-oracle -- "$PUB"
+# done
+```
+
+
+## 4) Create/Override `.temp/order.json`
 
 ```bash
 node <<'NODE'
@@ -47,14 +58,6 @@ fs.writeFileSync('.temp/order.json', JSON.stringify(order, null, 2));
 NODE
 ```
 
-## 4) Add the 6 oracles on-chain
-
-```bash
-for i in 1 2 3 4 5 6; do
-  PUB=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.temp/oracle-${i}.keys.json','utf8')).pKey)")
-  npm run add-oracle -- "$PUB"
-done
-```
 
 ## 5) Send an inbound order
 

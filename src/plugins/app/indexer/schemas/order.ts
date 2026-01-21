@@ -1,10 +1,6 @@
 import { Static, Type } from "@sinclair/typebox";
-import {
-  QubicTransaction,
-} from "./qubic-transaction.js";
-import {
-  SolanaTransaction,
-} from "./solana-transaction.js";
+import { QubicTransaction } from "./qubic-transaction.js";
+import { SolanaTransaction } from "./solana-transaction.js";
 import {
   IdSchema,
   SignatureSchema,
@@ -16,7 +12,11 @@ export const OracleChain = Type.Union([
   Type.Literal("solana"),
 ]);
 
-export const OracleOrderStatus = Type.Union([Type.Literal("ready-for-relay")]);
+export const OracleOrderStatus = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("ready-for-relay"),
+  Type.Literal("finalized"),
+]);
 const AmountSchema = Type.String({ pattern: "^[0-9]+$" });
 
 export const OracleOrderSchema = Type.Object({

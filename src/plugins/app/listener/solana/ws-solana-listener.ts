@@ -86,7 +86,9 @@ export default fp(
     const { handleOutboundEvent, handleOverrideOutboundEvent } =
       createSolanaOrderHandlers({
         ordersRepository,
-        config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
+        config: {
+          SOLANA_BPS_FEE: config.SOLANA_BPS_FEE,
+        },
         logger: fastify.log,
       });
 
@@ -167,13 +169,13 @@ export default fp(
                 { signature, type: decoded.type },
                 "Solana outbound event received"
               );
-              await handleOutboundEvent(decoded.event);
+              await handleOutboundEvent(decoded.event, { signature });
             } else if (decoded.type === "override-outbound") {
               fastify.log.info(
                 { signature, type: decoded.type },
                 "Solana override outbound event received"
               );
-              await handleOverrideOutboundEvent(decoded.event);
+              await handleOverrideOutboundEvent(decoded.event, { signature });
             }
           } catch (error) {
             fastify.log.error(

@@ -134,7 +134,7 @@ function startHubSignaturePolling(
         "Polled hub order signatures"
       );
     },
-    intervalMs: defaults.intervalMs,
+    intervalMs: defaults.intervalMs * 5,
     requestTimeoutMs: defaults.requestTimeoutMs,
     jitterMs: defaults.jitterMs,
   });

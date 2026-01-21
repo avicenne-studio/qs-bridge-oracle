@@ -71,7 +71,7 @@ describe("solana order handlers", () => {
 
     const event = createOutboundEvent();
     event.networkOut = 99;
-    await handleOutboundEvent(event);
+    await handleOutboundEvent(event, { signature: "sig-ignored-network" });
 
     assert.strictEqual(repo.store.size, 0);
   });
@@ -81,7 +81,7 @@ describe("solana order handlers", () => {
     const { handleOutboundEvent, entries } = createHandlers(repo);
 
     const event = createOutboundEvent();
-    await handleOutboundEvent(event);
+    await handleOutboundEvent(event, { signature: "sig-create-order" });
 
     const stored = await repo.findBySourceNonce(bytesToHex(event.nonce));
     assert.ok(stored);
@@ -132,7 +132,7 @@ describe("solana order handlers", () => {
     ]);
     const { handleOutboundEvent } = createHandlers(repo);
 
-    await handleOutboundEvent(createOutboundEvent());
+    await handleOutboundEvent(createOutboundEvent(), { signature: "sig-existing" });
 
     assert.strictEqual(repo.store.size, 1);
   });
@@ -208,7 +208,7 @@ describe("solana order handlers", () => {
       createHandlers(repo);
 
     const outbound = createOutboundEvent();
-    await handleOutboundEvent(outbound);
+    await handleOutboundEvent(outbound, { signature: "sig-override" });
 
     const override = createOverrideEvent();
     await handleOverrideOutboundEvent(override);
