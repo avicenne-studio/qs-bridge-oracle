@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import { createHash } from "node:crypto";
@@ -33,6 +32,9 @@ import {
   TOKEN_PROGRAM_ADDRESS,
   createRpcClients,
   findAssociatedTokenAddress,
+  logSection,
+  parseKeypairBytes,
+  readJson,
   resolveRpcUrl,
   resolveWsUrl,
 } from "./utils.js";
@@ -42,18 +44,6 @@ const DEFAULT_PROTOCOL_NAME = "QubicBridge";
 const DEFAULT_PROTOCOL_VERSION = "1";
 
 const HEX_PATTERN = /^[0-9a-fA-F]+$/;
-
-async function readJson(filePath) {
-  const raw = await readFile(filePath, "utf-8");
-  return JSON.parse(raw);
-}
-
-function parseKeypairBytes(value, label) {
-  if (!Array.isArray(value) || value.length !== 64) {
-    throw new Error(`${label} must be a JSON array of 64 bytes`);
-  }
-  return new Uint8Array(value);
-}
 
 function parseBytes32(value, field) {
   if (typeof value !== "string" || value.length === 0) {
@@ -165,10 +155,6 @@ async function checkAccountExists(rpc, account, label) {
   return true;
 }
 
-function logSection(title) {
-  process.stdout.write(`\n[send-inbound-order] ${title}\n`);
-}
-
 async function main() {
   const orderPath = process.argv[2];
   const oracleKeysPath = process.argv[3];
@@ -219,7 +205,7 @@ async function main() {
 
   const tokenOut = parseBytes32(tokenMint, "tokenOut");
 
-  logSection("Inputs");
+  logSection("send-inbound-order", "Inputs");
   process.stdout.write(
     JSON.stringify(
       {
@@ -258,7 +244,7 @@ async function main() {
     associatedTokenProgram
   );
 
-  logSection("Owner accounts");
+  logSection("send-inbound-order", "Owner accounts");
   const relayerAccount = await rpc
     .getAccountInfo(relayerSigner.address, { encoding: "base64" })
     .send();
@@ -296,7 +282,7 @@ async function main() {
       .getAccountInfo(target.address, { encoding: "base64" })
       .send();
     if (!accountInfo?.value) {
-      logSection(`Creating ${target.label}`);
+      logSection("send-inbound-order", `Creating ${target.label}`);
       const ix = getCreateAssociatedTokenAccountInstruction({
         payerSigner: relayerSigner,
         ata: target.address,
@@ -384,7 +370,7 @@ async function main() {
           Math.max(1, Math.ceil(oracleCount * (ORACLE_THRESHOLD_PERCENT / 100))),
           6
         );
-  logSection("Oracle threshold");
+  logSection("send-inbound-order", "Oracle threshold");
   process.stdout.write(
     JSON.stringify(
       {
@@ -417,7 +403,7 @@ async function main() {
     })
   );
   const paddedOraclePdas = padToLength(oraclePdas, 6, oraclePdas[0]);
-  logSection("Oracle PDAs");
+  logSection("send-inbound-order", "Oracle PDAs");
   paddedOraclePdas.forEach((oraclePda, index) => {
     process.stdout.write(`oracle${index + 1}: ${oraclePda}\n`);
   });
@@ -448,7 +434,7 @@ async function main() {
     networkIn,
     nonce,
   });
-  logSection("Inbound order PDA");
+  logSection("send-inbound-order", "Inbound order PDA");
   process.stdout.write(`inboundOrderPda: ${inboundOrderPda}\n`);
   const existingInbound = await rpc
     .getAccountInfo(inboundOrderPda, { encoding: "base64" })
@@ -503,7 +489,7 @@ async function main() {
   const signedTransaction = await signTransactionMessageWithSigners(message);
   const signature = getSignatureFromTransaction(signedTransaction);
 
-  logSection("Transaction");
+  logSection("send-inbound-order", "Transaction");
   process.stdout.write(`signature: ${signature}\n`);
 
   if (typeof rpc.simulateTransaction === "function") {

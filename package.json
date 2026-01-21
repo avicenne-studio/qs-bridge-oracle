@@ -22,6 +22,7 @@
     "claim-protocol-fee": "node scripts/claim-protocol-fee.js",
     "send-inbound-order": "node scripts/send-inbound-order.js",
     "send-outbound-order": "node scripts/send-outbound-order.js",
+    "override-outbound-order": "node scripts/override-outbound-order.js",
     "test": "c8 npm run test:run",
     "test:run": "glob -c \"tsx --env-file=.env.test --test\" \"./test/**/*.ts\"",
     "lint": "eslint --ignore-pattern=dist",

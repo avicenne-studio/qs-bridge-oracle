@@ -245,7 +245,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (!existing) {
       logger.warn(
-        { orderId: sourceNonce },
+        { sourceNonce },
         "Solana override event received for unknown order"
       );
       return;

@@ -96,6 +96,14 @@ Then send (user signs with the key that received tokens):
 npm run send-outbound-order -- .temp/outbound-order.json .temp/recipient.json
 ```
 
+Override an existing outbound order (update relayer fee and/or destination):
+
+```bash
+npm run override-outbound-order -- .temp/outbound-order.json .temp/recipient.json \
+  --relayer-fee 2000 \
+  --to-address 0x5555444444444444444444444444444444444444444444444444444444444444
+```
+
 ## 7) Claim protocol fee (protocol fee recipient only)
 
 ```bash
