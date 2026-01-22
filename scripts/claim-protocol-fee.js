@@ -16,6 +16,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
   TOKEN_PROGRAM_ADDRESS,
   createRpcClients,
+  applyComputeBudget,
   findAssociatedTokenAddress,
   readKeypairBytes,
   resolveRpcUrl,
@@ -71,13 +72,15 @@ async function main() {
 
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
 
-  const message = appendTransactionMessageInstruction(
-    instruction,
-    setTransactionMessageLifetimeUsingBlockhash(
-      latestBlockhash,
-      setTransactionMessageFeePayer(
-        recipientSigner.address,
-        createTransactionMessage({ version: "legacy" })
+  const message = applyComputeBudget(
+    appendTransactionMessageInstruction(
+      instruction,
+      setTransactionMessageLifetimeUsingBlockhash(
+        latestBlockhash,
+        setTransactionMessageFeePayer(
+          recipientSigner.address,
+          createTransactionMessage({ version: "legacy" })
+        )
       )
     )
   );

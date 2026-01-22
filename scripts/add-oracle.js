@@ -14,6 +14,7 @@ import { findOraclePda } from "../dist/clients/js/pdas/oracle.js";
 import { getAddOracleInstruction } from "../dist/clients/js/instructions/addOracle.js";
 import {
   createRpcClients,
+  applyComputeBudget,
   readKeypairBytes,
   resolveRpcUrl,
   resolveWsUrl,
@@ -54,13 +55,15 @@ async function main() {
 
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
 
-  const message = appendTransactionMessageInstruction(
-    instruction,
-    setTransactionMessageLifetimeUsingBlockhash(
-      latestBlockhash,
-      setTransactionMessageFeePayer(
-        adminSigner.address,
-        createTransactionMessage({ version: "legacy" })
+  const message = applyComputeBudget(
+    appendTransactionMessageInstruction(
+      instruction,
+      setTransactionMessageLifetimeUsingBlockhash(
+        latestBlockhash,
+        setTransactionMessageFeePayer(
+          adminSigner.address,
+          createTransactionMessage({ version: "legacy" })
+        )
       )
     )
   );

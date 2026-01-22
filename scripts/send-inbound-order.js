@@ -31,6 +31,7 @@ import {
   SYSTEM_PROGRAM_ADDRESS,
   TOKEN_PROGRAM_ADDRESS,
   createRpcClients,
+  applyComputeBudget,
   findAssociatedTokenAddress,
   logSection,
   parseKeypairBytes,
@@ -294,13 +295,15 @@ async function main() {
         rentSysvar,
       });
       const { value: blockhash } = await rpc.getLatestBlockhash().send();
-      const ataMessage = appendTransactionMessageInstruction(
-        ix,
-        setTransactionMessageLifetimeUsingBlockhash(
-          blockhash,
-          setTransactionMessageFeePayer(
-            relayerSigner.address,
-            createTransactionMessage({ version: "legacy" })
+      const ataMessage = applyComputeBudget(
+        appendTransactionMessageInstruction(
+          ix,
+          setTransactionMessageLifetimeUsingBlockhash(
+            blockhash,
+            setTransactionMessageFeePayer(
+              relayerSigner.address,
+              createTransactionMessage({ version: "legacy" })
+            )
           )
         )
       );
@@ -485,6 +488,7 @@ async function main() {
     )
   );
   message = appendTransactionMessageInstruction(instruction, message);
+  message = applyComputeBudget(message);
 
   const signedTransaction = await signTransactionMessageWithSigners(message);
   const signature = getSignatureFromTransaction(signedTransaction);

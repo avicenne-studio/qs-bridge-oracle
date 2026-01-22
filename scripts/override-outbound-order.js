@@ -15,6 +15,7 @@ import { findOutboundOrderPda } from "../dist/clients/js/pdas/outboundOrder.js";
 import { getOverrideOutboundInstruction } from "../dist/clients/js/instructions/overrideOutbound.js";
 import {
   createRpcClients,
+  applyComputeBudget,
   logSection,
   parseArgs,
   parseHexBytes32,
@@ -87,13 +88,15 @@ async function main() {
   });
 
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
-  const message = appendTransactionMessageInstruction(
-    instruction,
-    setTransactionMessageLifetimeUsingBlockhash(
-      latestBlockhash,
-      setTransactionMessageFeePayer(
-        userSigner.address,
-        createTransactionMessage({ version: "legacy" })
+  const message = applyComputeBudget(
+    appendTransactionMessageInstruction(
+      instruction,
+      setTransactionMessageLifetimeUsingBlockhash(
+        latestBlockhash,
+        setTransactionMessageFeePayer(
+          userSigner.address,
+          createTransactionMessage({ version: "legacy" })
+        )
       )
     )
   );

@@ -6,6 +6,7 @@ import {
   createSolanaRpcSubscriptions,
   getAddressEncoder,
   getProgramDerivedAddress,
+  prependTransactionMessageInstructions,
   sendAndConfirmTransactionFactory,
 } from "@solana/kit";
 
@@ -16,7 +17,13 @@ export const ASSOCIATED_TOKEN_PROGRAM_ADDRESS =
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 export const SYSTEM_PROGRAM_ADDRESS = "11111111111111111111111111111111";
 export const RENT_SYSVAR_ADDRESS = "SysvarRent111111111111111111111111111111111";
+export const COMPUTE_BUDGET_PROGRAM_ADDRESS =
+  "ComputeBudget111111111111111111111111111111";
+export const DEFAULT_COMPUTE_UNIT_LIMIT = 200_000;
+export const DEFAULT_COMPUTE_UNIT_PRICE_MICROLAMPORTS = 0n;
 const HEX_PATTERN = /^[0-9a-fA-F]+$/;
+const UINT32_MAX = 0xffff_ffff;
+const UINT64_MAX = (1n << 64n) - 1n;
 
 export function resolveRpcUrl() {
   return process.env.SOLANA_RPC_URL || DEFAULT_RPC_URL;
@@ -34,6 +41,90 @@ export function createRpcClients(rpcUrl = resolveRpcUrl(), wsUrl = resolveWsUrl(
     rpcSubscriptions,
   });
   return { rpc, rpcSubscriptions, sendAndConfirmTransaction };
+}
+
+function parseUnsignedInteger(value, label) {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${label} must be a non-empty string integer`);
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`${label} must be an unsigned integer`);
+  }
+  return value;
+}
+
+function encodeU32LE(value) {
+  const buffer = new ArrayBuffer(4);
+  const view = new DataView(buffer);
+  view.setUint32(0, value, true);
+  return new Uint8Array(buffer);
+}
+
+function encodeU64LE(value) {
+  const buffer = new ArrayBuffer(8);
+  const view = new DataView(buffer);
+  view.setBigUint64(0, value, true);
+  return new Uint8Array(buffer);
+}
+
+function createComputeBudgetInstruction(discriminator, payload) {
+  const data = new Uint8Array(1 + payload.length);
+  data[0] = discriminator;
+  data.set(payload, 1);
+  return {
+    programAddress: COMPUTE_BUDGET_PROGRAM_ADDRESS,
+    accounts: [],
+    data,
+  };
+}
+
+export function resolveComputeUnitLimit() {
+  const raw = process.env.SOLANA_COMPUTE_UNIT_LIMIT;
+  if (raw === undefined) {
+    return DEFAULT_COMPUTE_UNIT_LIMIT;
+  }
+  const parsed = Number(parseUnsignedInteger(raw, "SOLANA_COMPUTE_UNIT_LIMIT"));
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > UINT32_MAX) {
+    throw new Error("SOLANA_COMPUTE_UNIT_LIMIT must fit in uint32");
+  }
+  return parsed;
+}
+
+export function resolveComputeUnitPrice() {
+  const raw = process.env.SOLANA_COMPUTE_UNIT_PRICE_MICROLAMPORTS;
+  if (raw === undefined) {
+    return DEFAULT_COMPUTE_UNIT_PRICE_MICROLAMPORTS;
+  }
+  const parsed = BigInt(
+    parseUnsignedInteger(raw, "SOLANA_COMPUTE_UNIT_PRICE_MICROLAMPORTS")
+  );
+  if (parsed < 0n || parsed > UINT64_MAX) {
+    throw new Error(
+      "SOLANA_COMPUTE_UNIT_PRICE_MICROLAMPORTS must fit in uint64"
+    );
+  }
+  return parsed;
+}
+
+export function applyComputeBudget(
+  message,
+  {
+    computeUnitLimit = resolveComputeUnitLimit(),
+    computeUnitPriceMicroLamports = resolveComputeUnitPrice(),
+  } = {}
+) {
+  const limitInstruction = createComputeBudgetInstruction(
+    2,
+    encodeU32LE(computeUnitLimit)
+  );
+  const priceInstruction = createComputeBudgetInstruction(
+    3,
+    encodeU64LE(computeUnitPriceMicroLamports)
+  );
+  return prependTransactionMessageInstructions(
+    [limitInstruction, priceInstruction],
+    message
+  );
 }
 
 export async function readJson(filePath) {
