@@ -38,6 +38,7 @@ async function buildEnvApp(overrides: EnvOverrides = {}) {
       SOLANA_WS_URL: "ws://localhost:8900",
       SOLANA_LISTENER_ENABLED: false,
       SOLANA_BPS_FEE: 25,
+      RELAYER_FEE_PERCENT: "0.1",
     },
   };
 

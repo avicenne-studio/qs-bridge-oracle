@@ -16,6 +16,7 @@ export type EnvConfig = {
   SOLANA_WS_URL: string;
   SOLANA_LISTENER_ENABLED: boolean;
   SOLANA_BPS_FEE: number;
+  RELAYER_FEE_PERCENT: string;
 };
 
 export const kEnvConfig = "config";
@@ -33,6 +34,7 @@ const schema = {
     "SOLANA_WS_URL",
     "SOLANA_LISTENER_ENABLED",
     "SOLANA_BPS_FEE",
+    "RELAYER_FEE_PERCENT",
   ],
   properties: {
     RATE_LIMIT_MAX: {
@@ -83,6 +85,10 @@ const schema = {
       type: "number",
       minimum: 0,
       default: 0,
+    },
+    RELAYER_FEE_PERCENT: {
+      type: "string",
+      pattern: "^[0-9]+(\\.[0-9]+)?$",
     },
   },
 };
