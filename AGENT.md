@@ -38,7 +38,7 @@
 - Tests load `.env.test` (not committed) to point at an ephemeral SQLite file and throttle rate limits for deterministic runs.
 
 ## Operational Notes
-- Required env vars: `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`, `HUB_KEYS_FILE`, `RELAYER_FEE_RATIO_MIN`; optional `RATE_LIMIT_MAX`, `ORACLE_SIGNATURE_THRESHOLD` (defaults to 2). Keep secrets outside the repo and mount read-only wherever possible.
+- Required env vars: `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`, `HUB_KEYS_FILE`, `RELAYER_FEE_PERCENT`; optional `RATE_LIMIT_MAX`, `ORACLE_SIGNATURE_THRESHOLD` (defaults to 2). Keep secrets outside the repo and mount read-only wherever possible.
 - Docker is the default orchestration. `docker-compose.yml` targets development; `docker-compose.prod.yml` uses the multi-stage production image. Both expose port `3000` and mount the SQLite database volume.
 - Builds compile TypeScript (`npm run build`) into `dist/`; production start script runs `node dist/server.js`.
 - Because the oracle interacts with two blockchains, keep serialization/deserialization code constant-time wherever feasible, validate every inbound structure against the TypeBox schemas, and never assume external RPC responses are trusted.

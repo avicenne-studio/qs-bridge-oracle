@@ -20,6 +20,14 @@ function ceilDiv(numerator: bigint, denominator: bigint): bigint {
   return (numerator + denominator - 1n) / denominator;
 }
 
+function parsePercentToRatio(value: string, decimals: number): bigint {
+  const [whole, fraction = ""] = value.split(".");
+  const scale = fraction.length;
+  const percentScaled = BigInt(`${whole}${fraction}`);
+  const denominator = 100n * pow10(scale);
+  return ceilDiv(percentScaled * pow10(decimals), denominator);
+}
+
 function minimumRelayerFee(
   amount: bigint,
   ratio: bigint,
@@ -32,13 +40,20 @@ function minimumRelayerFee(
 }
 
 function createRelayerFeeAcceptance(config: EnvConfig): RelayerFeeAcceptance {
-  const ratio = BigInt(config.RELAYER_FEE_RATIO_MIN);
+  const solanaRatio = parsePercentToRatio(
+    config.RELAYER_FEE_PERCENT,
+    SOLANA_DECIMALS
+  );
+  const qubicRatio = parsePercentToRatio(
+    config.RELAYER_FEE_PERCENT,
+    QUBIC_DECIMALS
+  );
   return {
     acceptRelayToSolana(amount, relayerFee) {
-      return relayerFee >= minimumRelayerFee(amount, ratio, SOLANA_DECIMALS);
+      return relayerFee >= minimumRelayerFee(amount, solanaRatio, SOLANA_DECIMALS);
     },
     acceptRelayToQubic(amount, relayerFee) {
-      return relayerFee >= minimumRelayerFee(amount, ratio, QUBIC_DECIMALS);
+      return relayerFee >= minimumRelayerFee(amount, qubicRatio, QUBIC_DECIMALS);
     },
   };
 }
