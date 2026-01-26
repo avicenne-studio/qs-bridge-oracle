@@ -10,10 +10,8 @@ import wsSolanaListener, {
 import { waitFor } from "../../../helper.js";
 import { getOutboundEventEncoder } from "../../../../src/clients/js/types/outboundEvent.js";
 import { getOverrideOutboundEventEncoder } from "../../../../src/clients/js/types/overrideOutboundEvent.js";
-import { type SolanaOrderToSign } from "../../../../src/plugins/app/signer/signer.service.js";
 import { kEnvConfig } from "../../../../src/plugins/infra/env.js";
 import { kOrdersRepository } from "../../../../src/plugins/app/indexer/orders.repository.js";
-import { kSignerService } from "../../../../src/plugins/app/signer/signer.service.js";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 
 type WsEventMap = {
@@ -30,14 +28,19 @@ class MockWebSocket {
   static CLOSED = 3;
   readyState = MockWebSocket.OPEN;
   sent: string[] = [];
+  private readonly keepListeners: boolean;
   private listeners = new Map<keyof WsEventMap, Set<WsEventHandler>>();
+
+  constructor({ keepListeners = false }: { keepListeners?: boolean } = {}) {
+    this.keepListeners = keepListeners;
+  }
 
   addEventListener<K extends keyof WsEventMap>(
     type: K,
     listener: (event: WsEventMap[K]) => void
   ) {
     const bucket = this.listeners.get(type) ?? new Set<WsEventHandler>();
-    bucket.add(listener as WsEventHandler);
+    bucket.add(listener);
     this.listeners.set(type, bucket);
   }
 
@@ -45,6 +48,9 @@ class MockWebSocket {
     type: K,
     listener: (event: WsEventMap[K]) => void
   ) {
+    if (this.keepListeners) {
+      return;
+    }
     const bucket = this.listeners.get(type);
     if (!bucket) {
       return;
@@ -119,46 +125,31 @@ function createLogsNotification(lines: string[]) {
 type ListenerAppOptions = {
   enabled?: boolean;
   ws?: MockWebSocket;
-  signerImpl?: (order: SolanaOrderToSign) => Promise<string>;
+  wsFactory?: () => MockWebSocket;
+  ordersRepository?: ReturnType<typeof createInMemoryOrders>;
+  wsUrl?: string;
 };
 
 async function buildListenerApp({
   enabled = true,
   ws = new MockWebSocket(),
-  signerImpl,
+  wsFactory,
+  ordersRepository = createInMemoryOrders(),
+  wsUrl = "ws://localhost:8900",
 }: ListenerAppOptions = {}) {
   const app = fastify({ logger: false });
-  const ordersRepository = createInMemoryOrders();
-  const signerCalls: SolanaOrderToSign[] = [];
 
   app.register(
     fp(
       async (instance) => {
         instance.decorate(kEnvConfig, {
           SOLANA_LISTENER_ENABLED: enabled,
-          SOLANA_WS_URL: "ws://localhost:8900",
+          SOLANA_WS_URL: wsUrl,
           SOLANA_BPS_FEE: 25,
           RELAYER_FEE_PERCENT: "0.1",
         });
       },
       { name: "env" }
-    )
-  );
-
-  app.register(
-    fp(
-      async (instance) => {
-        instance.decorate(kSignerService, {
-          async signSolanaOrder(order: SolanaOrderToSign) {
-            signerCalls.push(order);
-            if (signerImpl) {
-              return signerImpl(order);
-            }
-            return `sig-${signerCalls.length}`;
-          },
-        });
-      },
-      { name: "signer-service" }
     )
   );
 
@@ -171,11 +162,11 @@ async function buildListenerApp({
     )
   );
 
-  app.decorate("solanaWsFactory", () => ws);
+  app.decorate("solanaWsFactory", wsFactory ?? (() => ws));
   app.register(wsSolanaListener);
   await app.ready();
 
-  return { app, ws, ordersRepository, signerCalls };
+  return { app, ws, ordersRepository };
 }
 
 describe("ws solana listener plugin", () => {
@@ -193,11 +184,6 @@ describe("ws solana listener plugin", () => {
           RELAYER_FEE_PERCENT: "0.1",
         });
       }, { name: "env" })
-    );
-    app.register(
-      fp(async (instance) => {
-        instance.decorate(kSignerService, { signSolanaOrder: async () => "sig" });
-      }, { name: "signer-service" })
     );
     app.register(
       fp(async (instance) => {
@@ -257,11 +243,6 @@ describe("ws solana listener plugin", () => {
     );
     app.register(
       fp(async (instance) => {
-        instance.decorate(kSignerService, { signSolanaOrder: async () => "sig" });
-      }, { name: "signer-service" })
-    );
-    app.register(
-      fp(async (instance) => {
         instance.decorate(kOrdersRepository, createInMemoryOrders());
       }, { name: "orders-repository" })
     );
@@ -270,31 +251,13 @@ describe("ws solana listener plugin", () => {
     await app.close();
   });
 
-  it("logs failures while processing queued events", async () => {
-    const { app, ws, signerCalls } = await buildListenerApp({
-      signerImpl: async () => {
-        throw new Error("boom");
-      },
-    });
-
-    ws.emit("open", {});
-
-    const outboundBytes = createOutboundEventBytes();
-    const payload = createLogsNotification([
-      `Program data: ${Buffer.from(outboundBytes).toString("base64")}`,
-    ]);
-    ws.emit("message", { data: payload });
-
-    await waitFor(() => signerCalls.length === 1);
-
-    await app.close();
-  });
-
   it("logs queue errors from async tasks", async (t) => {
+    const repo = createInMemoryOrders();
+    repo.create = async () => {
+      throw new Error("queue-fail");
+    };
     const { app, ws } = await buildListenerApp({
-      signerImpl: async () => {
-        throw new Error("queue-fail");
-      },
+      ordersRepository: repo,
     });
     const { mock: logMock } = t.mock.method(app.log, "error");
 
@@ -337,7 +300,7 @@ describe("ws solana listener plugin", () => {
   });
 
   it("processes outbound and override events", async () => {
-    const { app, ws, ordersRepository, signerCalls } = await buildListenerApp();
+    const { app, ws, ordersRepository } = await buildListenerApp();
 
     ws.emit("open", {});
 
@@ -369,17 +332,16 @@ describe("ws solana listener plugin", () => {
     ws.emit("message", { data: "{bad json" });
 
     await waitFor(() =>
-      [...ordersRepository.store.values()].some(
-        (order) => order.signature === "sig-2"
+      [...ordersRepository.store.values()].some((order) =>
+        order.signature.startsWith("dummy-qubic-")
       )
     );
 
-    const stored = [...ordersRepository.store.values()].find(
-      (order) => order.signature === "sig-2"
+    const stored = [...ordersRepository.store.values()].find((order) =>
+      order.signature.startsWith("dummy-qubic-")
     );
     assert.ok(stored);
     assert.strictEqual(stored.relayerFee, "7");
-    assert.strictEqual(signerCalls.length, 2);
 
     await app.close();
   });
@@ -420,5 +382,94 @@ describe("ws solana listener plugin", () => {
 
     const fromDefault = defaultFactory("ws://example.test");
     assert.ok(fromDefault instanceof FakeWebSocket);
+  });
+
+  it("reconnects after close events", async (t) => {
+    const sockets: MockWebSocket[] = [];
+    const factory = () => {
+      const socket = new MockWebSocket();
+      sockets.push(socket);
+      return socket;
+    };
+    const { app } = await buildListenerApp({ wsFactory: factory });
+    let scheduled = 0;
+    t.mock.method(global, "setTimeout", (fn: () => void) => {
+      scheduled += 1;
+      fn();
+      return 1 as unknown as NodeJS.Timeout;
+    });
+
+    const first = sockets[0];
+    assert.ok(first);
+    first.emit("close", {});
+
+    await waitFor(() => sockets.length === 2);
+    assert.ok(scheduled >= 1);
+    await app.close();
+  });
+
+  it("avoids duplicate reconnect timers", async (t) => {
+    const sockets: MockWebSocket[] = [];
+    const factory = () => {
+      const socket = new MockWebSocket();
+      sockets.push(socket);
+      return socket;
+    };
+    const { app } = await buildListenerApp({ wsFactory: factory });
+    let storedCallback: (() => void) | null = null;
+    let scheduled = 0;
+    t.mock.method(global, "setTimeout", (fn: () => void) => {
+      scheduled += 1;
+      storedCallback = fn;
+      return 1 as unknown as NodeJS.Timeout;
+    });
+
+    const first = sockets[0];
+    assert.ok(first);
+    first.emit("close", {});
+    first.emit("close", {});
+
+    assert.strictEqual(scheduled, 1);
+    storedCallback?.();
+    await waitFor(() => sockets.length === 2);
+    await app.close();
+  });
+
+  it("skips reconnect when shutting down", async () => {
+    const sockets: MockWebSocket[] = [];
+    const factory = () => {
+      const socket = new MockWebSocket({ keepListeners: true });
+      sockets.push(socket);
+      return socket;
+    };
+    const { app } = await buildListenerApp({ wsFactory: factory });
+    const first = sockets[0];
+    assert.ok(first);
+    await app.close();
+    first.emit("close", {});
+    assert.strictEqual(sockets.length, 1);
+  });
+
+  it("skips reconnect when ws url is empty", async (t) => {
+    const sockets: MockWebSocket[] = [];
+    const factory = () => {
+      const socket = new MockWebSocket();
+      sockets.push(socket);
+      return socket;
+    };
+    const { app } = await buildListenerApp({
+      wsFactory: factory,
+      wsUrl: "",
+    });
+    t.mock.method(global, "setTimeout", (fn: () => void) => {
+      fn();
+      return 1 as unknown as NodeJS.Timeout;
+    });
+
+    const first = sockets[0];
+    assert.ok(first);
+    first.emit("close", {});
+    assert.strictEqual(sockets.length, 1);
+    await app.close();
   });
 });

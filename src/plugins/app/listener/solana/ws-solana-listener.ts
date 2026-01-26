@@ -1,9 +1,6 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { WebSocket } from "undici";
-import {
-  getAddressEncoder,
-} from "@solana/kit";
 import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../../../clients/js/programs/qsBridge.js";
 import { AsyncQueue } from "./async-queue.js";
 import {
@@ -23,10 +20,6 @@ import {
   kOrdersRepository,
   type OrdersRepository,
 } from "../../indexer/orders.repository.js";
-import {
-  kSignerService,
-  type SignerService,
-} from "../../signer/signer.service.js";
 
 type WebSocketListener = (event: { data?: unknown }) => void;
 
@@ -38,11 +31,35 @@ type WebSocketLike = {
   readyState: number;
 };
 
-const contractAddressBytes = new Uint8Array(
-  getAddressEncoder().encode(QS_BRIDGE_PROGRAM_ADDRESS)
-);
-
 type WebSocketFactory = (url: string) => WebSocketLike;
+
+type SolanaWsFactoryOwner = {
+  solanaWsFactory?: WebSocketFactory;
+  parent?: SolanaWsFactoryOwner;
+};
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function extractSignatureSlot(value: unknown) {
+  if (!isObject(value)) {
+    return { signature: undefined, slot: undefined };
+  }
+  const signature =
+    typeof value.signature === "string" ? value.signature : undefined;
+  const slot = typeof value.slot === "number" ? value.slot : undefined;
+  return { signature, slot };
+}
+
+function extractErrorMetadata(event: unknown) {
+  if (!isObject(event)) {
+    return { reason: undefined, code: undefined };
+  }
+  const reason = typeof event.reason === "string" ? event.reason : undefined;
+  const code = typeof event.code === "number" ? event.code : undefined;
+  return { reason, code };
+}
 
 export function createDefaultSolanaWsFactory(
   WebSocketCtor: typeof WebSocket = WebSocket
@@ -51,10 +68,7 @@ export function createDefaultSolanaWsFactory(
 }
 
 export function resolveSolanaWsFactory(
-  instance: FastifyInstance & {
-    solanaWsFactory?: WebSocketFactory;
-    parent?: FastifyInstance & { solanaWsFactory?: WebSocketFactory };
-  },
+  instance: SolanaWsFactoryOwner,
   defaultFactory: WebSocketFactory
 ): WebSocketFactory {
   return (
@@ -74,10 +88,12 @@ export default fp(
 
     const ordersRepository =
       fastify.getDecorator<OrdersRepository>(kOrdersRepository);
-    const signerService =
-      fastify.getDecorator<SignerService>(kSignerService);
-
     let ws: WebSocketLike | null = null;
+    let wsUrl: string | null = null;
+    let wsFactory: WebSocketFactory | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let reconnectAttempt = 0;
+    let shuttingDown = false;
     let subscriptionId: number | null = null;
     const queue = new AsyncQueue((error) => {
       fastify.log.error({ err: error }, "Solana listener async task failed");
@@ -93,10 +109,10 @@ export default fp(
     const { handleOutboundEvent, handleOverrideOutboundEvent } =
       createSolanaOrderHandlers({
         ordersRepository,
-        signerService,
-        config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
+        config: {
+          SOLANA_BPS_FEE: config.SOLANA_BPS_FEE,
+        },
         logger: fastify.log,
-        contractAddressBytes,
       });
 
     const sendRequest = (method: string, params?: unknown[]) =>
@@ -117,15 +133,42 @@ export default fp(
       if (parsed.kind === "subscription") {
         if (parsed.id === subscribeRequestId) {
           subscriptionId = parsed.result;
+          fastify.log.info(
+            { subscriptionId },
+            "Solana listener subscription established"
+          );
         }
         return;
       }
 
+      const { signature, slot } = extractSignatureSlot(parsed.value);
+      fastify.log.debug(
+        {
+          signature,
+          slot,
+          hasError: Boolean(parsed.value.err),
+          logCount: parsed.value.logs.length,
+        },
+        "Solana logs notification received"
+      );
+      fastify.log.debug(
+        { signature, logs: parsed.value.logs.slice(0, 6) },
+        "Solana logs (sample)"
+      );
+
       if (parsed.value.err) {
+        fastify.log.warn(
+          { signature, err: parsed.value.err },
+          "Solana logs notification has error"
+        );
         return;
       }
 
       const dataLogs = logLinesToEvents(parsed.value.logs);
+      fastify.log.debug(
+        { signature, dataLogCount: dataLogs.length },
+        "Solana logs decoded to program data entries"
+      );
       for (const data of dataLogs) {
         const decoded = decodeEventBytes(data);
         if (!decoded) {
@@ -133,7 +176,7 @@ export default fp(
             if (!seenUnknownEventSizes.has(data.length)) {
               seenUnknownEventSizes.add(data.length);
               fastify.log.warn(
-                { size: data.length },
+                { size: data.length, signature },
                 "Solana listener received unknown event size"
               );
             }
@@ -144,9 +187,17 @@ export default fp(
         void queue.push(async () => {
           try {
             if (decoded.type === "outbound") {
-              await handleOutboundEvent(decoded.event);
+              fastify.log.info(
+                { signature, type: decoded.type },
+                "Solana outbound event received"
+              );
+              await handleOutboundEvent(decoded.event, { signature });
             } else if (decoded.type === "override-outbound") {
-              await handleOverrideOutboundEvent(decoded.event);
+              fastify.log.info(
+                { signature, type: decoded.type },
+                "Solana override outbound event received"
+              );
+              await handleOverrideOutboundEvent(decoded.event, { signature });
             }
           } catch (error) {
             fastify.log.error(
@@ -164,14 +215,57 @@ export default fp(
         { mentions: [QS_BRIDGE_PROGRAM_ADDRESS] },
         { commitment: "confirmed" },
       ]);
+      reconnectAttempt = 0;
+      fastify.log.info({ wsUrl }, "Solana listener WebSocket connected");
     };
 
     const onError = (event: { data?: unknown }) => {
-      fastify.log.error({ event }, "Solana listener WebSocket error");
+      const errorMeta = extractErrorMetadata(event);
+      fastify.log.error(
+        {
+          event,
+          wsUrl,
+          readyState: ws?.readyState,
+          reason: errorMeta.reason,
+          code: errorMeta.code,
+        },
+        "Solana listener WebSocket error"
+      );
+    };
+
+    const scheduleReconnect = () => {
+      if (shuttingDown) {
+        return;
+      }
+      if (reconnectTimer) {
+        return;
+      }
+      const delayMs = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
+      reconnectAttempt += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (!wsUrl || !wsFactory) {
+          return;
+        }
+        fastify.log.warn({ wsUrl, delayMs }, "Reconnecting Solana WS");
+        ws = wsFactory(wsUrl);
+        ws.addEventListener("open", onOpen);
+        ws.addEventListener("message", onMessage);
+        ws.addEventListener("error", onError);
+        ws.addEventListener("close", onClose);
+      }, delayMs);
     };
 
     const onClose = () => {
+      fastify.log.warn(
+        {
+          wsUrl,
+          readyState: ws?.readyState,
+        },
+        "Solana listener WebSocket closed"
+      );
       subscriptionId = null;
+      scheduleReconnect();
     };
 
     fastify.addHook("onReady", async () => {
@@ -179,11 +273,12 @@ export default fp(
         solanaWsFactory?: WebSocketFactory;
         parent?: FastifyInstance & { solanaWsFactory?: WebSocketFactory };
       };
-      const wsFactory = resolveSolanaWsFactory(
+      wsFactory = resolveSolanaWsFactory(
         instance,
         createDefaultSolanaWsFactory()
       );
-      ws = wsFactory(config.SOLANA_WS_URL);
+      wsUrl = config.SOLANA_WS_URL;
+      ws = wsFactory(wsUrl);
       ws.addEventListener("open", onOpen);
       ws.addEventListener("message", onMessage);
       ws.addEventListener("error", onError);
@@ -191,8 +286,13 @@ export default fp(
     });
 
     fastify.addHook("onClose", async () => {
+      shuttingDown = true;
       if (!ws) {
         return;
+      }
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
       }
       ws.removeEventListener("open", onOpen);
       ws.removeEventListener("message", onMessage);
@@ -209,6 +309,6 @@ export default fp(
   },
   {
     name: "ws-solana-listener",
-    dependencies: ["env", "signer-service", "orders-repository"],
+    dependencies: ["env", "orders-repository"],
   }
 );

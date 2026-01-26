@@ -1,31 +1,24 @@
 import { OracleOrder } from "../../indexer/schemas/order.js";
+import type { FastifyBaseLogger } from "fastify";
 import { type OutboundEvent } from "../../../../clients/js/types/outboundEvent.js";
 import { type OverrideOutboundEvent } from "../../../../clients/js/types/overrideOutboundEvent.js";
-import { type SolanaOrderToSign, type SignerService } from "../../signer/signer.service.js";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import {
   bytesToHex,
   hexToBytes,
   toU64BigInt,
 } from "./bytes.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { Buffer } from "node:buffer";
 
-export const SOLANA_PROTOCOL_NAME = "qs-bridge";
-export const SOLANA_PROTOCOL_VERSION = "1";
 export const QUBIC_NETWORK_ID = 1;
 
-type Logger = {
-  info: (payload: unknown, message?: string) => void;
-  warn: (payload: unknown, message?: string) => void;
-  error: (payload: unknown, message?: string) => void;
-};
+type Logger = FastifyBaseLogger;
 
 type SolanaOrderDependencies = {
   ordersRepository: OrdersRepository;
-  signerService: SignerService;
   config: { SOLANA_BPS_FEE: number };
   logger: Logger;
-  contractAddressBytes: Uint8Array;
 };
 
 type SolanaOrderSourcePayloadV1 = {
@@ -50,16 +43,22 @@ type NormalizedOrder = {
   nonce: Uint8Array;
 };
 
-function toSignerPayload(
-  normalized: NormalizedOrder,
-  contractAddressBytes: Uint8Array
-): SolanaOrderToSign {
-  return {
-    protocolName: SOLANA_PROTOCOL_NAME,
-    protocolVersion: SOLANA_PROTOCOL_VERSION,
-    contractAddress: contractAddressBytes,
-    ...normalized,
-  };
+function formatUuidFromBytes(bytes: Uint8Array): string {
+  const hex = Buffer.from(bytes).toString("hex");
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join("-");
+}
+
+function orderIdFromSignature(signature: string): string {
+  const bytes = createHash("sha256").update(signature).digest();
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  return formatUuidFromBytes(bytes.subarray(0, 16));
 }
 
 function serializeSourcePayload(payload: SolanaOrderSourcePayloadV1): string {
@@ -118,7 +117,7 @@ function createOrderFromOutboundEvent(
     amount: event.amount.toString(),
     relayerFee: event.relayerFee.toString(),
     signature,
-    status: "ready-for-relay",
+    status: "pending",
     oracle_accept_to_relay: true,
     source_nonce: sourceNonce,
   };
@@ -163,15 +162,37 @@ function normalizeOverrideEvent(
 }
 
 export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
-  const {
-    ordersRepository,
-    signerService,
-    config,
-    logger,
-    contractAddressBytes,
-  } = deps;
+  const { ordersRepository, config, logger } = deps;
 
-  const handleOutboundEvent = async (event: OutboundEvent) => {
+  const dummyQubicSignature = (
+    normalized: NormalizedOrder,
+    orderId: string
+  ) => {
+    const digest = createHash("sha256")
+      .update(normalized.nonce)
+      .update(Buffer.from(orderId))
+      .update(randomBytes(8))
+      .digest("hex")
+      .slice(0, 16);
+    return `dummy-qubic-${orderId}-${digest}`;
+  };
+
+  const handleOutboundEvent = async (
+    event: OutboundEvent,
+    meta?: { signature?: string }
+  ) => {
+    logger.debug(
+      {
+        networkIn: event.networkIn,
+        networkOut: event.networkOut,
+        amount: event.amount.toString(),
+        relayerFee: event.relayerFee.toString(),
+        nonce: bytesToHex(event.nonce),
+        from: bytesToHex(event.fromAddress),
+        to: bytesToHex(event.toAddress),
+      },
+      "Solana outbound event payload"
+    );
     if (event.networkOut !== QUBIC_NETWORK_ID) {
       logger.warn(
         { networkOut: event.networkOut },
@@ -187,12 +208,13 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       return;
     }
 
-    const orderId = randomUUID();
-    const signature = await signerService.signSolanaOrder(
-      toSignerPayload(
-        normalizeOutboundEvent(event, config.SOLANA_BPS_FEE),
-        contractAddressBytes
-      )
+    const signatureSeed = meta?.signature ?? sourceNonce;
+    const orderId = orderIdFromSignature(signatureSeed);
+    const normalized = normalizeOutboundEvent(event, config.SOLANA_BPS_FEE);
+    const signature = dummyQubicSignature(normalized, orderId);
+    logger.warn(
+      { orderId },
+      "Using dummy Qubic signature for outbound order"
     );
 
     const order = createOrderFromOutboundEvent(
@@ -203,14 +225,27 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     );
     order.source_payload = serializeSourcePayload(buildSourcePayload(event));
     await ordersRepository.create(order);
+    logger.info({ orderId }, "Solana outbound order stored");
   };
 
-  const handleOverrideOutboundEvent = async (event: OverrideOutboundEvent) => {
+  const handleOverrideOutboundEvent = async (
+    event: OverrideOutboundEvent,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _meta?: { signature?: string }
+  ) => {
+    logger.debug(
+      {
+        relayerFee: event.relayerFee.toString(),
+        nonce: bytesToHex(event.nonce),
+        to: bytesToHex(event.toAddress),
+      },
+      "Solana override outbound event payload"
+    );
     const sourceNonce = bytesToHex(event.nonce);
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (!existing) {
       logger.warn(
-        { orderId: sourceNonce },
+        { sourceNonce },
         "Solana override event received for unknown order"
       );
       return;
@@ -227,16 +262,16 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     const updatedTo = bytesToHex(event.toAddress);
     const updatedRelayerFee = event.relayerFee.toString();
 
-    const signature = await signerService.signSolanaOrder(
-      toSignerPayload(
-        normalizeOverrideEvent(
-          event,
-          existing,
-          sourcePayload,
-          config.SOLANA_BPS_FEE
-        ),
-        contractAddressBytes
-      )
+    const normalized = normalizeOverrideEvent(
+      event,
+      existing,
+      sourcePayload,
+      config.SOLANA_BPS_FEE
+    );
+    const signature = dummyQubicSignature(normalized, existing.id);
+    logger.warn(
+      { orderId: existing.id },
+      "Using dummy Qubic signature for outbound override"
     );
 
     await ordersRepository.update(existing.id, {
@@ -244,6 +279,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       relayerFee: updatedRelayerFee,
       signature,
     });
+    logger.info({ orderId: existing.id }, "Solana outbound order updated");
   };
 
   return {
