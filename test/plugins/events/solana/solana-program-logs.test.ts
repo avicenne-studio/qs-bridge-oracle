@@ -5,7 +5,7 @@ import {
   decodeEventBytes,
   isKnownEventSize,
   logLinesToEvents,
-} from "../../../../src/plugins/app/listener/solana/solana-program-logs.js";
+} from "../../../../src/plugins/app/events/solana/solana-program-logs.js";
 import { getOutboundEventEncoder } from "../../../../src/clients/js/types/outboundEvent.js";
 import { getOverrideOutboundEventEncoder } from "../../../../src/clients/js/types/overrideOutboundEvent.js";
 

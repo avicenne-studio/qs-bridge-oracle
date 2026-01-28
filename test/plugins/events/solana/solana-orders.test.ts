@@ -2,8 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   createSolanaOrderHandlers,
-} from "../../../../src/plugins/app/listener/solana/solana-orders.js";
-import { bytesToHex } from "../../../../src/plugins/app/listener/solana/bytes.js";
+} from "../../../../src/plugins/app/events/solana/solana-orders.js";
+import { bytesToHex } from "../../../../src/plugins/app/events/solana/bytes.js";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 
 type Repo = ReturnType<typeof createInMemoryOrders>;
@@ -53,9 +53,13 @@ function createOverrideEvent() {
 
 function createHandlers(repo: Repo) {
   const { logger, entries } = createLogger();
+  const signerService = {
+    signSolanaOrder: async () => "signed-solana-order",
+  };
   return {
     ...createSolanaOrderHandlers({
       ordersRepository: repo as never,
+      signerService,
       config: { SOLANA_BPS_FEE: 25 },
       logger,
     }),
@@ -78,7 +82,7 @@ describe("solana order handlers", () => {
 
   it("creates a new order from outbound events", async () => {
     const repo = createInMemoryOrders();
-    const { handleOutboundEvent, entries } = createHandlers(repo);
+    const { handleOutboundEvent } = createHandlers(repo);
 
     const event = createOutboundEvent();
     await handleOutboundEvent(event, { signature: "sig-create-order" });
@@ -91,16 +95,7 @@ describe("solana order handlers", () => {
     assert.strictEqual(stored.relayerFee, "2");
     assert.strictEqual(stored.from, bytesToHex(event.fromAddress));
     assert.strictEqual(stored.to, bytesToHex(event.toAddress));
-
-    assert.match(
-      stored.signature,
-      new RegExp(`^dummy-qubic-${stored.id}-[0-9a-f]{16}$`)
-    );
-    assert.ok(
-      entries.some((entry) =>
-        entry.message?.includes("dummy Qubic signature")
-      )
-    );
+    assert.strictEqual(stored.signature, "signed-solana-order");
 
     const sourcePayload = JSON.parse(stored.source_payload ?? "{}");
     assert.deepStrictEqual(sourcePayload, {
@@ -111,6 +106,17 @@ describe("solana order handlers", () => {
       tokenOut: bytesToHex(event.tokenOut),
       nonce: bytesToHex(event.nonce),
     });
+  });
+
+  it("creates an order when signature metadata is missing", async () => {
+    const repo = createInMemoryOrders();
+    const { handleOutboundEvent } = createHandlers(repo);
+
+    const event = createOutboundEvent();
+    await handleOutboundEvent(event);
+
+    const stored = await repo.findBySourceNonce(bytesToHex(event.nonce));
+    assert.ok(stored);
   });
 
   it("skips outbound events for existing orders", async () => {
@@ -215,10 +221,7 @@ describe("solana order handlers", () => {
 
     const stored = await repo.findBySourceNonce(bytesToHex(override.nonce));
     assert.ok(stored);
-    assert.match(
-      stored.signature,
-      new RegExp(`^dummy-qubic-${stored.id}-[0-9a-f]{16}$`)
-    );
+    assert.strictEqual(stored.signature, "signed-solana-order");
     assert.strictEqual(stored.to, bytesToHex(override.toAddress));
     assert.strictEqual(stored.relayerFee, "7");
   });
