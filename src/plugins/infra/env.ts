@@ -13,8 +13,7 @@ export type EnvConfig = {
   ORACLE_ID?: string;
   HUB_URLS: string;
   HUB_KEYS_FILE: string;
-  SOLANA_WS_URL: string;
-  SOLANA_LISTENER_ENABLED: boolean;
+  SOLANA_RPC_URL: string;
   SOLANA_BPS_FEE: number;
   RELAYER_FEE_PERCENT: string;
 };
@@ -31,8 +30,7 @@ const schema = {
     "QUBIC_KEYS",
     "HUB_URLS",
     "HUB_KEYS_FILE",
-    "SOLANA_WS_URL",
-    "SOLANA_LISTENER_ENABLED",
+    "SOLANA_RPC_URL",
     "SOLANA_BPS_FEE",
     "RELAYER_FEE_PERCENT",
   ],
@@ -74,12 +72,8 @@ const schema = {
     HUB_KEYS_FILE: {
       type: "string",
     },
-    SOLANA_WS_URL: {
+    SOLANA_RPC_URL: {
       type: "string",
-    },
-    SOLANA_LISTENER_ENABLED: {
-      type: "boolean",
-      default: true,
     },
     SOLANA_BPS_FEE: {
       type: "number",
