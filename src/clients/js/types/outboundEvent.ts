@@ -24,6 +24,7 @@ import {
   type ReadonlyUint8Array,
 } from "@solana/kit";
 
+
 export type OutboundEvent = {
   networkIn: number;
   networkOut: number;
@@ -35,6 +36,7 @@ export type OutboundEvent = {
   relayerFee: bigint;
   nonce: ReadonlyUint8Array;
 };
+
 
 export type OutboundEventArgs = {
   networkIn: number;

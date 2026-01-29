@@ -14,6 +14,10 @@ export type EnvConfig = {
   HUB_URLS: string;
   HUB_KEYS_FILE: string;
   SOLANA_RPC_URL: string;
+  SOLANA_TX_COMMITMENT?: "processed" | "confirmed" | "finalized";
+  SOLANA_TX_RETRY_MAX_ATTEMPTS?: number;
+  SOLANA_TX_RETRY_BASE_MS?: number;
+  SOLANA_TX_RETRY_MAX_MS?: number;
   SOLANA_BPS_FEE: number;
   RELAYER_FEE_PERCENT: string;
 };
@@ -74,6 +78,26 @@ const schema = {
     },
     SOLANA_RPC_URL: {
       type: "string",
+    },
+    SOLANA_TX_COMMITMENT: {
+      type: "string",
+      enum: ["processed", "confirmed", "finalized"],
+      default: "confirmed",
+    },
+    SOLANA_TX_RETRY_MAX_ATTEMPTS: {
+      type: "number",
+      minimum: 1,
+      default: 6,
+    },
+    SOLANA_TX_RETRY_BASE_MS: {
+      type: "number",
+      minimum: 1,
+      default: 500,
+    },
+    SOLANA_TX_RETRY_MAX_MS: {
+      type: "number",
+      minimum: 1,
+      default: 4000,
     },
     SOLANA_BPS_FEE: {
       type: "number",

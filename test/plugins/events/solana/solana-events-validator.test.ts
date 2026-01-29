@@ -1,10 +1,11 @@
-import { describe, it } from "node:test";
+import { describe, it, TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { getOutboundEventEncoder } from "../../../../src/clients/js/types/outboundEvent.js";
 import { getOverrideOutboundEventEncoder } from "../../../../src/clients/js/types/overrideOutboundEvent.js";
 import {
   createSolanaEventValidator,
+  SolanaEventValidator,
 } from "../../../../src/plugins/app/events/solana/solana-events-validator.js";
 import solanaEventsValidatorPlugin, {
   kSolanaEventValidator,
@@ -68,6 +69,8 @@ describe("solana event validator", () => {
       logger: {
         warn: () => {},
       },
+      sleep: async () => {},
+      commitment: "confirmed",
     });
 
     await validator.validate(createEvent());
@@ -79,6 +82,8 @@ describe("solana event validator", () => {
       logger: {
         warn: () => {},
       },
+      sleep: async () => {},
+      commitment: "confirmed",
     });
 
     await assert.rejects(
@@ -96,6 +101,8 @@ describe("solana event validator", () => {
           meta: { err: "boom", logMessages: [] },
         }) as never,
       logger,
+      sleep: async () => {},
+      commitment: "confirmed",
     });
 
     await assert.rejects(
@@ -114,6 +121,8 @@ describe("solana event validator", () => {
       logger: {
         warn: () => {},
       },
+      sleep: async () => {},
+      commitment: "confirmed",
     });
 
     await assert.rejects(
@@ -141,6 +150,8 @@ describe("solana event validator", () => {
       logger: {
         warn: () => {},
       },
+      sleep: async () => {},
+      commitment: "confirmed",
     });
 
     await validator.validate({
@@ -159,7 +170,7 @@ describe("solana event validator", () => {
     });
   });
 
-  it("registers the validator plugin", async (t) => {
+  it("registers the validator plugin", async (t: TestContext) => {
     const app = fastify({ logger: false });
     app.register(
       fp(async (instance) => {
@@ -170,7 +181,7 @@ describe("solana event validator", () => {
     app.register(solanaEventsValidatorPlugin);
     await app.ready();
 
-    const validator = app.getDecorator(kSolanaEventValidator);
+    const validator = app.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
     t.assert.ok(validator);
     await assert.rejects(() => validator.validate(createEvent()), /Transaction not found/);
     await app.close();
@@ -186,6 +197,8 @@ describe("solana event validator", () => {
       logger: {
         warn: () => {},
       },
+      sleep: async () => {},
+      commitment: "confirmed",
     });
 
     await assert.rejects(
@@ -205,6 +218,8 @@ describe("solana event validator", () => {
       logger: {
         warn: () => {},
       },
+      sleep: async () => {},
+      commitment: "confirmed",
     });
 
     await assert.rejects(
@@ -218,7 +233,7 @@ describe("solana event validator", () => {
             nonce: Buffer.from(new Uint8Array(32).fill(9)).toString("hex"),
           },
         }),
-      /do not match/
+      /do not match/1
     );
   });
 
@@ -231,6 +246,8 @@ describe("solana event validator", () => {
       logger: {
         warn: () => {},
       },
+      sleep: async () => {},
+      commitment: "confirmed",
     });
 
     await assert.rejects(

@@ -84,6 +84,10 @@ async function processEvent(
   logger: FastifyInstance["log"]
 ) {
   await validator.validate(event);
+  logger.info(
+    { signature: event.signature, type: event.type, slot: event.slot },
+    "Solana event validated"
+  );
   const handlers = createSolanaOrderHandlers({
     ordersRepository,
     signerService,

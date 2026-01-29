@@ -28,7 +28,18 @@ type ValidatorDeps = {
   getTransaction: (
     signature: string
   ) => Promise<VersionedTransactionResponse | null>;
+  getSignatureStatus?: (signature: string) => Promise<{
+    confirmationStatus?: "processed" | "confirmed" | "finalized";
+    err?: unknown;
+  } | null>;
   logger: Logger;
+  sleep?: (ms: number) => Promise<void>;
+  retry?: {
+    maxAttempts?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+  };
+  commitment?: "processed" | "confirmed" | "finalized";
 };
 
 type NormalizedDecodedEvent = {
@@ -96,11 +107,62 @@ function payloadMatches(
 }
 
 export function createSolanaEventValidator(deps: ValidatorDeps): SolanaEventValidator {
-  const { getTransaction, logger } = deps;
+  const { getTransaction, getSignatureStatus, logger } = deps;
+  const sleep =
+    deps.sleep ??
+    ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const commitment = deps.commitment ?? "confirmed";
+  const retry = {
+    maxAttempts: deps.retry?.maxAttempts ?? 6,
+    baseDelayMs: deps.retry?.baseDelayMs ?? 500,
+    maxDelayMs: deps.retry?.maxDelayMs ?? 4_000,
+  };
+  const commitmentRank = {
+    processed: 1,
+    confirmed: 2,
+    finalized: 3,
+  } as const;
+
+  function hasRequiredCommitment(
+    status: { confirmationStatus?: "processed" | "confirmed" | "finalized" } | null
+  ) {
+    if (!status?.confirmationStatus) {
+      return false;
+    }
+    return (
+      commitmentRank[status.confirmationStatus] >= commitmentRank[commitment]
+    );
+  }
 
   return {
     async validate(event: SolanaStoredEvent) {
-      const tx = await getTransaction(event.signature);
+      let tx: VersionedTransactionResponse | null = null;
+      for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
+        tx = await getTransaction(event.signature);
+        if (tx) {
+          break;
+        }
+        if (getSignatureStatus) {
+          const status = await getSignatureStatus(event.signature);
+          if (status?.err) {
+            logger.warn(
+              { signature: event.signature, err: status.err },
+              "Solana transaction failed"
+            );
+            throw new Error("Transaction failed");
+          }
+          if (hasRequiredCommitment(status)) {
+            // Transaction should be available; fall through to retry.
+          }
+        }
+        if (attempt < retry.maxAttempts) {
+          const delay = Math.min(
+            retry.maxDelayMs,
+            retry.baseDelayMs * 2 ** (attempt - 1)
+          );
+          await sleep(delay);
+        }
+      }
       if (!tx) {
         throw new Error("Transaction not found or not finalized yet");
       }
@@ -133,13 +195,27 @@ export function createSolanaEventValidator(deps: ValidatorDeps): SolanaEventVali
 export default fp(
   async function solanaEventsValidatorPlugin(fastify: FastifyInstance) {
     const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
-    const connection = new Connection(config.SOLANA_RPC_URL, "finalized");
+    const commitment = config.SOLANA_TX_COMMITMENT ?? "confirmed";
+    const connection = new Connection(config.SOLANA_RPC_URL, commitment);
+    const finality = commitment === "processed" ? "confirmed" : commitment;
     const validator = createSolanaEventValidator({
       getTransaction: (signature) =>
         connection.getTransaction(signature, {
-          commitment: "finalized",
+          commitment: finality,
           maxSupportedTransactionVersion: 0,
         }),
+      getSignatureStatus: async (signature) => {
+        const response = await connection.getSignatureStatuses([signature], {
+          searchTransactionHistory: true,
+        });
+        return response.value[0] ?? null;
+      },
+      commitment,
+      retry: {
+        maxAttempts: config.SOLANA_TX_RETRY_MAX_ATTEMPTS,
+        baseDelayMs: config.SOLANA_TX_RETRY_BASE_MS,
+        maxDelayMs: config.SOLANA_TX_RETRY_MAX_MS,
+      },
       logger: fastify.log,
     });
 

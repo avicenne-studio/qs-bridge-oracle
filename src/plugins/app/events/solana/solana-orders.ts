@@ -229,6 +229,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     const orderId = orderIdFromSignature(signatureSeed);
     const normalized = normalizeOutboundEvent(event, config.SOLANA_BPS_FEE);
     const signature = await signSolanaOrder(signerService, normalized);
+    logger.info({ orderId, signature }, "Solana outbound order signed");
 
     const order = createOrderFromOutboundEvent(
       event,
@@ -282,6 +283,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       config.SOLANA_BPS_FEE
     );
     const signature = await signSolanaOrder(signerService, normalized);
+    logger.info({ orderId: existing.id, signature }, "Solana override outbound order signed");
 
     await ordersRepository.update(existing.id, {
       to: updatedTo,
