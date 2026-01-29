@@ -5,6 +5,7 @@ import {
 } from "../../../../src/plugins/app/events/solana/solana-orders.js";
 import { bytesToHex } from "../../../../src/plugins/app/events/solana/bytes.js";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
+import { FastifyBaseLogger } from "fastify";
 
 type Repo = ReturnType<typeof createInMemoryOrders>;
 
@@ -21,7 +22,7 @@ function createLogger() {
       warn: log("warn"),
       debug: log("debug"),
       error: log("error"),
-    },
+    } as FastifyBaseLogger,
   };
 }
 

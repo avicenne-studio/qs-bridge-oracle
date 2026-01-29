@@ -80,7 +80,9 @@
     "allowScripts": {
       "@lavamoat/preinstall-always-fail": false,
       "better-sqlite3": true,
-      "tsx>esbuild": false
+      "tsx>esbuild": false,
+      "@solana/web3.js>rpc-websockets>bufferutil": false,
+      "@solana/web3.js>rpc-websockets>utf-8-validate": false
     }
   }
 }

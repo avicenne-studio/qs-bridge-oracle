@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import os from "node:os";
 import process from "node:process";
-import { DEFAULT_RPC_URL, DEFAULT_WS_URL } from "./utils.js";
+import { DEFAULT_RPC_URL } from "./utils.js";
 
 const ROOT_DIR = resolve(import.meta.dirname, "..");
 const tmpRoot = join(os.tmpdir(), "oracle-sim");
@@ -46,7 +46,6 @@ const baseEnv = {
   RATE_LIMIT_MAX: 100,
   HOST: "127.0.0.1",
   SOLANA_RPC_URL: DEFAULT_RPC_URL,
-  SOLANA_WS_URL: DEFAULT_WS_URL,
   SOLANA_KEYS: "./test/fixtures/signer/solana.keys.json",
   QUBIC_KEYS: "./test/fixtures/signer/qubic.keys.json",
   HUB_URLS: "http://127.0.0.1:3010,http://127.0.0.1:3011",
