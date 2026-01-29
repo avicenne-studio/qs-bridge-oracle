@@ -76,6 +76,23 @@ describe("solana event validator", () => {
     await validator.validate(createEvent());
   });
 
+  it("defaults to confirmed commitment when not provided", async () => {
+    const bytes = createOutboundEventBytes();
+    const logs = [`Program data: ${Buffer.from(bytes).toString("base64")}`];
+    const validator = createSolanaEventValidator({
+      getTransaction: async () =>
+        ({
+          meta: { err: null, logMessages: logs },
+        }) as never,
+      logger: {
+        warn: () => {},
+      },
+      sleep: async () => {},
+    });
+
+    await validator.validate(createEvent());
+  });
+
   it("throws when transaction is missing", async () => {
     const validator = createSolanaEventValidator({
       getTransaction: async () => null,
@@ -178,12 +195,47 @@ describe("solana event validator", () => {
       }, { name: "env" })
     );
     t.mock.method(Connection.prototype, "getTransaction", async () => null);
+    t.mock.method(Connection.prototype, "getSignatureStatuses", async () => ({
+      value: [null],
+    }));
     app.register(solanaEventsValidatorPlugin);
     await app.ready();
 
     const validator = app.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
     t.assert.ok(validator);
     await assert.rejects(() => validator.validate(createEvent()), /Transaction not found/);
+    await app.close();
+  });
+
+  it("uses confirmed finality for processed commitment", async (t: TestContext) => {
+    const app = fastify({ logger: false });
+    app.register(
+      fp(async (instance) => {
+        instance.decorate(kEnvConfig, {
+          SOLANA_RPC_URL: "http://localhost:8899",
+          SOLANA_TX_COMMITMENT: "processed",
+        });
+      }, { name: "env" })
+    );
+
+    let seenCommitment: unknown = null;
+    t.mock.method(
+      Connection.prototype,
+      "getTransaction",
+      async (_signature: string, options?: { commitment?: string }) => {
+        seenCommitment = options?.commitment ?? null;
+        return null;
+      }
+    );
+    t.mock.method(Connection.prototype, "getSignatureStatuses", async () => ({
+      value: [null],
+    }));
+    app.register(solanaEventsValidatorPlugin);
+    await app.ready();
+
+    const validator = app.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
+    await assert.rejects(() => validator.validate(createEvent()), /Transaction not found/);
+    assert.strictEqual(seenCommitment, "confirmed");
     await app.close();
   });
 
@@ -233,7 +285,7 @@ describe("solana event validator", () => {
             nonce: Buffer.from(new Uint8Array(32).fill(9)).toString("hex"),
           },
         }),
-      /do not match/1
+      /do not match/
     );
   });
 
@@ -254,5 +306,56 @@ describe("solana event validator", () => {
       () => validator.validate(createEvent()),
       /do not match/
     );
+  });
+
+  it("retries when signature status indicates higher commitment", async () => {
+    let calls = 0;
+    let sleeps = 0;
+    const validator = createSolanaEventValidator({
+      getTransaction: async () => {
+        calls += 1;
+        return null;
+      },
+      getSignatureStatus: async () => ({
+        confirmationStatus: "finalized",
+      }),
+      logger: {
+        warn: () => {},
+      },
+      sleep: async () => {
+        sleeps += 1;
+      },
+      retry: { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
+      commitment: "confirmed",
+    });
+
+    await assert.rejects(
+      () => validator.validate(createEvent()),
+      /Transaction not found/
+    );
+    assert.strictEqual(calls, 2);
+    assert.strictEqual(sleeps, 1);
+  });
+
+  it("throws when signature status reports an error", async (t) => {
+    const logger = { warn: () => {} };
+    const { mock: warnMock } = t.mock.method(logger, "warn");
+    const validator = createSolanaEventValidator({
+      getTransaction: async () => null,
+      getSignatureStatus: async () => ({
+        confirmationStatus: "confirmed",
+        err: "boom",
+      }),
+      logger,
+      sleep: async () => {},
+      retry: { maxAttempts: 1 },
+      commitment: "confirmed",
+    });
+
+    await assert.rejects(
+      () => validator.validate(createEvent()),
+      /Transaction failed/
+    );
+    assert.strictEqual(warnMock.calls.length > 0, true);
   });
 });

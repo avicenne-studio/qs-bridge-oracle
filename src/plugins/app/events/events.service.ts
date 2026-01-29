@@ -155,7 +155,7 @@ function startHubEventsPolling(
         return;
       }
 
-      const usedHub = context.used ?? context.primary;
+      const usedHub = context.used;
       let lastCursor = cursors.get(usedHub) ?? 0;
       for (const event of response.data) {
         try {

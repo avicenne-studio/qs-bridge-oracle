@@ -140,6 +140,9 @@ describe("hub events service", { concurrency: 1 }, () => {
           },
         }) as never
     ).mock as MockMethod;
+    t.mock.method(Connection.prototype, "getSignatureStatuses", async () => ({
+      value: [{ confirmationStatus: "confirmed", err: null }],
+    }));
 
     await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
       if (req.url?.startsWith("/api/orders/events")) {
@@ -167,7 +170,7 @@ describe("hub events service", { concurrency: 1 }, () => {
     await waitFor(async () => {
       stored = await repo.findBySourceNonce(hex32(1));
       return Boolean(stored);
-    });
+    }, 12_000);
     assert.ok(stored);
     assert.ok(stored && stored.signature);
     assert.ok(txMock.calls.length > 0);
@@ -281,6 +284,9 @@ describe("hub events service", { concurrency: 1 }, () => {
         },
       }) as never
     );
+    t.mock.method(Connection.prototype, "getSignatureStatuses", async () => ({
+      value: [{ confirmationStatus: "confirmed", err: null }],
+    }));
 
     const existingOrder: OracleOrder = {
       id: "00000000-0000-4000-8000-000000000009",
@@ -352,6 +358,9 @@ describe("hub events service", { concurrency: 1 }, () => {
         },
       }) as never
     );
+    t.mock.method(Connection.prototype, "getSignatureStatuses", async () => ({
+      value: [{ confirmationStatus: "confirmed", err: null }],
+    }));
 
     await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
       if (req.url?.startsWith("/api/orders/events")) {

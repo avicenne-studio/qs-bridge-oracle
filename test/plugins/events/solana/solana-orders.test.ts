@@ -209,10 +209,23 @@ describe("solana order handlers", () => {
     );
   });
 
-  it("updates orders for override events", async () => {
+  it("updates orders for override events without resigning", async () => {
     const repo = createInMemoryOrders();
+    let signerCalls = 0;
+    const { logger } = createLogger();
+    const signerService = {
+      signSolanaOrder: async () => {
+        signerCalls += 1;
+        return "signed-solana-order";
+      },
+    };
     const { handleOutboundEvent, handleOverrideOutboundEvent } =
-      createHandlers(repo);
+      createSolanaOrderHandlers({
+        ordersRepository: repo as never,
+        signerService,
+        config: { SOLANA_BPS_FEE: 25 },
+        logger,
+      });
 
     const outbound = createOutboundEvent();
     await handleOutboundEvent(outbound, { signature: "sig-override" });
@@ -225,5 +238,6 @@ describe("solana order handlers", () => {
     assert.strictEqual(stored.signature, "signed-solana-order");
     assert.strictEqual(stored.to, bytesToHex(override.toAddress));
     assert.strictEqual(stored.relayerFee, "7");
+    assert.strictEqual(signerCalls, 1);
   });
 });

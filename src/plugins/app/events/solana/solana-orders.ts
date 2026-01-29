@@ -5,8 +5,6 @@ import { type OverrideOutboundEvent } from "../../../../clients/js/types/overrid
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import {
   bytesToHex,
-  hexToBytes,
-  toU64BigInt,
 } from "./bytes.js";
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
@@ -150,26 +148,6 @@ function normalizeOutboundEvent(
   };
 }
 
-function normalizeOverrideEvent(
-  event: OverrideOutboundEvent,
-  existing: OracleOrder,
-  payload: SolanaOrderSourcePayloadV1,
-  bpsFee: number
-): NormalizedOrder {
-  return {
-    networkIn: payload.networkIn,
-    networkOut: payload.networkOut,
-    tokenIn: hexToBytes(payload.tokenIn),
-    tokenOut: hexToBytes(payload.tokenOut),
-    fromAddress: hexToBytes(existing.from),
-    toAddress: new Uint8Array(event.toAddress),
-    amount: toU64BigInt(existing.amount, "amount"),
-    relayerFee: event.relayerFee,
-    bpsFee,
-    nonce: new Uint8Array(event.nonce),
-  };
-}
-
 async function signSolanaOrder(
   signerService: SignerService,
   normalized: NormalizedOrder
@@ -276,19 +254,9 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     const updatedTo = bytesToHex(event.toAddress);
     const updatedRelayerFee = event.relayerFee.toString();
 
-    const normalized = normalizeOverrideEvent(
-      event,
-      existing,
-      sourcePayload,
-      config.SOLANA_BPS_FEE
-    );
-    const signature = await signSolanaOrder(signerService, normalized);
-    logger.info({ orderId: existing.id, signature }, "Solana override outbound order signed");
-
     await ordersRepository.update(existing.id, {
       to: updatedTo,
       relayerFee: updatedRelayerFee,
-      signature,
     });
     logger.info({ orderId: existing.id }, "Solana outbound order updated");
   };

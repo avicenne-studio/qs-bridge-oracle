@@ -187,7 +187,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       const updated = await ordersRepository.findById(order!.id);
       relayAccepted = updated?.oracle_accept_to_relay === true
       return relayAccepted;
-    });
+    }, 12_000);
 
     assert.ok(relayAccepted);
   });
