@@ -87,6 +87,7 @@ function createOutboundEventBytes() {
   const encoder = getOutboundEventEncoder();
   return new Uint8Array(
     encoder.encode({
+      discriminator: 1,
       networkIn: 1,
       networkOut: 1,
       tokenIn: new Uint8Array(32).fill(2),
@@ -104,6 +105,7 @@ function createOverrideEventBytes() {
   const encoder = getOverrideOutboundEventEncoder();
   return new Uint8Array(
     encoder.encode({
+      discriminator: 2,
       toAddress: new Uint8Array(32).fill(8),
       relayerFee: 7n,
       nonce: new Uint8Array(32).fill(9),

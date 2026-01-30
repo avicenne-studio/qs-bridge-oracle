@@ -1,6 +1,7 @@
 import { describe, it, TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
+import { getInboundEventEncoder } from "../../../../src/clients/js/types/inboundEvent.js";
 import { getOutboundEventEncoder } from "../../../../src/clients/js/types/outboundEvent.js";
 import { getOverrideOutboundEventEncoder } from "../../../../src/clients/js/types/overrideOutboundEvent.js";
 import {
@@ -19,6 +20,7 @@ function createOutboundEventBytes() {
   const encoder = getOutboundEventEncoder();
   return new Uint8Array(
     encoder.encode({
+      discriminator: 1,
       networkIn: 1,
       networkOut: 1,
       tokenIn: new Uint8Array(32).fill(1),
@@ -27,6 +29,24 @@ function createOutboundEventBytes() {
       toAddress: new Uint8Array(32).fill(4),
       amount: 10n,
       relayerFee: 2n,
+      nonce: new Uint8Array(32).fill(5),
+    })
+  );
+}
+
+function createInboundEventBytes() {
+  const encoder = getInboundEventEncoder();
+  return new Uint8Array(
+    encoder.encode({
+      discriminator: 0,
+      networkIn: 1,
+      networkOut: 2,
+      tokenIn: new Uint8Array(32).fill(9),
+      tokenOut: new Uint8Array(32).fill(8),
+      fromAddress: new Uint8Array(32).fill(7),
+      toAddress: new Uint8Array(32).fill(6),
+      amount: 12n,
+      relayerFee: 1n,
       nonce: new Uint8Array(32).fill(5),
     })
   );
@@ -93,6 +113,28 @@ describe("solana event validator", () => {
     await validator.validate(createEvent());
   });
 
+  it("ignores inbound events while validating outbound events", async () => {
+    const outboundBytes = createOutboundEventBytes();
+    const inboundBytes = createInboundEventBytes();
+    const logs = [
+      `Program data: ${Buffer.from(inboundBytes).toString("base64")}`,
+      `Program data: ${Buffer.from(outboundBytes).toString("base64")}`,
+    ];
+    const validator = createSolanaEventValidator({
+      getTransaction: async () =>
+        ({
+          meta: { err: null, logMessages: logs },
+        }) as never,
+      logger: {
+        warn: () => {},
+      },
+      sleep: async () => {},
+      commitment: "confirmed",
+    });
+
+    await validator.validate(createEvent());
+  });
+
   it("throws when transaction is missing", async () => {
     const validator = createSolanaEventValidator({
       getTransaction: async () => null,
@@ -153,6 +195,7 @@ describe("solana event validator", () => {
     const nonce = new Uint8Array(32).fill(9);
     const bytes = new Uint8Array(
       encoder.encode({
+        discriminator: 2,
         toAddress: new Uint8Array(32).fill(7),
         relayerFee: 3n,
         nonce,

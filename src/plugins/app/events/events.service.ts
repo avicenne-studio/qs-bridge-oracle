@@ -51,6 +51,7 @@ function mapStoredEventToSolanaPayload(event: SolanaStoredEvent) {
       return {
         type: "outbound" as const,
         event: {
+          discriminator: 1,
           networkIn: payload.networkIn,
           networkOut: payload.networkOut,
           tokenIn: hexToBytes(payload.tokenIn),
@@ -68,6 +69,7 @@ function mapStoredEventToSolanaPayload(event: SolanaStoredEvent) {
   return {
     type: "override-outbound" as const,
     event: {
+      discriminator: 2,
       toAddress: hexToBytes(payload.toAddress),
       relayerFee: toU64BigInt(payload.relayerFee, "relayerFee"),
       nonce: hexToBytes(payload.nonce),

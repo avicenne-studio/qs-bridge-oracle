@@ -53,6 +53,9 @@ function normalizeDecodedEvent(
   if (!decoded) {
     return null;
   }
+  if (decoded.type === "inbound") {
+    return null;
+  }
   if (decoded.type === "outbound") {
     return {
       type: "outbound",
