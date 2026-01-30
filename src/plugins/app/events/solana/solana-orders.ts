@@ -5,18 +5,25 @@ import { type OverrideOutboundEvent } from "../../../../clients/js/types/overrid
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import {
   bytesToHex,
-  hexToBytes,
-  toU64BigInt,
 } from "./bytes.js";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
+import { PublicKey } from "@solana/web3.js";
+import { type SignerService } from "../../signer/signer.service.js";
+import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../../../clients/js/programs/qsBridge.js";
 
 export const QUBIC_NETWORK_ID = 1;
+const PROTOCOL_NAME = "qs-bridge";
+const PROTOCOL_VERSION = "1";
+const CONTRACT_ADDRESS_BYTES = new PublicKey(
+  QS_BRIDGE_PROGRAM_ADDRESS
+).toBytes();
 
 type Logger = FastifyBaseLogger;
 
 type SolanaOrderDependencies = {
   ordersRepository: OrdersRepository;
+  signerService: SignerService;
   config: { SOLANA_BPS_FEE: number };
   logger: Logger;
 };
@@ -141,41 +148,29 @@ function normalizeOutboundEvent(
   };
 }
 
-function normalizeOverrideEvent(
-  event: OverrideOutboundEvent,
-  existing: OracleOrder,
-  payload: SolanaOrderSourcePayloadV1,
-  bpsFee: number
-): NormalizedOrder {
-  return {
-    networkIn: payload.networkIn,
-    networkOut: payload.networkOut,
-    tokenIn: hexToBytes(payload.tokenIn),
-    tokenOut: hexToBytes(payload.tokenOut),
-    fromAddress: hexToBytes(existing.from),
-    toAddress: new Uint8Array(event.toAddress),
-    amount: toU64BigInt(existing.amount, "amount"),
-    relayerFee: event.relayerFee,
-    bpsFee,
-    nonce: new Uint8Array(event.nonce),
-  };
+async function signSolanaOrder(
+  signerService: SignerService,
+  normalized: NormalizedOrder
+): Promise<string> {
+  return signerService.signSolanaOrder({
+    protocolName: PROTOCOL_NAME,
+    protocolVersion: PROTOCOL_VERSION,
+    contractAddress: CONTRACT_ADDRESS_BYTES,
+    networkIn: normalized.networkIn,
+    networkOut: normalized.networkOut,
+    tokenIn: normalized.tokenIn,
+    tokenOut: normalized.tokenOut,
+    fromAddress: normalized.fromAddress,
+    toAddress: normalized.toAddress,
+    amount: normalized.amount,
+    relayerFee: normalized.relayerFee,
+    bpsFee: normalized.bpsFee,
+    nonce: normalized.nonce,
+  });
 }
 
 export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
-  const { ordersRepository, config, logger } = deps;
-
-  const dummyQubicSignature = (
-    normalized: NormalizedOrder,
-    orderId: string
-  ) => {
-    const digest = createHash("sha256")
-      .update(normalized.nonce)
-      .update(Buffer.from(orderId))
-      .update(randomBytes(8))
-      .digest("hex")
-      .slice(0, 16);
-    return `dummy-qubic-${orderId}-${digest}`;
-  };
+  const { ordersRepository, signerService, config, logger } = deps;
 
   const handleOutboundEvent = async (
     event: OutboundEvent,
@@ -211,11 +206,8 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     const signatureSeed = meta?.signature ?? sourceNonce;
     const orderId = orderIdFromSignature(signatureSeed);
     const normalized = normalizeOutboundEvent(event, config.SOLANA_BPS_FEE);
-    const signature = dummyQubicSignature(normalized, orderId);
-    logger.warn(
-      { orderId },
-      "Using dummy Qubic signature for outbound order"
-    );
+    const signature = await signSolanaOrder(signerService, normalized);
+    logger.info({ orderId, signature }, "Solana outbound order signed");
 
     const order = createOrderFromOutboundEvent(
       event,
@@ -262,22 +254,9 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     const updatedTo = bytesToHex(event.toAddress);
     const updatedRelayerFee = event.relayerFee.toString();
 
-    const normalized = normalizeOverrideEvent(
-      event,
-      existing,
-      sourcePayload,
-      config.SOLANA_BPS_FEE
-    );
-    const signature = dummyQubicSignature(normalized, existing.id);
-    logger.warn(
-      { orderId: existing.id },
-      "Using dummy Qubic signature for outbound override"
-    );
-
     await ordersRepository.update(existing.id, {
       to: updatedTo,
       relayerFee: updatedRelayerFee,
-      signature,
     });
     logger.info({ orderId: existing.id }, "Solana outbound order updated");
   };

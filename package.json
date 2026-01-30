@@ -53,6 +53,7 @@
     "@fastify/websocket": "^11.2.0",
     "@sinclair/typebox": "^0.34.45",
     "@solana/kit": "^5.3.0",
+    "@solana/web3.js": "^1.98.4",
     "better-sqlite3": "^12.5.0",
     "borsh": "^2.0.0",
     "close-with-grace": "^2.4.0",
@@ -79,7 +80,9 @@
     "allowScripts": {
       "@lavamoat/preinstall-always-fail": false,
       "better-sqlite3": true,
-      "tsx>esbuild": false
+      "tsx>esbuild": false,
+      "@solana/web3.js>rpc-websockets>bufferutil": false,
+      "@solana/web3.js>rpc-websockets>utf-8-validate": false
     }
   }
 }

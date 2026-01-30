@@ -17,7 +17,7 @@ export type PollerRoundContext = {
   startedAt: number;
   primary: string;
   fallback?: string;
-  used?: string;
+  used: string;
 };
 
 export type PollerRoundHandler<TResponse> = (
@@ -99,7 +99,7 @@ function createPoller<TResponse>(
       }
 
       let response: TResponse | null = null;
-      let used: string | undefined;
+      let used: string = primary;
 
       try {
         response = await withTimeout(requestTimeoutMs, (signal) =>
@@ -115,7 +115,10 @@ function createPoller<TResponse>(
             used = fallback;
           } catch {
             response = null;
+            used = fallback;
           }
+        } else {
+          used = primary;
         }
       }
 
