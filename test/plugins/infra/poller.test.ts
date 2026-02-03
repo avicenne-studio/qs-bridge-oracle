@@ -116,7 +116,7 @@ describe("poller plugin", () => {
     });
 
     assert.deepStrictEqual(pollerService.defaults, {
-      intervalMs: 3000,
+      intervalMs: 1000,
       requestTimeoutMs: 700,
       jitterMs: 25,
     });
@@ -127,6 +127,7 @@ describe("poller plugin", () => {
     assert.deepStrictEqual(abortedServers, ["slow"]);
     await poller.stop().catch(noop);
   });
+
 
   it("throws when start is invoked twice", async (t) => {
     const app = await build(t);

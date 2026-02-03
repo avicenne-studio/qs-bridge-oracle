@@ -4,8 +4,12 @@ import { join, resolve } from "node:path";
 import os from "node:os";
 import process from "node:process";
 import { DEFAULT_RPC_URL } from "./utils.js";
+import dotenv from "dotenv";
 
 const ROOT_DIR = resolve(import.meta.dirname, "..");
+dotenv.config({ path: join(ROOT_DIR, ".env.local") });
+dotenv.config({ path: join(ROOT_DIR, ".env") });
+
 const tmpRoot = join(os.tmpdir(), "oracle-sim");
 rmSync(tmpRoot, { recursive: true, force: true });
 mkdirSync(tmpRoot, { recursive: true });
@@ -45,7 +49,7 @@ const baseEnv = {
   LOG_LEVEL: "info",
   RATE_LIMIT_MAX: 100,
   HOST: "127.0.0.1",
-  SOLANA_RPC_URL: DEFAULT_RPC_URL,
+    SOLANA_RPC_URL: process.env.SOLANA_RPC_URL ?? DEFAULT_RPC_URL,
   SOLANA_TX_COMMITMENT: "confirmed",
   SOLANA_TX_RETRY_MAX_ATTEMPTS: "6",
   SOLANA_TX_RETRY_BASE_MS: "500",

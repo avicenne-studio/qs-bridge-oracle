@@ -1,10 +1,6 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
-import {
-  kPoller,
-  RECOMMENDED_POLLING_DEFAULTS,
-  type PollerService,
-} from "../../infra/poller.js";
+import { kPoller, type PollerService } from "../../infra/poller.js";
 import {
   kUndiciGetClient,
   type UndiciGetClientService,
@@ -125,7 +121,7 @@ function startHubEventsPolling(
   const validator =
     fastify.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
   const client = undiciGetClient.create();
-  const defaults = RECOMMENDED_POLLING_DEFAULTS;
+  const defaults = poller.defaults;
   const cursors: HubEventsState = new Map();
   const limit = DEFAULT_EVENTS_LIMIT;
 
