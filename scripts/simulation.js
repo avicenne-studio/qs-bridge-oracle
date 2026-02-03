@@ -3,9 +3,13 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import os from "node:os";
 import process from "node:process";
-import { DEFAULT_RPC_URL, DEFAULT_WS_URL } from "./utils.js";
+import { DEFAULT_RPC_URL } from "./utils.js";
+import dotenv from "dotenv";
 
 const ROOT_DIR = resolve(import.meta.dirname, "..");
+dotenv.config({ path: join(ROOT_DIR, ".env.local") });
+dotenv.config({ path: join(ROOT_DIR, ".env") });
+
 const tmpRoot = join(os.tmpdir(), "oracle-sim");
 rmSync(tmpRoot, { recursive: true, force: true });
 mkdirSync(tmpRoot, { recursive: true });
@@ -45,8 +49,12 @@ const baseEnv = {
   LOG_LEVEL: "info",
   RATE_LIMIT_MAX: 100,
   HOST: "127.0.0.1",
-  SOLANA_RPC_URL: DEFAULT_RPC_URL,
-  SOLANA_WS_URL: DEFAULT_WS_URL,
+    SOLANA_RPC_URL: process.env.SOLANA_RPC_URL ?? DEFAULT_RPC_URL,
+  SOLANA_TX_COMMITMENT: "confirmed",
+  SOLANA_TX_RETRY_MAX_ATTEMPTS: "6",
+  SOLANA_TX_RETRY_BASE_MS: "500",
+  SOLANA_TX_RETRY_MAX_MS: "4000",
+  RELAYER_FEE_PERCENT: "0.1",
   SOLANA_KEYS: "./test/fixtures/signer/solana.keys.json",
   QUBIC_KEYS: "./test/fixtures/signer/qubic.keys.json",
   HUB_URLS: "http://127.0.0.1:3010,http://127.0.0.1:3011",
@@ -65,6 +73,7 @@ const children = [];
 
 function startOracle(oracle) {
   const dbFile = join(tmpRoot, `${oracle.id}.sqlite3`);
+  const solanaKeysFile = `./test/fixtures/signer/solana-${oracle.id.split("-")[1]}.keys.json`;
   const child = spawn("npm", ["run", "simulated"], {
     cwd: ROOT_DIR,
     stdio: ["ignore", "pipe", "pipe"],
@@ -73,6 +82,7 @@ function startOracle(oracle) {
       ...baseEnv,
       PORT: String(oracle.port),
       SQLITE_DB_FILE: dbFile,
+      SOLANA_KEYS: solanaKeysFile,
     },
   });
 

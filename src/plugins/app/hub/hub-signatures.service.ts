@@ -2,11 +2,7 @@ import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { Type } from "@sinclair/typebox";
 import { IdSchema, SignatureSchema } from "../common/schemas/common.js";
-import {
-  kPoller,
-  RECOMMENDED_POLLING_DEFAULTS,
-  type PollerService,
-} from "../../infra/poller.js";
+import { kPoller, type PollerService } from "../../infra/poller.js";
 import {
   kUndiciGetClient,
   type UndiciGetClientService,
@@ -57,7 +53,7 @@ function startHubSignaturePolling(
   const ordersRepository =
     fastify.getDecorator<OrdersRepository>(kOrdersRepository);
   const client = undiciGetClient.create();
-  const defaults = RECOMMENDED_POLLING_DEFAULTS;
+  const defaults = poller.defaults;
 
   const pollerHandle = poller.create({
     primary,

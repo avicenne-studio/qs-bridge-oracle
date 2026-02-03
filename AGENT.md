@@ -22,7 +22,7 @@
   - `src/routes/home.ts` – static welcome message.
   - `src/routes/api/health/index.ts` – verifies database connectivity and returns an RFC 3339 timestamp (used by the Hub to track oracle heartbeat).
   - `src/routes/api/orders/index.ts` – paginated listing of persisted orders with optional `source`/`dest` filters and stable ordering.
-
+things are al
 ## Database & Persistence
 - Storage: SQLite file defined by `SQLITE_DB_FILE`. Docker compose mounts `/data/oracle.sqlite3`; local dev can use `./data/oracle.sqlite3`.
 - Access layer: `ordersRepository` (Fastify decorator) wraps Knex to provide `paginate`, `findById`, `create`, `update`, and `delete`.
@@ -36,6 +36,7 @@
   - `test/plugins/signer/*` – signer service validation, including fixture key files under `test/fixtures/signer`.
   - `test/routes/*` – HTTP endpoints (current focus on `/` home, `/api/health`, `/api/orders`).
 - Tests load `.env.test` (not committed) to point at an ephemeral SQLite file and throttle rate limits for deterministic runs.
+- Never access `process.env` directly in application tests, and never assign values to it in tests. Use `.env.test` and Fastify config instead.
 
 ## Operational Notes
 - Required env vars: `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`, `HUB_KEYS_FILE`, `RELAYER_FEE_PERCENT`; optional `RATE_LIMIT_MAX`, `ORACLE_SIGNATURE_THRESHOLD` (defaults to 2). Keep secrets outside the repo and mount read-only wherever possible.

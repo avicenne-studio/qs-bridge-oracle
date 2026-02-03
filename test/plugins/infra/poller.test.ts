@@ -116,7 +116,7 @@ describe("poller plugin", () => {
     });
 
     assert.deepStrictEqual(pollerService.defaults, {
-      intervalMs: 3000,
+      intervalMs: 1000,
       requestTimeoutMs: 700,
       jitterMs: 25,
     });
@@ -127,6 +127,7 @@ describe("poller plugin", () => {
     assert.deepStrictEqual(abortedServers, ["slow"]);
     await poller.stop().catch(noop);
   });
+
 
   it("throws when start is invoked twice", async (t) => {
     const app = await build(t);
@@ -256,8 +257,45 @@ describe("poller plugin", () => {
     await completion;
 
     assert.deepStrictEqual(rounds, [
-      { response: null, used: undefined },
-      { response: null, used: undefined },
+      { response: null, used: "fallback" },
+      { response: null, used: "fallback" },
+    ]);
+  });
+
+  it("uses the primary when fallback is missing and the request fails", async (t) => {
+    const app = await build(t);
+    const pollerService: PollerService = app.getDecorator(kPoller);
+
+    const rounds: Array<{ response: string | null; used: string }> = [];
+    let done: (() => void) | null = null;
+    const completion = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+
+    const poller = pollerService.create({
+      primary: "primary",
+      fetchOne: async () => {
+        throw new Error("boom");
+      },
+      onRound: (response, context) => {
+        rounds.push({ response, used: context.used });
+        if (context.round === 2) {
+          queueMicrotask(() => {
+            poller.stop().then(() => done?.(), noop);
+          });
+        }
+      },
+      intervalMs: 10,
+      requestTimeoutMs: 20,
+      jitterMs: 0,
+    });
+
+    poller.start();
+    await completion;
+
+    assert.deepStrictEqual(rounds, [
+      { response: null, used: "primary" },
+      { response: null, used: "primary" },
     ]);
   });
 });

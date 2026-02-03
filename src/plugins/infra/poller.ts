@@ -1,5 +1,6 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
+import { kEnvConfig, type EnvConfig } from "./env.js";
 
 export type Fetcher<TResponse> = (
   server: string,
@@ -17,7 +18,7 @@ export type PollerRoundContext = {
   startedAt: number;
   primary: string;
   fallback?: string;
-  used?: string;
+  used: string;
 };
 
 export type PollerRoundHandler<TResponse> = (
@@ -37,13 +38,6 @@ export type PollerHandle = {
   stop(): Promise<void>;
   isRunning(): boolean;
 };
-
-export const RECOMMENDED_POLLING_DEFAULTS: Readonly<PollerOptions> =
-  Object.freeze({
-    intervalMs: 3000,
-    requestTimeoutMs: 700,
-    jitterMs: 25,
-  });
 
 export type PollerService = {
   defaults: Readonly<PollerOptions>;
@@ -99,7 +93,7 @@ function createPoller<TResponse>(
       }
 
       let response: TResponse | null = null;
-      let used: string | undefined;
+      let used: string = primary;
 
       try {
         response = await withTimeout(requestTimeoutMs, (signal) =>
@@ -115,7 +109,10 @@ function createPoller<TResponse>(
             used = fallback;
           } catch {
             response = null;
+            used = fallback;
           }
+        } else {
+          used = primary;
         }
       }
 
@@ -166,10 +163,16 @@ function createPoller<TResponse>(
 
 export default fp(
   function pollingPlugin(fastify: FastifyInstance) {
+    const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
+    const defaults: Readonly<PollerOptions> = Object.freeze({
+      intervalMs: config.POLLER_INTERVAL_MS,
+      requestTimeoutMs: 700,
+      jitterMs: 25,
+    });
     const handles = new Set<PollerHandle>();
 
     fastify.decorate(kPoller, {
-      defaults: RECOMMENDED_POLLING_DEFAULTS,
+      defaults,
       create<TResponse>(config: CreatePollerConfig<TResponse>) {
         const handle = createPoller(config);
         handles.add(handle);

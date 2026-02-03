@@ -6,6 +6,7 @@ export type EnvConfig = {
   HOST: string;
   PORT: number;
   RATE_LIMIT_MAX: number;
+  POLLER_INTERVAL_MS: number;
   SQLITE_DB_FILE: string;
   SOLANA_KEYS: string;
   QUBIC_KEYS: string;
@@ -13,8 +14,11 @@ export type EnvConfig = {
   ORACLE_ID?: string;
   HUB_URLS: string;
   HUB_KEYS_FILE: string;
-  SOLANA_WS_URL: string;
-  SOLANA_LISTENER_ENABLED: boolean;
+  SOLANA_RPC_URL: string;
+  SOLANA_TX_COMMITMENT?: "processed" | "confirmed" | "finalized";
+  SOLANA_TX_RETRY_MAX_ATTEMPTS?: number;
+  SOLANA_TX_RETRY_BASE_MS?: number;
+  SOLANA_TX_RETRY_MAX_MS?: number;
   SOLANA_BPS_FEE: number;
   RELAYER_FEE_PERCENT: string;
 };
@@ -31,8 +35,7 @@ const schema = {
     "QUBIC_KEYS",
     "HUB_URLS",
     "HUB_KEYS_FILE",
-    "SOLANA_WS_URL",
-    "SOLANA_LISTENER_ENABLED",
+    "SOLANA_RPC_URL",
     "SOLANA_BPS_FEE",
     "RELAYER_FEE_PERCENT",
   ],
@@ -40,6 +43,11 @@ const schema = {
     RATE_LIMIT_MAX: {
       type: "number",
       default: 100, // Lower it to 4 in your .env.test file for tests
+    },
+    POLLER_INTERVAL_MS: {
+      type: "number",
+      minimum: 1000,
+      default: 10_000,
     },
     SQLITE_DB_FILE: {
       type: "string",
@@ -74,12 +82,28 @@ const schema = {
     HUB_KEYS_FILE: {
       type: "string",
     },
-    SOLANA_WS_URL: {
+    SOLANA_RPC_URL: {
       type: "string",
     },
-    SOLANA_LISTENER_ENABLED: {
-      type: "boolean",
-      default: true,
+    SOLANA_TX_COMMITMENT: {
+      type: "string",
+      enum: ["processed", "confirmed", "finalized"],
+      default: "confirmed",
+    },
+    SOLANA_TX_RETRY_MAX_ATTEMPTS: {
+      type: "number",
+      minimum: 1,
+      default: 6,
+    },
+    SOLANA_TX_RETRY_BASE_MS: {
+      type: "number",
+      minimum: 1,
+      default: 500,
+    },
+    SOLANA_TX_RETRY_MAX_MS: {
+      type: "number",
+      minimum: 1,
+      default: 4000,
     },
     SOLANA_BPS_FEE: {
       type: "number",

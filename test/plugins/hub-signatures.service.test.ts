@@ -187,7 +187,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       const updated = await ordersRepository.findById(order!.id);
       relayAccepted = updated?.oracle_accept_to_relay === true
       return relayAccepted;
-    });
+    }, 12_000);
 
     assert.ok(relayAccepted);
   });
@@ -260,15 +260,22 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    let warnMock: ReturnType<typeof t.mock.method>["mock"] | null = null;
+    const app = await build(t, {
+      beforeReady: (instance) => {
+        warnMock = t.mock.method(instance.log, "warn").mock;
+      },
+    });
     t.after(() => app.close());
 
-    const { mock: warnMock } = t.mock.method(app.log, "warn");
-
-    await waitFor(() =>
-      warnMock.calls.some(
-        (call) => call.arguments[1] === "Invalid hub signatures payload"
-      )
+    await waitFor(
+      () =>
+        Boolean(
+          warnMock?.calls.some(
+            (call) => call.arguments[1] === "Invalid hub signatures payload"
+          )
+        ),
+      10_000
     );
   });
 
