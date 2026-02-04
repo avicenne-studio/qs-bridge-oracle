@@ -84,5 +84,12 @@
       "@solana/web3.js>rpc-websockets>bufferutil": false,
       "@solana/web3.js>rpc-websockets>utf-8-validate": false
     }
+  },
+  "c8": {
+    "check-coverage": true,
+    "lines": 100,
+    "branches": 100,
+    "functions": 100,
+    "statements": 100
   }
 }
