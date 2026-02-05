@@ -97,6 +97,7 @@ describe("solana order handlers", () => {
     assert.strictEqual(stored.from, bytesToHex(event.fromAddress));
     assert.strictEqual(stored.to, bytesToHex(event.toAddress));
     assert.strictEqual(stored.signature, "signed-solana-order");
+    assert.strictEqual(stored.origin_trx_hash, "sig-create-order");
 
     const sourcePayload = JSON.parse(stored.source_payload ?? "{}");
     assert.deepStrictEqual(sourcePayload, {
@@ -118,6 +119,7 @@ describe("solana order handlers", () => {
 
     const stored = await repo.findBySourceNonce(bytesToHex(event.nonce));
     assert.ok(stored);
+    assert.strictEqual(stored.origin_trx_hash, bytesToHex(event.nonce));
   });
 
   it("skips outbound events for existing orders", async () => {
@@ -131,6 +133,7 @@ describe("solana order handlers", () => {
         to: "bb",
         amount: "1",
         relayerFee: "0",
+        origin_trx_hash: "trx-hash",
         signature: "sig",
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
@@ -161,6 +164,7 @@ describe("solana order handlers", () => {
       to: "bb",
       amount: "1",
       relayerFee: "0",
+      origin_trx_hash: "trx-hash",
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -178,6 +182,7 @@ describe("solana order handlers", () => {
       to: "bb",
       amount: "1",
       relayerFee: "0",
+      origin_trx_hash: "trx-hash",
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -196,6 +201,7 @@ describe("solana order handlers", () => {
       to: "bb",
       amount: "1",
       relayerFee: "0",
+      origin_trx_hash: "trx-hash",
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
