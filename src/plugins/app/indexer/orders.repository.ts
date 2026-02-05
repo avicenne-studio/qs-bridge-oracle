@@ -156,6 +156,7 @@ function createRepository(fastify: FastifyInstance) {
           "orders.to",
           "orders.amount",
           "orders.relayerFee",
+          "orders.origin_trx_hash",
           "orders.source_payload",
           "orders.signature",
           "orders.status",

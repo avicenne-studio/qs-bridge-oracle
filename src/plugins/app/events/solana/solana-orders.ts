@@ -113,7 +113,8 @@ function createOrderFromOutboundEvent(
   event: OutboundEvent,
   signature: string,
   orderId: string,
-  sourceNonce: string
+  sourceNonce: string,
+  originTrxHash: string
 ): OracleOrder {
   return {
     id: orderId,
@@ -123,6 +124,7 @@ function createOrderFromOutboundEvent(
     to: bytesToHex(event.toAddress),
     amount: event.amount.toString(),
     relayerFee: event.relayerFee.toString(),
+    origin_trx_hash: originTrxHash,
     signature,
     status: "pending",
     oracle_accept_to_relay: true,
@@ -204,6 +206,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     }
 
     const signatureSeed = meta?.signature ?? sourceNonce;
+    const originTrxHash = meta?.signature ?? sourceNonce;
     const orderId = orderIdFromSignature(signatureSeed);
     const normalized = normalizeOutboundEvent(event, config.SOLANA_BPS_FEE);
     const signature = await signSolanaOrder(signerService, normalized);
@@ -213,7 +216,8 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       event,
       signature,
       orderId,
-      sourceNonce
+      sourceNonce,
+      originTrxHash
     );
     order.source_payload = serializeSourcePayload(buildSourcePayload(event));
     await ordersRepository.create(order);

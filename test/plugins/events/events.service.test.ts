@@ -298,6 +298,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       to: hex32(2),
       amount: "10",
       relayerFee: "1",
+      origin_trx_hash: "trx-hash",
       signature: "sig",
       status: "pending",
       oracle_accept_to_relay: true,

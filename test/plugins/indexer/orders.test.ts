@@ -16,9 +16,11 @@ const mockQubicTx: QubicTransaction = {
   recipient: "BobQ",
   amount: 999,
   nonce: 1,
+  origin_trx_hash: "qubic-trx-hash",
 };
 
 const mockSolanaTx: SolanaTransaction = {
+  signature: "solana-trx-hash",
   recentBlockhash: "ABC123",
   feePayer: "FEEPAYER111",
   instructions: [
@@ -40,6 +42,7 @@ describe("OracleOrder utilities", () => {
       to: "B",
       amount: "10",
       relayerFee: "0",
+      origin_trx_hash: "trx-hash",
       signature: "SOLANA_SIGNATURE_EXAMPLE",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -57,6 +60,7 @@ describe("OracleOrder utilities", () => {
       to: "B",
       amount: "1",
       relayerFee: "0",
+      origin_trx_hash: "trx-hash",
       signature: "QUBIC_SIGNATURE_EXAMPLE",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
@@ -83,6 +87,7 @@ describe("OracleOrder utilities", () => {
     assert.strictEqual(order.to, mockQubicTx.recipient);
     assert.strictEqual(order.amount, String(mockQubicTx.amount));
     assert.strictEqual(order.relayerFee, "0");
+    assert.strictEqual(order.origin_trx_hash, mockQubicTx.origin_trx_hash);
     assert.strictEqual(order.signature, "QUBIC_SIGNATURE_1");
     assert.strictEqual(order.status, "ready-for-relay");
     assert.strictEqual(order.oracle_accept_to_relay, true);
