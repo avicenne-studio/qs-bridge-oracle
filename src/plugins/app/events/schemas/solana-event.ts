@@ -45,9 +45,14 @@ export const SolanaStoredEventSchema = Type.Object({
   createdAt: StringSchema,
 });
 
+const SolanaEventsCursorSchema = Type.Object({
+  createdAt: StringSchema,
+  id: Type.Integer({ minimum: 0 }),
+});
+
 export const SolanaEventsResponseSchema = Type.Object({
   data: Type.Array(SolanaStoredEventSchema),
-  cursor: Type.Integer({ minimum: 0 }),
+  cursor: SolanaEventsCursorSchema,
 });
 
 export type SolanaEventPayload = Static<typeof SolanaEventPayloadSchema>;

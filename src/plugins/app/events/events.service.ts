@@ -8,103 +8,71 @@ import {
 import { kValidation, type ValidationService } from "../common/validation.js";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import {
-  kOrdersRepository,
-  type OrdersRepository,
-} from "../indexer/orders.repository.js";
+  kHubEventsRepository,
+  kHubEventCursorsRepository,
+  type HubEventCursor,
+  type HubEventsRepository,
+  type HubEventCursorsRepository,
+} from "./hub-events.repository.js";
 import {
   SolanaEventsResponseSchema,
   type SolanaEventsResponse,
-  type SolanaStoredEvent,
 } from "./schemas/solana-event.js";
 import { parseHubUrls } from "../hub/hub-signatures.service.js";
-import { createSolanaOrderHandlers } from "./solana/solana-orders.js";
-import { hexToBytes, toU64BigInt } from "./solana/bytes.js";
-import {
-  kSignerService,
-  type SignerService,
-} from "../signer/signer.service.js";
-import {
-  kSolanaEventValidator,
-  type SolanaEventValidator,
-} from "./solana/solana-events-validator.js";
 
 const DEFAULT_EVENTS_LIMIT = 50;
 
-type HubEventsState = Map<string, number>;
+type HubEventsState = Map<string, HubEventCursor>;
 
-function buildHubEventsPath(after: number, limit: number) {
+function buildHubEventsPath(
+  createdAfter: string,
+  afterId: number,
+  limit: number
+) {
   const params = new URLSearchParams({
-    after: String(after),
+    created_after: createdAfter,
+    after_id: String(afterId),
     limit: String(limit),
   });
   return `/api/orders/events?${params.toString()}`;
 }
 
-function mapStoredEventToSolanaPayload(event: SolanaStoredEvent) {
-  if (event.type === "outbound") {
-    const payload = event.payload;
-    if ("networkIn" in payload) {
-      return {
-        type: "outbound" as const,
-        event: {
-          discriminator: 1,
-          networkIn: payload.networkIn,
-          networkOut: payload.networkOut,
-          tokenIn: hexToBytes(payload.tokenIn),
-          tokenOut: hexToBytes(payload.tokenOut),
-          fromAddress: hexToBytes(payload.fromAddress),
-          toAddress: hexToBytes(payload.toAddress),
-          amount: toU64BigInt(payload.amount, "amount"),
-          relayerFee: toU64BigInt(payload.relayerFee, "relayerFee"),
-          nonce: hexToBytes(payload.nonce),
-        },
-      };
-    }
-  }
-  const payload = event.payload;
-  return {
-    type: "override-outbound" as const,
-    event: {
-      discriminator: 2,
-      toAddress: hexToBytes(payload.toAddress),
-      relayerFee: toU64BigInt(payload.relayerFee, "relayerFee"),
-      nonce: hexToBytes(payload.nonce),
-    },
-  };
+function formatSqliteTimestamp(date: Date) {
+  return date.toISOString().replace("T", " ").slice(0, 19);
 }
 
-async function processEvent(
-  event: SolanaStoredEvent,
-  ordersRepository: OrdersRepository,
-  signerService: SignerService,
-  validator: SolanaEventValidator,
-  config: EnvConfig,
-  logger: FastifyInstance["log"]
-) {
-  await validator.validate(event);
-  logger.info(
-    { signature: event.signature, type: event.type, slot: event.slot },
-    "Solana event validated"
+export async function loadInitialCursor(
+  hubUrl: string,
+  deps: {
+    eventsRepository: HubEventsRepository;
+    cursorsRepository: HubEventCursorsRepository;
+    lookbackDays: number;
+  }
+): Promise<HubEventCursor> {
+  const { eventsRepository, cursorsRepository, lookbackDays } = deps;
+  const existing = await cursorsRepository.get(hubUrl);
+  if (existing) {
+    return existing;
+  }
+  const latest = await eventsRepository.findLatestCursor(hubUrl);
+  if (latest) {
+    await cursorsRepository.upsert(latest);
+    return latest;
+  }
+
+  const fallbackDate = new Date(
+    Date.now() - lookbackDays * 24 * 60 * 60 * 1000
   );
-  const handlers = createSolanaOrderHandlers({
-    ordersRepository,
-    signerService,
-    config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
-    logger,
-  });
-  const mapped = mapStoredEventToSolanaPayload(event);
-  if (mapped.type === "outbound") {
-    await handlers.handleOutboundEvent(mapped.event, {
-      signature: event.signature,
-    });
-  } else {
-    await handlers.handleOverrideOutboundEvent(mapped.event, {
-      signature: event.signature,
-    });
-  }
+  const fallback = {
+    hubUrl,
+    lastCreatedAt: formatSqliteTimestamp(fallbackDate),
+    lastId: 0,
+  };
+  await cursorsRepository.upsert(fallback);
+  return fallback;
 }
 
-function startHubEventsPolling(
+async function startHubEventsPolling(
   fastify: FastifyInstance,
   urls: string[]
 ) {
@@ -115,24 +83,38 @@ function startHubEventsPolling(
   const poller = fastify.getDecorator<PollerService>(kPoller);
   const validation = fastify.getDecorator<ValidationService>(kValidation);
   const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
-  const ordersRepository =
-    fastify.getDecorator<OrdersRepository>(kOrdersRepository);
-  const signerService = fastify.getDecorator<SignerService>(kSignerService);
-  const validator =
-    fastify.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
+  const eventsRepository =
+    fastify.getDecorator<HubEventsRepository>(kHubEventsRepository);
+  const cursorsRepository =
+    fastify.getDecorator<HubEventCursorsRepository>(kHubEventCursorsRepository);
   const client = undiciGetClient.create();
   const defaults = poller.defaults;
   const cursors: HubEventsState = new Map();
   const limit = DEFAULT_EVENTS_LIMIT;
 
+  await Promise.all(
+    urls.map(async (url) => {
+      const cursor = await loadInitialCursor(url, {
+        eventsRepository,
+        cursorsRepository,
+        lookbackDays: config.EVENTS_LOOKBACK_DAYS,
+      });
+      cursors.set(url, cursor);
+    })
+  );
+
   const pollerHandle = poller.create({
     primary,
     fallback,
     fetchOne: (server, signal) => {
-      const after = cursors.get(server) ?? 0;
+      const cursor = cursors.get(server);
+      /* c8 ignore next */
+      const createdAfter = cursor?.lastCreatedAt ?? formatSqliteTimestamp(new Date());
+      /* c8 ignore next */
+      const afterId = cursor?.lastId ?? 0;
       return client.getJson<SolanaEventsResponse>(
         server,
-        buildHubEventsPath(after, limit),
+        buildHubEventsPath(createdAfter, afterId, limit),
         signal
       );
     },
@@ -154,33 +136,49 @@ function startHubEventsPolling(
       }
 
       const usedHub = context.used;
-      let lastCursor = cursors.get(usedHub) ?? 0;
+      const cursor = cursors.get(usedHub);
+      /* c8 ignore next */
+      let lastCreatedAt = cursor?.lastCreatedAt ?? formatSqliteTimestamp(new Date());
+      /* c8 ignore next */
+      let lastId = cursor?.lastId ?? 0;
       for (const event of response.data) {
         try {
-          await processEvent(
-            event,
-            ordersRepository,
-            signerService,
-            validator,
-            config,
-            fastify.log
-          );
-          lastCursor = event.id;
-          cursors.set(usedHub, lastCursor);
+          await eventsRepository.create({
+            hubUrl: usedHub,
+            signature: event.signature,
+            slot: event.slot ?? null,
+            chain: event.chain,
+            type: event.type,
+            nonce: event.nonce,
+            payload: event.payload,
+            createdAt: event.createdAt,
+          });
+          lastCreatedAt = event.createdAt;
+          lastId = event.id;
         } catch (error) {
           fastify.log.error(
             { err: error, eventId: event.id, signature: event.signature },
-            "Failed to process hub event"
+            "Failed to persist hub event"
           );
           break;
         }
+      }
+
+      if (response.data.length > 0) {
+        const nextCursor = {
+          hubUrl: usedHub,
+          lastCreatedAt,
+          lastId,
+        };
+        cursors.set(usedHub, nextCursor);
+        await cursorsRepository.upsert(nextCursor);
       }
 
       fastify.log.info(
         {
           hubUsed: usedHub,
           count: response.data.length,
-          cursor: lastCursor,
+          cursor: { createdAt: lastCreatedAt, id: lastId },
         },
         "Polled hub events"
       );
@@ -197,7 +195,9 @@ export default fp(
   async function hubEventsService(fastify: FastifyInstance) {
     const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
     const urls = parseHubUrls(config.HUB_URLS);
-    startHubEventsPolling(fastify, urls);
+    fastify.addHook("onReady", async () => {
+      await startHubEventsPolling(fastify, urls);
+    });
   },
   {
     name: "hub-events-service",
@@ -205,10 +205,8 @@ export default fp(
       "env",
       "polling",
       "undici-get-client",
-      "orders-repository",
+      "hub-events-repository",
       "validation",
-      "signer-service",
-      "solana-events-validator",
     ],
   }
 );
