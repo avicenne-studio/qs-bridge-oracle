@@ -1,4 +1,4 @@
-# Qubic ↔ Solana Oracle – Agent Notes
+the # Qubic ↔ Solana Oracle – Agent Notes
 
 ## Mission & Context
 - This Fastify service is one Oracle node in a replicated oracle network that feeds a Hub service with order signatures and liveness signals for Qubic ↔ Solana bridge transfers.

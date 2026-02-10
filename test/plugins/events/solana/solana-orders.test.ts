@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  createFailedOrderFromOutboundEvent,
   createSolanaOrderHandlers,
 } from "../../../../src/plugins/app/events/solana/solana-orders.js";
 import { bytesToHex } from "../../../../src/plugins/app/events/solana/bytes.js";
@@ -120,6 +121,15 @@ describe("solana order handlers", () => {
     const stored = await repo.findBySourceNonce(bytesToHex(event.nonce));
     assert.ok(stored);
     assert.strictEqual(stored.origin_trx_hash, bytesToHex(event.nonce));
+  });
+
+  it("builds failed orders when signature metadata is missing", async () => {
+    const event = createOutboundEvent();
+    const failed = createFailedOrderFromOutboundEvent(event, {}, "failed");
+
+    assert.strictEqual(failed.status, "failed");
+    assert.strictEqual(failed.origin_trx_hash, bytesToHex(event.nonce));
+    assert.strictEqual(failed.signature, bytesToHex(event.nonce));
   });
 
   it("skips outbound events for existing orders", async () => {

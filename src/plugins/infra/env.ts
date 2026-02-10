@@ -21,6 +21,9 @@ export type EnvConfig = {
   SOLANA_TX_RETRY_MAX_MS?: number;
   SOLANA_BPS_FEE: number;
   RELAYER_FEE_PERCENT: string;
+  EVENT_MAX_RETRIES: number;
+  EVENTS_LOOKBACK_DAYS: number;
+  EVENTS_PROCESS_INTERVAL_MS: number;
 };
 
 export const kEnvConfig = "config";
@@ -113,6 +116,21 @@ const schema = {
     RELAYER_FEE_PERCENT: {
       type: "string",
       pattern: "^[0-9]+(\\.[0-9]+)?$",
+    },
+    EVENT_MAX_RETRIES: {
+      type: "number",
+      minimum: 1,
+      default: 3,
+    },
+    EVENTS_LOOKBACK_DAYS: {
+      type: "number",
+      minimum: 1,
+      default: 14,
+    },
+    EVENTS_PROCESS_INTERVAL_MS: {
+      type: "number",
+      minimum: 500,
+      default: 2000,
     },
   },
 };

@@ -12,6 +12,10 @@ import { buildHubEventsPath } from "../../../src/plugins/app/events/events.servi
 import { Connection } from "@solana/web3.js";
 import { getOutboundEventEncoder } from "../../../src/clients/js/types/outboundEvent.js";
 import { getOverrideOutboundEventEncoder } from "../../../src/clients/js/types/overrideOutboundEvent.js";
+import {
+  kHubEventsRepository,
+  type HubEventsRepository,
+} from "../../../src/plugins/app/events/hub-events.repository.js";
 
 const HUB_PRIMARY_PORT = 6201;
 const HUB_FALLBACK_PORT = 6202;
@@ -34,6 +38,7 @@ async function startHubServer(
 }
 
 function createOutboundEventResponse() {
+  const createdAt = "2024-01-01 00:00:00";
   return {
     data: [
       {
@@ -54,14 +59,15 @@ function createOutboundEventResponse() {
           relayerFee: "2",
           nonce: hex32(1),
         },
-        createdAt: new Date().toISOString(),
+        createdAt,
       },
     ],
-    cursor: 1,
+    cursor: { createdAt, id: 1 },
   };
 }
 
 function createOverrideEventResponse() {
+  const createdAt = "2024-01-01 00:00:01";
   return {
     data: [
       {
@@ -76,10 +82,10 @@ function createOverrideEventResponse() {
           relayerFee: "7",
           nonce: hex32(9),
         },
-        createdAt: new Date().toISOString(),
+        createdAt,
       },
     ],
-    cursor: 2,
+    cursor: { createdAt, id: 2 },
   };
 }
 
@@ -120,14 +126,15 @@ function createLogLine(bytes: Uint8Array) {
 describe("hub events service", { concurrency: 1 }, () => {
   it("builds hub events paths", () => {
     assert.strictEqual(
-      buildHubEventsPath(5, 10),
-      "/api/orders/events?after=5&limit=10"
+      buildHubEventsPath("2024-01-01T00:00:00", 5, 10),
+      "/api/orders/events?created_after=2024-01-01T00%3A00%3A00&after_id=5&limit=10"
     );
   });
 
   it("processes valid events and creates orders", async (t) => {
     process.env.HUB_URLS = HUB_URLS;
     const response = createOutboundEventResponse();
+    response.data[0].slot = undefined;
     const logsBySignature = new Map([
       ["sig-evt", [createLogLine(createOutboundEventBytes())]],
     ]);
@@ -167,6 +174,9 @@ describe("hub events service", { concurrency: 1 }, () => {
 
     const app = await build(t);
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
+    const eventsRepo = app.getDecorator<HubEventsRepository>(
+      kHubEventsRepository
+    );
 
     let stored: StoredOrder = null;
     await waitFor(async () => {
@@ -176,6 +186,10 @@ describe("hub events service", { concurrency: 1 }, () => {
     assert.ok(stored);
     assert.ok(stored && stored.signature);
     assert.ok(txMock.calls.length > 0);
+
+    const storedEvent = await eventsRepo.findBySignature("sig-evt");
+    assert.ok(storedEvent);
+    assert.strictEqual(storedEvent?.status, "done");
   });
 
   it("logs when payload is invalid", async (t) => {
@@ -221,16 +235,61 @@ describe("hub events service", { concurrency: 1 }, () => {
     assert.ok(warnMock?.calls.length > 0);
   });
 
-  it("logs when processing fails", async (t) => {
+  it("logs when persisting hub events fails", async (t) => {
     process.env.HUB_URLS = HUB_URLS;
     const response = createOutboundEventResponse();
     let errorMock: MockMethod | null = null;
 
-    t.mock.method(Connection.prototype, "getTransaction", async () => {
-      return {
-        meta: { err: "boom", logMessages: [] },
-      } as never;
+    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
+      if (req.url?.startsWith("/api/orders/events")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(response));
+        return;
+      }
+      if (req.url === "/api/orders/signatures") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ data: [] }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
     });
+    await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
+      res.writeHead(404);
+      res.end();
+    });
+
+    const app = await build(t);
+    const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
+    t.mock.method(repo, "create", async () => {
+      throw new Error("db down");
+    });
+    errorMock = t.mock.method(app.log, "error").mock;
+
+    await waitFor(
+      () =>
+        Boolean(
+          errorMock?.calls.some(
+            (call) => call.arguments[1] === "Failed to persist hub event"
+          )
+        ),
+      2_000
+    );
+    assert.ok(errorMock);
+  });
+
+  it("marks events failed after retries and creates failed order", async (t) => {
+    process.env.HUB_URLS = HUB_URLS;
+    process.env.SOLANA_TX_RETRY_MAX_ATTEMPTS = "1";
+    t.after(() => {
+      delete process.env.SOLANA_TX_RETRY_MAX_ATTEMPTS;
+    });
+    const response = createOutboundEventResponse();
+
+    t.mock.method(Connection.prototype, "getTransaction", async () => null);
+    t.mock.method(Connection.prototype, "getSignatureStatuses", async () => ({
+      value: [{ confirmationStatus: "confirmed", err: null }],
+    }));
 
     await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
       if (req.url?.startsWith("/api/orders/events")) {
@@ -252,24 +311,87 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t, {
-      beforeRegister: (instance) => {
-        errorMock = t.mock.method(instance.log, "error").mock;
-      },
-    });
-
-    await waitFor(
-      () =>
-        Boolean(
-          errorMock?.calls.some(
-            (call) => call.arguments[1] === "Failed to process hub event"
-          )
-        ),
-      2_000
+    const app = await build(t);
+    const eventsRepo = app.getDecorator<HubEventsRepository>(
+      kHubEventsRepository
     );
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-    const stored = await repo.findBySourceNonce(hex32(1));
-    assert.strictEqual(stored, null);
+
+    await waitFor(async () => {
+      const failedEvent = await eventsRepo.findBySignature("sig-evt");
+      return failedEvent?.status === "failed";
+    }, 12_000);
+
+    const failedOrder = await repo.findBySourceNonce(hex32(1));
+    assert.ok(failedOrder);
+    assert.strictEqual(failedOrder?.status, "failed");
+    assert.ok(failedOrder?.failure_reason_public);
+  });
+
+  it("does not overwrite existing orders when events fail", async (t) => {
+    process.env.HUB_URLS = HUB_URLS;
+    process.env.SOLANA_TX_RETRY_MAX_ATTEMPTS = "1";
+    t.after(() => {
+      delete process.env.SOLANA_TX_RETRY_MAX_ATTEMPTS;
+    });
+
+    const response = createOutboundEventResponse();
+    const emptyResponse = { data: [], cursor: response.cursor };
+    let shouldSendEvents = false;
+    t.mock.method(Connection.prototype, "getTransaction", async () => null);
+    t.mock.method(Connection.prototype, "getSignatureStatuses", async () => ({
+      value: [{ confirmationStatus: "confirmed", err: null }],
+    }));
+
+    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
+      if (req.url?.startsWith("/api/orders/events")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(shouldSendEvents ? response : emptyResponse));
+        return;
+      }
+      if (req.url === "/api/orders/signatures") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ data: [] }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
+      res.writeHead(404);
+      res.end();
+    });
+
+    const app = await build(t);
+    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
+    await repo.create({
+      id: "00000000-0000-4000-8000-000000000010",
+      source: "solana",
+      dest: "qubic",
+      from: "A",
+      to: "B",
+      amount: "10",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig-existing",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      source_nonce: hex32(1),
+    });
+    shouldSendEvents = true;
+
+    const eventsRepo = app.getDecorator<HubEventsRepository>(
+      kHubEventsRepository
+    );
+
+    await waitFor(async () => {
+      const failedEvent = await eventsRepo.findBySignature("sig-evt");
+      return failedEvent?.status === "failed";
+    }, 12_000);
+
+    const existing = await repo.findBySourceNonce(hex32(1));
+    assert.ok(existing);
+    assert.strictEqual(existing?.status, "ready-for-relay");
   });
 
   it("processes override events", async (t) => {
@@ -313,7 +435,10 @@ describe("hub events service", { concurrency: 1 }, () => {
       }),
     };
 
-    let response: unknown = { data: [], cursor: 0 };
+    let response: unknown = {
+      data: [],
+      cursor: { createdAt: "2024-01-01 00:00:00", id: 0 },
+    };
     await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
       if (req.url?.startsWith("/api/orders/events")) {
         res.writeHead(200, { "content-type": "application/json" });

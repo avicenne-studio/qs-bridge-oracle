@@ -28,6 +28,7 @@ function normalizeOrderRow(row: StoredOrder): StoredOrder {
   return {
     ...row,
     oracle_accept_to_relay: Boolean(row.oracle_accept_to_relay),
+    failure_reason_public: row.failure_reason_public ?? undefined,
   };
 }
 
@@ -101,7 +102,9 @@ function createRepository(fastify: FastifyInstance) {
     async findPendingOrders() {
       const rows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .select("*")
-        .where("oracle_accept_to_relay", 1)
+        .where((builder) => {
+          builder.where("oracle_accept_to_relay", 1).orWhere("status", "failed");
+        })
         .orderBy("id", "asc")
         .limit(MAX_PENDING);
 
@@ -159,6 +162,7 @@ function createRepository(fastify: FastifyInstance) {
           "orders.origin_trx_hash",
           "orders.source_payload",
           "orders.signature",
+          "orders.failure_reason_public",
           "orders.status",
           "orders.oracle_accept_to_relay",
           "orders.id",

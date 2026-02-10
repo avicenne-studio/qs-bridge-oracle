@@ -132,6 +132,32 @@ function createOrderFromOutboundEvent(
   };
 }
 
+export function createFailedOrderFromOutboundEvent(
+  event: OutboundEvent,
+  meta: { signature?: string },
+  failureReasonPublic: string
+): OracleOrder {
+  const sourceNonce = bytesToHex(event.nonce);
+  const signatureSeed = meta.signature ?? sourceNonce;
+  const orderId = orderIdFromSignature(signatureSeed);
+  return {
+    id: orderId,
+    source: "solana",
+    dest: "qubic",
+    from: bytesToHex(event.fromAddress),
+    to: bytesToHex(event.toAddress),
+    amount: event.amount.toString(),
+    relayerFee: event.relayerFee.toString(),
+    origin_trx_hash: signatureSeed,
+    signature: signatureSeed,
+    status: "failed",
+    oracle_accept_to_relay: false,
+    source_nonce: sourceNonce,
+    source_payload: serializeSourcePayload(buildSourcePayload(event)),
+    failure_reason_public: failureReasonPublic,
+  };
+}
+
 function normalizeOutboundEvent(
   event: OutboundEvent,
   bpsFee: number

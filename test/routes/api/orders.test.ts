@@ -38,6 +38,20 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     status: "ready-for-relay",
     oracle_accept_to_relay: false,
   });
+  await ordersRepository.create({
+    id: makeId(3),
+    source: "solana",
+    dest: "qubic",
+    from: "E",
+    to: "F",
+    amount: "30",
+    relayerFee: "0",
+    origin_trx_hash: "trx-hash",
+    signature: "sig-3",
+    status: "failed",
+    oracle_accept_to_relay: false,
+    failure_reason_public: "Transaction failed",
+  });
 }
 
 test("GET /api/orders returns pending orders", async (t) => {
@@ -53,9 +67,10 @@ test("GET /api/orders returns pending orders", async (t) => {
   assert.strictEqual(res.statusCode, 200);
   const body = JSON.parse(res.payload);
 
-  assert.strictEqual(body.data.length, 1);
+  assert.strictEqual(body.data.length, 2);
   assert.strictEqual(body.data[0].from, "A");
   assert.strictEqual(body.data[0].signature, "sig-1");
+  assert.strictEqual(body.data[1].status, "failed");
 });
 
 test("GET /api/orders handles repository errors", async (t) => {
