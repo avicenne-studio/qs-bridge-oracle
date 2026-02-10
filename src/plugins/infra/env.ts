@@ -7,6 +7,8 @@ export type EnvConfig = {
   PORT: number;
   RATE_LIMIT_MAX: number;
   POLLER_INTERVAL_MS: number;
+  POLLER_REQUEST_TIMEOUT_MS: number;
+  POLLER_JITTER_MS: number;
   SQLITE_DB_FILE: string;
   SOLANA_KEYS: string;
   QUBIC_KEYS: string;
@@ -52,6 +54,16 @@ const schema = {
       type: "number",
       minimum: 1000,
       default: 10_000,
+    },
+    POLLER_REQUEST_TIMEOUT_MS: {
+      type: "number",
+      minimum: 0,
+      default: 700,
+    },
+    POLLER_JITTER_MS: {
+      type: "number",
+      minimum: 0,
+      default: 25,
     },
     SQLITE_DB_FILE: {
       type: "string",

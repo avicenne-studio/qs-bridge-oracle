@@ -4,7 +4,7 @@ import {
   type UndiciGetClientService,
 } from "../../../src/plugins/infra/undici-get-client.js";
 
-// @ts-ignore - Only used for testing purposes.
+// @ts-expect-error - Only used for testing purposes.
 class MockUndiciGetClient implements UndiciGetClient {
   poolFor(): never {
     throw new Error("MockUndiciGetClient.poolFor not implemented");

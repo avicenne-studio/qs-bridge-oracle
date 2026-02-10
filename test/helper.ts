@@ -44,7 +44,9 @@ const DEFAULT_TEST_CONFIG: EnvConfig = {
   HOST: "127.0.0.1",
   PORT: 3000,
   RATE_LIMIT_MAX: 4,
-  POLLER_INTERVAL_MS: 1_000,
+  POLLER_INTERVAL_MS: 50,
+  POLLER_REQUEST_TIMEOUT_MS: 200,
+  POLLER_JITTER_MS: 0,
   SQLITE_DB_FILE: ":memory:",
   SOLANA_KEYS: "./test/fixtures/signer/solana.keys.json",
   QUBIC_KEYS: "./test/fixtures/signer/qubic.keys.json",
@@ -57,7 +59,7 @@ const DEFAULT_TEST_CONFIG: EnvConfig = {
   RELAYER_FEE_PERCENT: "0.1",
   EVENT_MAX_RETRIES: 3,
   EVENTS_LOOKBACK_DAYS: 14,
-  EVENTS_PROCESS_INTERVAL_MS: 2000,
+  EVENTS_PROCESS_INTERVAL_MS: 50,
 };
 
 function resolveBuildOptions(
@@ -140,8 +142,8 @@ export async function build(
 
 export async function waitFor(
   condition: () => boolean | Promise<boolean>,
-  timeoutMs = 5_000,
-  intervalMs = 100
+  timeoutMs = 2_000,
+  intervalMs = 50
 ) {
   const start = Date.now();
   while (true) {

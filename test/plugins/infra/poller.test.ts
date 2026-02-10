@@ -116,9 +116,9 @@ describe("poller plugin", () => {
     });
 
     assert.deepStrictEqual(pollerService.defaults, {
-      intervalMs: 1000,
-      requestTimeoutMs: 700,
-      jitterMs: 25,
+      intervalMs: 50,
+      requestTimeoutMs: 200,
+      jitterMs: 0,
     });
 
     poller.start();

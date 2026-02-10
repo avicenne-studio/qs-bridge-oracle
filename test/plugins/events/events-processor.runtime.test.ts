@@ -33,7 +33,7 @@ function createOutboundPayload(seed: number) {
 }
 
 test("processor skips overlapping runs", async (t) => {
-  const intervalMs = 500;
+  const intervalMs = 50;
 
   const app = await build(t, {
     config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
@@ -41,7 +41,7 @@ test("processor skips overlapping runs", async (t) => {
   const validator =
     app.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
   t.mock.method(validator, "validate", async () => {
-    await new Promise<void>((resolve) => setTimeout(resolve, 800));
+    await new Promise<void>((resolve) => setTimeout(resolve, 120));
   });
 
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
@@ -59,11 +59,11 @@ test("processor skips overlapping runs", async (t) => {
   await waitFor(async () => {
     const pending = await repo.listPending(10);
     return pending.length === 0;
-  }, 5_000);
+  }, 2_000);
 });
 
 test("processor logs when processing throws", async (t) => {
-  const intervalMs = 500;
+  const intervalMs = 50;
 
   let errorMock: { calls: Array<{ arguments: unknown[] }> } | null = null;
   const app = await build(t, {
@@ -88,7 +88,7 @@ test("processor logs when processing throws", async (t) => {
 });
 
 test("processor skips failed order creation when payload mapping mismatches", async (t) => {
-  const intervalMs = 500;
+  const intervalMs = 50;
   const maxRetries = 1;
 
   const app = await build(t, {
@@ -122,11 +122,11 @@ test("processor skips failed order creation when payload mapping mismatches", as
   await waitFor(async () => {
     const stored = await repo.findBySignature("sig-mismatch");
     return stored?.status === "failed";
-  }, 5_000);
+  }, 2_000);
 });
 
 test("processor creates failed orders for outbound events", async (t) => {
-  const intervalMs = 500;
+  const intervalMs = 50;
   const maxRetries = 1;
 
   const app = await build(t, {
@@ -157,7 +157,7 @@ test("processor creates failed orders for outbound events", async (t) => {
   await waitFor(async () => {
     const order = await ordersRepo.findBySourceNonce(hex32(34));
     return order?.status === "failed";
-  }, 5_000);
+  }, 2_000);
 
   const order = await ordersRepo.findBySourceNonce(hex32(34));
   assert.ok(order);

@@ -234,7 +234,12 @@ describe("solana event validator", () => {
     const app = fastify({ logger: false });
     app.register(
       fp(async (instance) => {
-        instance.decorate(kEnvConfig, { SOLANA_RPC_URL: "http://localhost:8899" });
+        instance.decorate(kEnvConfig, {
+          SOLANA_RPC_URL: "http://localhost:8899",
+          SOLANA_TX_RETRY_MAX_ATTEMPTS: 2,
+          SOLANA_TX_RETRY_BASE_MS: 10,
+          SOLANA_TX_RETRY_MAX_MS: 10,
+        });
       }, { name: "env" })
     );
     t.mock.method(Connection.prototype, "getTransaction", async () => null);
@@ -257,6 +262,9 @@ describe("solana event validator", () => {
         instance.decorate(kEnvConfig, {
           SOLANA_RPC_URL: "http://localhost:8899",
           SOLANA_TX_COMMITMENT: "processed",
+          SOLANA_TX_RETRY_MAX_ATTEMPTS: 2,
+          SOLANA_TX_RETRY_BASE_MS: 10,
+          SOLANA_TX_RETRY_MAX_MS: 10,
         });
       }, { name: "env" })
     );
