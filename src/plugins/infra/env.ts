@@ -15,7 +15,7 @@ export type EnvConfig = {
   HUB_URLS: string;
   HUB_KEYS_FILE: string;
   SOLANA_RPC_URL: string;
-  SOLANA_TX_COMMITMENT?: "processed" | "confirmed" | "finalized";
+  SOLANA_TX_COMMITMENT: "processed" | "confirmed" | "finalized";
   SOLANA_TX_RETRY_MAX_ATTEMPTS?: number;
   SOLANA_TX_RETRY_BASE_MS?: number;
   SOLANA_TX_RETRY_MAX_MS?: number;
@@ -40,6 +40,7 @@ const schema = {
     "HUB_KEYS_FILE",
     "SOLANA_RPC_URL",
     "SOLANA_BPS_FEE",
+    "SOLANA_TX_COMMITMENT",
     "RELAYER_FEE_PERCENT",
   ],
   properties: {
@@ -163,7 +164,9 @@ export const autoConfig = {
  */
 export default fp(
   async (fastify, opts) => {
-    await fastify.register(env, opts);
+    if (!fastify.hasDecorator(kEnvConfig)) {
+      await fastify.register(env, opts);
+    }
 
     const fileManager = fastify.getDecorator<FileManager>(kFileManager);
     const config = fastify.getDecorator<EnvConfig>(kEnvConfig);

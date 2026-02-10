@@ -58,7 +58,6 @@ fs.writeFileSync('.temp/order.json', JSON.stringify(order, null, 2));
 NODE
 ```
 
-
 ## 5) Send an inbound order
 
 ```bash

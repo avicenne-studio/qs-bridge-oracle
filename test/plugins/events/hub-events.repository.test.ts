@@ -17,7 +17,7 @@ describe("hub events repository", () => {
     const app = await build(t);
     const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
 
-    const created = await repo.create({
+    const created = await repo.upsert({
       hubUrl: "http://hub-1",
       signature: "sig-1",
       slot: 1,
@@ -39,7 +39,7 @@ describe("hub events repository", () => {
     });
     assert.ok(created);
 
-    const duplicate = await repo.create({
+    const duplicate = await repo.upsert({
       hubUrl: "http://hub-1",
       signature: "sig-1",
       slot: 2,
@@ -59,9 +59,10 @@ describe("hub events repository", () => {
       },
       createdAt: "2024-01-01 00:00:01",
     });
-    assert.strictEqual(duplicate, null);
+    assert.ok(duplicate);
+    assert.strictEqual(duplicate?.id, created?.id);
 
-    await repo.create({
+    await repo.upsert({
       hubUrl: "http://hub-1",
       signature: "sig-2",
       slot: 3,

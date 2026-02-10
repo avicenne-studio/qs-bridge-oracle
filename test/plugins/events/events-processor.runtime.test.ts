@@ -33,12 +33,11 @@ function createOutboundPayload(seed: number) {
 }
 
 test("processor skips overlapping runs", async (t) => {
-  process.env.EVENTS_PROCESS_INTERVAL_MS = "500";
-  t.after(() => {
-    delete process.env.EVENTS_PROCESS_INTERVAL_MS;
-  });
+  const intervalMs = 500;
 
-  const app = await build(t);
+  const app = await build(t, {
+    config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
+  });
   const validator =
     app.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
   t.mock.method(validator, "validate", async () => {
@@ -46,7 +45,7 @@ test("processor skips overlapping runs", async (t) => {
   });
 
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
-  await repo.create({
+  await repo.upsert({
     hubUrl: "http://hub-1",
     signature: "sig-overlap",
     slot: 1,
@@ -64,13 +63,12 @@ test("processor skips overlapping runs", async (t) => {
 });
 
 test("processor logs when processing throws", async (t) => {
-  process.env.EVENTS_PROCESS_INTERVAL_MS = "500";
-  t.after(() => {
-    delete process.env.EVENTS_PROCESS_INTERVAL_MS;
-  });
+  const intervalMs = 500;
 
   let errorMock: { calls: Array<{ arguments: unknown[] }> } | null = null;
-  const app = await build(t);
+  const app = await build(t, {
+    config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
+  });
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
   t.mock.method(repo, "listPending", async () => {
     throw new Error("boom");
@@ -90,14 +88,15 @@ test("processor logs when processing throws", async (t) => {
 });
 
 test("processor skips failed order creation when payload mapping mismatches", async (t) => {
-  process.env.EVENTS_PROCESS_INTERVAL_MS = "500";
-  process.env.EVENT_MAX_RETRIES = "1";
-  t.after(() => {
-    delete process.env.EVENTS_PROCESS_INTERVAL_MS;
-    delete process.env.EVENT_MAX_RETRIES;
-  });
+  const intervalMs = 500;
+  const maxRetries = 1;
 
-  const app = await build(t);
+  const app = await build(t, {
+    config: {
+      EVENTS_PROCESS_INTERVAL_MS: intervalMs,
+      EVENT_MAX_RETRIES: maxRetries,
+    },
+  });
   const validator =
     app.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
   t.mock.method(validator, "validate", async () => {
@@ -105,7 +104,7 @@ test("processor skips failed order creation when payload mapping mismatches", as
   });
 
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
-  await repo.create({
+  await repo.upsert({
     hubUrl: "http://hub-1",
     signature: "sig-mismatch",
     slot: 1,
@@ -127,14 +126,15 @@ test("processor skips failed order creation when payload mapping mismatches", as
 });
 
 test("processor creates failed orders for outbound events", async (t) => {
-  process.env.EVENTS_PROCESS_INTERVAL_MS = "500";
-  process.env.EVENT_MAX_RETRIES = "1";
-  t.after(() => {
-    delete process.env.EVENTS_PROCESS_INTERVAL_MS;
-    delete process.env.EVENT_MAX_RETRIES;
-  });
+  const intervalMs = 500;
+  const maxRetries = 1;
 
-  const app = await build(t);
+  const app = await build(t, {
+    config: {
+      EVENTS_PROCESS_INTERVAL_MS: intervalMs,
+      EVENT_MAX_RETRIES: maxRetries,
+    },
+  });
   const validator =
     app.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
   t.mock.method(validator, "validate", async () => {
@@ -143,7 +143,7 @@ test("processor creates failed orders for outbound events", async (t) => {
 
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
   const ordersRepo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-  await repo.create({
+  await repo.upsert({
     hubUrl: "http://hub-1",
     signature: "sig-failed-order",
     slot: 1,

@@ -14,6 +14,7 @@ import {
 
 const HUB_PRIMARY_PORT = 6101;
 const HUB_FALLBACK_PORT = 6102;
+const HUB_URLS = `http://127.0.0.1:${HUB_PRIMARY_PORT},http://127.0.0.1:${HUB_FALLBACK_PORT}`;
 const makeId = (value: number) =>
   `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 
@@ -49,7 +50,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     t.after(() => app.close());
 
     await waitFor(() => primaryHits > 0);
@@ -77,7 +78,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     t.after(() => app.close());
     const ordersRepository: OrdersRepository =
       app.getDecorator(kOrdersRepository);
@@ -158,7 +159,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     t.after(() => app.close());
     const ordersRepository: OrdersRepository =
       app.getDecorator(kOrdersRepository);
@@ -216,7 +217,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     t.after(() => app.close());
     const ordersRepository: OrdersRepository =
       app.getDecorator(kOrdersRepository);
@@ -266,6 +267,8 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
 
     let warnMock: ReturnType<typeof t.mock.method>["mock"] | null = null;
     const app = await build(t, {
+      useMocks: false,
+      config: { HUB_URLS },
       beforeReady: (instance) => {
         warnMock = t.mock.method(instance.log, "warn").mock;
       },
@@ -309,7 +312,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     t.after(() => app.close());
     const ordersRepository: OrdersRepository =
       app.getDecorator(kOrdersRepository);
@@ -347,7 +350,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     t.after(() => app.close());
 
     const { mock: warnMock } = t.mock.method(app.log, "warn");

@@ -40,6 +40,9 @@ function createRepository(fastify: FastifyInstance) {
 
 export default fp(
   function hubNoncesRepositoryPlugin(fastify: FastifyInstance) {
+    if (fastify.hasDecorator(kHubNoncesRepository)) {
+      return;
+    }
     fastify.decorate(kHubNoncesRepository, createRepository(fastify));
   },
   {

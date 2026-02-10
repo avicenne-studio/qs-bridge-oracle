@@ -60,42 +60,18 @@ export default fp(
           table.string("to").notNullable();
           table.string("amount").notNullable();
           table.string("relayerFee").notNullable().defaultTo("0");
-          table
-            .string("origin_trx_hash", 255)
-            .notNullable();
-          table.string("source_nonce").nullable().unique();
-          table.string("source_payload").nullable();
+          table.string("origin_trx_hash", 255).notNullable();
+          table.string("source_nonce").notNullable().unique();
+          table.string("source_payload").notNullable();
           table.string("signature", SIGNATURE_MAX_LENGTH).notNullable();
           table.string("failure_reason_public").nullable();
           table.string("status").notNullable().defaultTo("ready-for-relay");
           table.boolean("oracle_accept_to_relay").notNullable().defaultTo(true);
         });
-      } else {
-        const hasOriginHash = await knexInstance.schema.hasColumn(
-          ORDERS_TABLE_NAME,
-          "origin_trx_hash"
-        );
-        if (!hasOriginHash) {
-          await knexInstance.schema.alterTable(ORDERS_TABLE_NAME, (table) => {
-            table
-              .string("origin_trx_hash", 255)
-              .notNullable()
-              .defaultTo("unknown");
-          });
-        }
-        const hasFailureReason = await knexInstance.schema.hasColumn(
-          ORDERS_TABLE_NAME,
-          "failure_reason_public"
-        );
-        if (!hasFailureReason) {
-          await knexInstance.schema.alterTable(ORDERS_TABLE_NAME, (table) => {
-            table.string("failure_reason_public").nullable();
-          });
-        }
       }
 
       const hasSignaturesTable = await knexInstance.schema.hasTable(
-        ORDER_SIGNATURES_TABLE_NAME
+        ORDER_SIGNATURES_TABLE_NAME,
       );
       if (!hasSignaturesTable) {
         await knexInstance.schema.createTable(
@@ -105,12 +81,12 @@ export default fp(
             table.string("order_id").notNullable();
             table.string("signature").notNullable();
             table.unique(["order_id", "signature"]);
-          }
+          },
         );
       }
 
       const hasNoncesTable = await knexInstance.schema.hasTable(
-        HUB_NONCES_TABLE_NAME
+        HUB_NONCES_TABLE_NAME,
       );
       if (!hasNoncesTable) {
         await knexInstance.schema.createTable(
@@ -121,42 +97,39 @@ export default fp(
             table.string("nonce").notNullable();
             table.integer("ts").notNullable();
             table.primary(["hubId", "kid", "nonce"]);
-          }
+          },
         );
       }
 
       const hasHubEventsTable = await knexInstance.schema.hasTable(
-        HUB_EVENTS_TABLE_NAME
+        HUB_EVENTS_TABLE_NAME,
       );
       if (!hasHubEventsTable) {
-        await knexInstance.schema.createTable(HUB_EVENTS_TABLE_NAME, (table) => {
-          table.increments("id");
-          table.string("hub_url").notNullable();
-          table.string("signature").notNullable();
-          table.integer("slot").nullable();
-          table.string("chain").notNullable();
-          table.string("type").notNullable();
-          table.string("nonce").notNullable();
-          table.text("payload").notNullable();
-          table
-            .timestamp("created_at", { useTz: false })
-            .notNullable();
-          table.string("status").notNullable().defaultTo("pending");
-          table.integer("retry_count").notNullable().defaultTo(0);
-          table.string("failure_code").nullable();
-          table.text("failure_reason_internal").nullable();
-          table
-            .timestamp("last_failure_at", { useTz: false })
-            .nullable();
-          table
-            .timestamp("processed_at", { useTz: false })
-            .nullable();
-          table.unique(["signature", "type", "nonce"]);
-        });
+        await knexInstance.schema.createTable(
+          HUB_EVENTS_TABLE_NAME,
+          (table) => {
+            table.increments("id");
+            table.string("hub_url").notNullable();
+            table.string("signature").notNullable();
+            table.integer("slot").nullable();
+            table.string("chain").notNullable();
+            table.string("type").notNullable();
+            table.string("nonce").notNullable();
+            table.text("payload").notNullable();
+            table.timestamp("created_at", { useTz: false }).notNullable();
+            table.string("status").notNullable().defaultTo("pending");
+            table.integer("retry_count").notNullable().defaultTo(0);
+            table.string("failure_code").nullable();
+            table.text("failure_reason_internal").nullable();
+            table.timestamp("last_failure_at", { useTz: false }).nullable();
+            table.timestamp("processed_at", { useTz: false }).nullable();
+            table.unique(["signature", "type", "nonce"]);
+          },
+        );
       }
 
       const hasHubEventCursorsTable = await knexInstance.schema.hasTable(
-        HUB_EVENT_CURSORS_TABLE_NAME
+        HUB_EVENT_CURSORS_TABLE_NAME,
       );
       if (!hasHubEventCursorsTable) {
         await knexInstance.schema.createTable(
@@ -169,10 +142,10 @@ export default fp(
               .timestamp("updated_at", { useTz: false })
               .notNullable()
               .defaultTo(knexInstance.fn.now());
-          }
+          },
         );
       }
     });
   },
-  { name: "knex", dependencies: ["env"] }
+  { name: "knex", dependencies: ["env"] },
 );

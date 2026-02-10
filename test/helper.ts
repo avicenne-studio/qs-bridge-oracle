@@ -1,8 +1,14 @@
-import fastify, { FastifyInstance, LightMyRequestResponse } from "fastify";
+import fastify, { type FastifyInstance, type LightMyRequestResponse } from "fastify";
 import { TestContext } from "node:test";
 import serviceApp from "../src/app.js";
 import assert from "node:assert";
 import fp from "fastify-plugin";
+import type { EnvConfig } from "../src/plugins/infra/env.js";
+import { kEnvConfig } from "../src/plugins/infra/env.js";
+import { kPoller } from "../src/plugins/infra/poller.js";
+import { kUndiciGetClient } from "../src/plugins/infra/undici-get-client.js";
+import { createMockPollerService } from "./helpers/infra/poller-mock.js";
+import { createMockUndiciGetClientService } from "./helpers/infra/undici-get-client-mock.js";
 
 // Fill in this config with all the configurations
 // needed for testing the application
@@ -21,61 +27,97 @@ export function expectValidationError(
   assert.strictEqual(message, expectedMessage);
 }
 
-class NoopWebSocket {
-  static OPEN = 1;
-  static CLOSED = 3;
-  readyState = NoopWebSocket.OPEN;
-  private listeners = new Map<string, Set<(event: unknown) => void>>();
-
-  addEventListener(type: string, handler: (event: unknown) => void) {
-    const bucket = this.listeners.get(type) ?? new Set();
-    bucket.add(handler);
-    this.listeners.set(type, bucket);
-  }
-
-  removeEventListener(type: string, handler: (event: unknown) => void) {
-    const bucket = this.listeners.get(type);
-    if (!bucket) {
-      return;
-    }
-    bucket.delete(handler);
-  }
-
-  send() {}
-
-  close() {
-    this.readyState = NoopWebSocket.CLOSED;
-    const bucket = this.listeners.get("close");
-    if (!bucket) {
-      return;
-    }
-    for (const handler of bucket) {
-      handler({});
-    }
-  }
-}
-
 // automatically build and tear down our instance
 type BuildHooks = {
   beforeRegister?: (fastify: FastifyInstance) => void | Promise<void>;
   beforeReady?: (fastify: FastifyInstance) => void | Promise<void>;
 };
 
+type BuildOptions = BuildHooks & {
+  useMocks?: boolean;
+  config?: Partial<EnvConfig>;
+  decorators?: Record<PropertyKey, unknown>;
+  logger?: boolean;
+};
+
+const DEFAULT_TEST_CONFIG: EnvConfig = {
+  HOST: "127.0.0.1",
+  PORT: 3000,
+  RATE_LIMIT_MAX: 4,
+  POLLER_INTERVAL_MS: 1_000,
+  SQLITE_DB_FILE: ":memory:",
+  SOLANA_KEYS: "./test/fixtures/signer/solana.keys.json",
+  QUBIC_KEYS: "./test/fixtures/signer/qubic.keys.json",
+  ORACLE_SIGNATURE_THRESHOLD: 2,
+  HUB_URLS: "http://localhost:3001",
+  HUB_KEYS_FILE: "./test/fixtures/hub-keys.json",
+  SOLANA_RPC_URL: "http://localhost:8899",
+  SOLANA_TX_COMMITMENT: "confirmed",
+  SOLANA_BPS_FEE: 0,
+  RELAYER_FEE_PERCENT: "0.1",
+  EVENT_MAX_RETRIES: 3,
+  EVENTS_LOOKBACK_DAYS: 14,
+  EVENTS_PROCESS_INTERVAL_MS: 2000,
+};
+
+function resolveBuildOptions(
+  hooks?: ((fastify: FastifyInstance) => void | Promise<void>) | BuildHooks | BuildOptions
+): BuildOptions {
+  if (typeof hooks === "function") {
+    return { beforeReady: hooks };
+  }
+  return (hooks ?? {}) as BuildOptions;
+}
+
+function applyDecorators(
+  app: FastifyInstance,
+  decorators: Record<PropertyKey, unknown>
+) {
+  for (const [key, value] of Object.entries(decorators)) {
+    if (app.hasDecorator(key)) {
+      continue;
+    }
+    app.decorate(key, value);
+  }
+  for (const symbol of Object.getOwnPropertySymbols(decorators)) {
+    if (app.hasDecorator(symbol)) {
+      continue;
+    }
+    app.decorate(symbol, Reflect.get(decorators, symbol));
+  }
+}
+
 export async function build(
   t?: TestContext,
-  hooks?: ((fastify: FastifyInstance) => void | Promise<void>) | BuildHooks
+  hooks?: ((fastify: FastifyInstance) => void | Promise<void>) | BuildHooks | BuildOptions
 ) {
   // you can set all the options supported by the fastify CLI command
-  const app = fastify();
-  const resolvedHooks: BuildHooks =
-    typeof hooks === "function" ? { beforeReady: hooks } : hooks ?? {};
+  const resolvedHooks = resolveBuildOptions(hooks);
+  const app = fastify({ logger: resolvedHooks.logger ?? false });
+
+  if (!app.hasDecorator(kEnvConfig)) {
+    const testConfig = {
+      ...DEFAULT_TEST_CONFIG,
+      ...(resolvedHooks.config ?? {}),
+    };
+    app.decorate(kEnvConfig, testConfig);
+  }
+
+  if (resolvedHooks.useMocks ?? true) {
+    if (!app.hasDecorator(kPoller)) {
+      app.decorate(kPoller, createMockPollerService());
+    }
+    if (!app.hasDecorator(kUndiciGetClient)) {
+      app.decorate(kUndiciGetClient, createMockUndiciGetClientService());
+    }
+  }
+
+  if (resolvedHooks.decorators) {
+    applyDecorators(app, resolvedHooks.decorators);
+  }
 
   if (resolvedHooks.beforeRegister) {
     await resolvedHooks.beforeRegister(app);
-  }
-
-  if (!app.hasDecorator("solanaWsFactory")) {
-    app.decorate("solanaWsFactory", () => new NoopWebSocket());
   }
 
   app.register(fp(serviceApp));

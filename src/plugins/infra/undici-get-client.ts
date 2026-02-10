@@ -94,6 +94,9 @@ export const kUndiciGetClient = Symbol("infra.undiciGetClient");
 
 export default fp(
   function undiciGetClientPlugin(fastify: FastifyInstance) {
+    if (fastify.hasDecorator(kUndiciGetClient)) {
+      return;
+    }
     const clients = new Set<UndiciGetClient>();
 
     fastify.decorate(kUndiciGetClient, {

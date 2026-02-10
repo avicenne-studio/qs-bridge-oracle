@@ -45,7 +45,16 @@ function createRepository(fastify: FastifyInstance) {
     },
 
     async create(newOrder: CreateOrder) {
-      await knex<PersistedOrder>(ORDERS_TABLE_NAME).insert(newOrder);
+      const sourceNonce =
+        newOrder.source_nonce ?? `${newOrder.origin_trx_hash}-${newOrder.id}`;
+      const sourcePayload =
+        newOrder.source_payload ??
+        JSON.stringify({ origin_trx_hash: newOrder.origin_trx_hash });
+      await knex<PersistedOrder>(ORDERS_TABLE_NAME).insert({
+        ...newOrder,
+        source_nonce: sourceNonce,
+        source_payload: sourcePayload,
+      });
       return this.findById(newOrder.id);
     },
 
