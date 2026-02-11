@@ -15,6 +15,10 @@ import {
   type SignerService,
 } from "../signer/signer.service.js";
 import {
+  kRelayerFeeAcceptance,
+  type RelayerFeeAcceptance,
+} from "../relayer/relayer-fee-acceptance.js";
+import {
   kSolanaEventValidator,
   type SolanaEventValidator,
 } from "./solana/solana-events-validator.js";
@@ -56,6 +60,7 @@ async function processEvent(
     validator: SolanaEventValidator;
     config: EnvConfig;
     validation: ValidationService;
+    relayerFeeAcceptance: RelayerFeeAcceptance;
     logger: FastifyInstance["log"];
   }
 ) {
@@ -65,6 +70,7 @@ async function processEvent(
     validator,
     config,
     validation,
+    relayerFeeAcceptance,
     logger,
   } = deps;
   await validator.validate(event);
@@ -78,6 +84,7 @@ async function processEvent(
     config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
     logger,
     validation,
+    relayerFeeAcceptance,
   });
   const mapped = mapStoredEventToSolanaPayload(event);
   if (mapped.type === "outbound") {
@@ -151,6 +158,7 @@ async function processPendingEvents(
     validator: SolanaEventValidator;
     config: EnvConfig;
     validation: ValidationService;
+    relayerFeeAcceptance: RelayerFeeAcceptance;
   }
 ) {
   const { eventsRepository, ordersRepository, signerService, validator, config } =
@@ -168,6 +176,7 @@ async function processPendingEvents(
         validator,
         config,
         validation: deps.validation,
+        relayerFeeAcceptance: deps.relayerFeeAcceptance,
         logger: fastify.log,
       });
       await eventsRepository.markDone(event.id);
@@ -193,6 +202,7 @@ function startProcessor(
     validator: SolanaEventValidator;
     config: EnvConfig;
     validation: ValidationService;
+    relayerFeeAcceptance: RelayerFeeAcceptance;
   }
 ) {
   let running = false;
@@ -232,6 +242,8 @@ export default fp(
       fastify.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
     const validation =
       fastify.getDecorator<ValidationService>(kValidation);
+    const relayerFeeAcceptance =
+      fastify.getDecorator<RelayerFeeAcceptance>(kRelayerFeeAcceptance);
 
     fastify.addHook("onReady", async () => {
       startProcessor(fastify, {
@@ -241,6 +253,7 @@ export default fp(
         validator,
         config,
         validation,
+        relayerFeeAcceptance,
       });
     });
   },
@@ -252,6 +265,7 @@ export default fp(
       "hub-events-repository",
       "orders-repository",
       "signer-service",
+      "relayerFeeAcceptance",
       "solana-events-validator",
     ],
   }

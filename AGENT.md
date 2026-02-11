@@ -15,7 +15,7 @@ the # Qubic ↔ Solana Oracle – Agent Notes
   3. `src/routes`: HTTP routes grouped by feature (home + `/api` tree).
 - Database: SQLite via `better-sqlite3` and `knex`. The `orders` table (id, source/dest, from/to, amount, signature) is auto-created in the Knex plugin (`src/plugins/infra/@knex.ts`) using the `SQLITE_DB_FILE` path from the environment.
 - Replay protection: the `seen_nonces` table stores `(hubId, kid, nonce, ts)` for inbound Hub requests and is periodically cleaned.
-- Order ingestion helpers live in `src/plugins/app/indexer/schemas/*`. They provide typed validators for transactions pulled from chain RPCs. `normalizeBridgeInstruction` is still a stub—fill it carefully once the Solana instruction format is finalized.
+- Order ingestion helpers live in `src/plugins/app/indexer/schemas/*`. They provide typed validators  for transactions pulled from chain RPCs. `normalizeBridgeInstruction` is still a stub—fill it carefully once the Solana instruction format is finalized.
 - Signing: `src/plugins/app/signer/signer.service.ts` reads both Solana and Qubic key JSON files, validates their schemas, and decorates the Fastify instance with `signerService` so future routes/plugins can sign bridge attestations.
 - Hub signatures polling (`src/plugins/app/hub/hub-signatures.service.ts`) stores signatures and marks orders as `ready-for-relay` when the payload meets `ORACLE_SIGNATURE_THRESHOLD`.
 - Routes:
