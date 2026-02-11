@@ -18,6 +18,7 @@ import {
   kSolanaEventValidator,
   type SolanaEventValidator,
 } from "./solana/solana-events-validator.js";
+import { kValidation, type ValidationService } from "../common/validation.js";
 import {
   createFailedOrderFromOutboundEvent,
   createSolanaOrderHandlers,
@@ -54,10 +55,18 @@ async function processEvent(
     signerService: SignerService;
     validator: SolanaEventValidator;
     config: EnvConfig;
+    validation: ValidationService;
     logger: FastifyInstance["log"];
   }
 ) {
-  const { ordersRepository, signerService, validator, config, logger } = deps;
+  const {
+    ordersRepository,
+    signerService,
+    validator,
+    config,
+    validation,
+    logger,
+  } = deps;
   await validator.validate(event);
   logger.info(
     { signature: event.signature, type: event.type, slot: event.slot },
@@ -68,6 +77,7 @@ async function processEvent(
     signerService,
     config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
     logger,
+    validation,
   });
   const mapped = mapStoredEventToSolanaPayload(event);
   if (mapped.type === "outbound") {
@@ -115,8 +125,7 @@ async function handleFailure(opts: {
       { signature: event.signature },
       publicReason
     );
-    /* c8 ignore next */
-    const sourceNonce = failedOrder.source_nonce ?? "";
+    const sourceNonce = failedOrder.source_nonce;
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (existing) {
       logger.warn(
@@ -141,6 +150,7 @@ async function processPendingEvents(
     signerService: SignerService;
     validator: SolanaEventValidator;
     config: EnvConfig;
+    validation: ValidationService;
   }
 ) {
   const { eventsRepository, ordersRepository, signerService, validator, config } =
@@ -157,6 +167,7 @@ async function processPendingEvents(
         signerService,
         validator,
         config,
+        validation: deps.validation,
         logger: fastify.log,
       });
       await eventsRepository.markDone(event.id);
@@ -181,6 +192,7 @@ function startProcessor(
     signerService: SignerService;
     validator: SolanaEventValidator;
     config: EnvConfig;
+    validation: ValidationService;
   }
 ) {
   let running = false;
@@ -218,6 +230,8 @@ export default fp(
     const signerService = fastify.getDecorator<SignerService>(kSignerService);
     const validator =
       fastify.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
+    const validation =
+      fastify.getDecorator<ValidationService>(kValidation);
 
     fastify.addHook("onReady", async () => {
       startProcessor(fastify, {
@@ -226,6 +240,7 @@ export default fp(
         signerService,
         validator,
         config,
+        validation,
       });
     });
   },
@@ -233,6 +248,7 @@ export default fp(
     name: "hub-events-processor",
     dependencies: [
       "env",
+      "validation",
       "hub-events-repository",
       "orders-repository",
       "signer-service",

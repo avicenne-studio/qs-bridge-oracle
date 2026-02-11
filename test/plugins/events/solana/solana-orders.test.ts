@@ -7,6 +7,9 @@ import {
 import { bytesToHex } from "../../../../src/plugins/app/events/solana/bytes.js";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 import { FastifyBaseLogger } from "fastify";
+import { Value } from "@sinclair/typebox/value";
+import type { TSchema } from "@sinclair/typebox";
+import type { ValidationService } from "../../../../src/plugins/app/common/validation.js";
 
 type Repo = ReturnType<typeof createInMemoryOrders>;
 
@@ -24,6 +27,19 @@ function createLogger() {
       debug: log("debug"),
       error: log("error"),
     } as FastifyBaseLogger,
+  };
+}
+
+function createValidation(): ValidationService {
+  return {
+    isValid<T>(schema: TSchema, value: unknown): value is T {
+      return Value.Check(schema, value);
+    },
+    assertValid<T>(schema: TSchema, value: unknown, prefix: string): asserts value is T {
+      if (!Value.Check(schema, value)) {
+        throw new Error(`${prefix}: invalid schema`);
+      }
+    },
   };
 }
 
@@ -53,17 +69,23 @@ function createOverrideEvent() {
   };
 }
 
+function hex32(value: number) {
+  return bytesToHex(new Uint8Array(32).fill(value));
+}
+
 function createHandlers(repo: Repo) {
   const { logger, entries } = createLogger();
   const signerService = {
     signSolanaOrder: async () => "signed-solana-order",
   };
+  const validation = createValidation();
   return {
     ...createSolanaOrderHandlers({
       ordersRepository: repo as never,
       signerService,
       config: { SOLANA_BPS_FEE: 25 },
       logger,
+      validation,
     }),
     logger,
     entries,
@@ -241,6 +263,7 @@ describe("solana order handlers", () => {
         signerService,
         config: { SOLANA_BPS_FEE: 25 },
         logger,
+        validation: createValidation(),
       });
 
     const outbound = createOutboundEvent();
@@ -255,5 +278,23 @@ describe("solana order handlers", () => {
     assert.strictEqual(stored.to, bytesToHex(override.toAddress));
     assert.strictEqual(stored.relayerFee, "7");
     assert.strictEqual(signerCalls, 1);
+  });
+
+  it("parses source payloads through handlers", () => {
+    const repo = createInMemoryOrders();
+    const { parseSourcePayload } = createHandlers(repo);
+    const payload = JSON.stringify({
+      v: 1,
+      networkIn: 1,
+      networkOut: 1,
+      tokenIn: hex32(1),
+      tokenOut: hex32(2),
+      nonce: hex32(3),
+    });
+
+    const parsed = parseSourcePayload(payload);
+    assert.ok(parsed);
+    assert.strictEqual(parsed?.tokenIn, hex32(1));
+    assert.strictEqual(parseSourcePayload(undefined), null);
   });
 });

@@ -11,6 +11,11 @@ import { Buffer } from "node:buffer";
 import { PublicKey } from "@solana/web3.js";
 import { type SignerService } from "../../signer/signer.service.js";
 import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../../../clients/js/programs/qsBridge.js";
+import {
+  SolanaOrderSourcePayloadSchema,
+  type SolanaOrderSourcePayloadV1,
+} from "./schemas/solana-order-source-payload.js";
+import { type ValidationService } from "../../common/validation.js";
 
 export const QUBIC_NETWORK_ID = 1;
 const PROTOCOL_NAME = "qs-bridge";
@@ -26,15 +31,7 @@ type SolanaOrderDependencies = {
   signerService: SignerService;
   config: { SOLANA_BPS_FEE: number };
   logger: Logger;
-};
-
-type SolanaOrderSourcePayloadV1 = {
-  v: 1;
-  networkIn: number;
-  networkOut: number;
-  tokenIn: string;
-  tokenOut: string;
-  nonce: string;
+  validation: ValidationService;
 };
 
 type NormalizedOrder = {
@@ -73,22 +70,17 @@ function serializeSourcePayload(payload: SolanaOrderSourcePayloadV1): string {
 }
 
 function parseSourcePayload(
-  payload: string | undefined
+  payload: string | undefined,
+  validation: ValidationService
 ): SolanaOrderSourcePayloadV1 | null {
   if (!payload) {
     return null;
   }
+
   try {
-    const parsed = JSON.parse(payload) as Partial<SolanaOrderSourcePayloadV1>;
-    if (
-      parsed.v !== 1 ||
-      typeof parsed.networkIn !== "number" ||
-      typeof parsed.networkOut !== "number" ||
-      typeof parsed.tokenIn !== "string" ||
-      typeof parsed.tokenOut !== "string" ||
-      typeof parsed.nonce !== "string"
-    ) {
-      return null;
+    const parsed = JSON.parse(payload);
+    if (!validation.isValid(SolanaOrderSourcePayloadSchema, parsed)) {
+      return parsed;
     }
     return parsed as SolanaOrderSourcePayloadV1;
   } catch {
@@ -129,6 +121,7 @@ function createOrderFromOutboundEvent(
     status: "pending",
     oracle_accept_to_relay: true,
     source_nonce: sourceNonce,
+    source_payload: serializeSourcePayload(buildSourcePayload(event)),
   };
 }
 
@@ -198,7 +191,7 @@ async function signSolanaOrder(
 }
 
 export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
-  const { ordersRepository, signerService, config, logger } = deps;
+  const { ordersRepository, signerService, config, logger, validation } = deps;
 
   const handleOutboundEvent = async (
     event: OutboundEvent,
@@ -216,6 +209,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       },
       "Solana outbound event payload"
     );
+    
     if (event.networkOut !== QUBIC_NETWORK_ID) {
       logger.warn(
         { networkOut: event.networkOut },
@@ -272,7 +266,10 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       );
       return;
     }
-    const sourcePayload = parseSourcePayload(existing.source_payload);
+    const sourcePayload = parseSourcePayload(
+      existing.source_payload,
+      validation
+    );
     if (!sourcePayload) {
       logger.warn(
         { orderId: existing.id },
@@ -294,7 +291,8 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
   return {
     handleOutboundEvent,
     handleOverrideOutboundEvent,
-    parseSourcePayload,
+    parseSourcePayload: (payload?: string) =>
+      parseSourcePayload(payload, validation),
     serializeSourcePayload,
   };
 }

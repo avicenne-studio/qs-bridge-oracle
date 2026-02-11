@@ -1,7 +1,7 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { kKnex, type KnexAccessor } from "../../infra/@knex.js";
-import { type SolanaEventPayload } from "./schemas/solana-event.js";
+import { type SolanaEventPayload } from "./solana/schemas/solana-event.js";
 
 export const HUB_EVENTS_TABLE_NAME = "hub_events";
 export const HUB_EVENT_CURSORS_TABLE_NAME = "hub_event_cursors";
@@ -102,19 +102,8 @@ function createHubEventsRepository(fastify: FastifyInstance) {
   const knex = fastify.getDecorator<KnexAccessor>(kKnex).get();
 
   return {
-    async create(event: NewHubEvent) {
+    async upsert(event: NewHubEvent) {
       const payload = JSON.stringify(event.payload);
-      const existing = await knex<PersistedHubEvent>(HUB_EVENTS_TABLE_NAME)
-        .select("id")
-        .where({
-          signature: event.signature,
-          type: event.type,
-          nonce: event.nonce,
-        })
-        .first();
-      if (existing) {
-        return null;
-      }
       const inserted = await knex<PersistedHubEvent>(HUB_EVENTS_TABLE_NAME)
         .insert({
           hub_url: event.hubUrl,
@@ -131,18 +120,16 @@ function createHubEventsRepository(fastify: FastifyInstance) {
         .onConflict(["signature", "type", "nonce"])
         .ignore();
 
-      const insertedId = (inserted as number[])[0];
-      /* c8 ignore start */
-      if (!insertedId) {
-        return null;
-      }
-      /* c8 ignore stop */
+      void inserted;
       const row = await knex<PersistedHubEvent>(HUB_EVENTS_TABLE_NAME)
         .select("*")
-        .where({ id: insertedId })
+        .where({
+          signature: event.signature,
+          type: event.type,
+          nonce: event.nonce,
+        })
         .first();
-      /* c8 ignore next */
-      return row ? normalizeEvent(row) : null;
+      return normalizeEvent(row as PersistedHubEvent);
     },
 
     async listPending(limit: number) {
@@ -249,11 +236,15 @@ export type HubEventCursorsRepository = ReturnType<
 
 export default fp(
   function hubEventsRepositoryPlugin(fastify) {
-    fastify.decorate(kHubEventsRepository, createHubEventsRepository(fastify));
-    fastify.decorate(
-      kHubEventCursorsRepository,
-      createHubEventCursorsRepository(fastify)
-    );
+    if (!fastify.hasDecorator(kHubEventsRepository)) {
+      fastify.decorate(kHubEventsRepository, createHubEventsRepository(fastify));
+    }
+    if (!fastify.hasDecorator(kHubEventCursorsRepository)) {
+      fastify.decorate(
+        kHubEventCursorsRepository,
+        createHubEventCursorsRepository(fastify)
+      );
+    }
   },
   {
     name: "hub-events-repository",

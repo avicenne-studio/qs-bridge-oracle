@@ -1,5 +1,5 @@
 import { Static, Type } from "@sinclair/typebox";
-import { StringSchema } from "../../common/schemas/common.js";
+import { StringSchema } from "../../../common/schemas/common.js";
 
 const Hex32Schema = Type.String({ pattern: "^[0-9a-fA-F]{64}$" });
 const AmountSchema = Type.String({ pattern: "^[0-9]+$" });

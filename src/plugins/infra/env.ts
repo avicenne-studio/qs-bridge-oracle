@@ -7,6 +7,8 @@ export type EnvConfig = {
   PORT: number;
   RATE_LIMIT_MAX: number;
   POLLER_INTERVAL_MS: number;
+  POLLER_REQUEST_TIMEOUT_MS: number;
+  POLLER_JITTER_MS: number;
   SQLITE_DB_FILE: string;
   SOLANA_KEYS: string;
   QUBIC_KEYS: string;
@@ -15,7 +17,7 @@ export type EnvConfig = {
   HUB_URLS: string;
   HUB_KEYS_FILE: string;
   SOLANA_RPC_URL: string;
-  SOLANA_TX_COMMITMENT?: "processed" | "confirmed" | "finalized";
+  SOLANA_TX_COMMITMENT: "processed" | "confirmed" | "finalized";
   SOLANA_TX_RETRY_MAX_ATTEMPTS?: number;
   SOLANA_TX_RETRY_BASE_MS?: number;
   SOLANA_TX_RETRY_MAX_MS?: number;
@@ -40,6 +42,7 @@ const schema = {
     "HUB_KEYS_FILE",
     "SOLANA_RPC_URL",
     "SOLANA_BPS_FEE",
+    "SOLANA_TX_COMMITMENT",
     "RELAYER_FEE_PERCENT",
   ],
   properties: {
@@ -51,6 +54,16 @@ const schema = {
       type: "number",
       minimum: 1000,
       default: 10_000,
+    },
+    POLLER_REQUEST_TIMEOUT_MS: {
+      type: "number",
+      minimum: 0,
+      default: 700,
+    },
+    POLLER_JITTER_MS: {
+      type: "number",
+      minimum: 0,
+      default: 25,
     },
     SQLITE_DB_FILE: {
       type: "string",
@@ -163,7 +176,9 @@ export const autoConfig = {
  */
 export default fp(
   async (fastify, opts) => {
-    await fastify.register(env, opts);
+    if (!fastify.hasDecorator(kEnvConfig)) {
+      await fastify.register(env, opts);
+    }
 
     const fileManager = fastify.getDecorator<FileManager>(kFileManager);
     const config = fastify.getDecorator<EnvConfig>(kEnvConfig);

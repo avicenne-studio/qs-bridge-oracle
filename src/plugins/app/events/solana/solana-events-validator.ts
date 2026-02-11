@@ -13,12 +13,12 @@ import { bytesToHex } from "./bytes.js";
 import {
   type SolanaEventPayload,
   type SolanaStoredEvent,
-} from "../schemas/solana-event.js";
+} from "./schemas/solana-event.js";
 import { kEnvConfig, type EnvConfig } from "../../../infra/env.js";
 
 type Logger = FastifyBaseLogger;
 
-export type SolanaEventValidator = {
+export interface SolanaEventValidator {
   validate(event: SolanaStoredEvent): Promise<void>;
 };
 
@@ -198,7 +198,7 @@ export function createSolanaEventValidator(deps: ValidatorDeps): SolanaEventVali
 export default fp(
   async function solanaEventsValidatorPlugin(fastify: FastifyInstance) {
     const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
-    const commitment = config.SOLANA_TX_COMMITMENT ?? "confirmed";
+    const commitment = config.SOLANA_TX_COMMITMENT;
     const connection = new Connection(config.SOLANA_RPC_URL, commitment);
     const finality = commitment === "processed" ? "confirmed" : commitment;
     const validator = createSolanaEventValidator({

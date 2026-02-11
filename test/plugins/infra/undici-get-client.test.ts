@@ -9,7 +9,7 @@ import {
 
 describe("undici get client plugin", () => {
   it("performs GET requests with merged headers and JSON parsing", async (t: TestContext) => {
-    const app = await build(t);
+    const app = await build(t, { useMocks: false });
     const undiciGetClient: UndiciGetClientService =
       app.getDecorator(kUndiciGetClient);
 
@@ -58,7 +58,7 @@ describe("undici get client plugin", () => {
   });
 
   it("closes created clients on app shutdown and exposes defaults", async (t: TestContext) => {
-    const app = await build();
+    const app = await build(undefined, { useMocks: false });
     const undiciGetClient: UndiciGetClientService =
       app.getDecorator(kUndiciGetClient);
 

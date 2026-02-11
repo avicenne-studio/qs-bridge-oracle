@@ -17,7 +17,7 @@ import {
 import {
   SolanaEventsResponseSchema,
   type SolanaEventsResponse,
-} from "./schemas/solana-event.js";
+} from "./solana/schemas/solana-event.js";
 import { parseHubUrls } from "../hub/hub-signatures.service.js";
 
 const DEFAULT_EVENTS_LIMIT = 50;
@@ -107,11 +107,9 @@ async function startHubEventsPolling(
     primary,
     fallback,
     fetchOne: (server, signal) => {
-      const cursor = cursors.get(server);
-      /* c8 ignore next */
-      const createdAfter = cursor?.lastCreatedAt ?? formatSqliteTimestamp(new Date());
-      /* c8 ignore next */
-      const afterId = cursor?.lastId ?? 0;
+      const cursor = cursors.get(server)!;
+      const createdAfter = cursor.lastCreatedAt;
+      const afterId = cursor.lastId;
       return client.getJson<SolanaEventsResponse>(
         server,
         buildHubEventsPath(createdAfter, afterId, limit),
@@ -136,14 +134,12 @@ async function startHubEventsPolling(
       }
 
       const usedHub = context.used;
-      const cursor = cursors.get(usedHub);
-      /* c8 ignore next */
-      let lastCreatedAt = cursor?.lastCreatedAt ?? formatSqliteTimestamp(new Date());
-      /* c8 ignore next */
-      let lastId = cursor?.lastId ?? 0;
+      const cursor = cursors.get(usedHub)!;
+      let lastCreatedAt = cursor.lastCreatedAt;
+      let lastId = cursor.lastId;
       for (const event of response.data) {
         try {
-          await eventsRepository.create({
+          await eventsRepository.upsert({
             hubUrl: usedHub,
             signature: event.signature,
             slot: event.slot ?? null,

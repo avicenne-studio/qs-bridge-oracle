@@ -16,7 +16,7 @@ const noop = () => {};
 
 describe("poller plugin", () => {
   it("uses the primary response when it succeeds", async (t) => {
-    const app = await build(t);
+    const app = await build(t, { useMocks: false });
     const pollerService: PollerService = app.getDecorator(kPoller);
 
     const primary = "primary";
@@ -71,7 +71,7 @@ describe("poller plugin", () => {
   });
 
   it("falls back after a timeout and exposes defaults", async (t) => {
-    const app = await build(t);
+    const app = await build(t, { useMocks: false });
     const pollerService: PollerService = app.getDecorator(kPoller);
 
     const abortedServers: string[] = [];
@@ -116,9 +116,9 @@ describe("poller plugin", () => {
     });
 
     assert.deepStrictEqual(pollerService.defaults, {
-      intervalMs: 1000,
-      requestTimeoutMs: 700,
-      jitterMs: 25,
+      intervalMs: 50,
+      requestTimeoutMs: 200,
+      jitterMs: 0,
     });
 
     poller.start();
@@ -130,7 +130,7 @@ describe("poller plugin", () => {
 
 
   it("throws when start is invoked twice", async (t) => {
-    const app = await build(t);
+    const app = await build(t, { useMocks: false });
     const pollerService: PollerService = app.getDecorator(kPoller);
 
     const poller = pollerService.create({
@@ -148,7 +148,7 @@ describe("poller plugin", () => {
   });
 
   it("integrates with the Undici GET client transport with fallback", async (t) => {
-    const app = await build(t);
+    const app = await build(t, { useMocks: false });
     const pollerService: PollerService = app.getDecorator(kPoller);
     const undiciGetClient: UndiciGetClientService =
       app.getDecorator(kUndiciGetClient);
@@ -219,7 +219,7 @@ describe("poller plugin", () => {
   });
 
   it("keeps running when both primary and fallback fail", async (t) => {
-    const app = await build(t);
+    const app = await build(t, { useMocks: false });
     const pollerService: PollerService = app.getDecorator(kPoller);
 
     const primary = "primary";
@@ -263,7 +263,7 @@ describe("poller plugin", () => {
   });
 
   it("uses the primary when fallback is missing and the request fails", async (t) => {
-    const app = await build(t);
+    const app = await build(t, { useMocks: false });
     const pollerService: PollerService = app.getDecorator(kPoller);
 
     const rounds: Array<{ response: string | null; used: string }> = [];

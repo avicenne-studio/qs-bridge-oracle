@@ -132,7 +132,6 @@ describe("hub events service", { concurrency: 1 }, () => {
   });
 
   it("processes valid events and creates orders", async (t) => {
-    process.env.HUB_URLS = HUB_URLS;
     const response = createOutboundEventResponse();
     response.data[0].slot = undefined;
     const logsBySignature = new Map([
@@ -172,7 +171,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
     const eventsRepo = app.getDecorator<HubEventsRepository>(
       kHubEventsRepository
@@ -193,7 +192,6 @@ describe("hub events service", { concurrency: 1 }, () => {
   });
 
   it("logs when payload is invalid", async (t) => {
-    process.env.HUB_URLS = HUB_URLS;
     const response = { bad: "payload" };
     let warnMock: MockMethod | null = null;
 
@@ -217,6 +215,8 @@ describe("hub events service", { concurrency: 1 }, () => {
     });
 
     await build(t, {
+      useMocks: false,
+      config: { HUB_URLS },
       beforeRegister: (instance) => {
         warnMock = t.mock.method(instance.log, "warn").mock;
       },
@@ -236,7 +236,6 @@ describe("hub events service", { concurrency: 1 }, () => {
   });
 
   it("logs when persisting hub events fails", async (t) => {
-    process.env.HUB_URLS = HUB_URLS;
     const response = createOutboundEventResponse();
     let errorMock: MockMethod | null = null;
 
@@ -259,9 +258,9 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
-    t.mock.method(repo, "create", async () => {
+    t.mock.method(repo, "upsert", async () => {
       throw new Error("db down");
     });
     errorMock = t.mock.method(app.log, "error").mock;
@@ -279,11 +278,7 @@ describe("hub events service", { concurrency: 1 }, () => {
   });
 
   it("marks events failed after retries and creates failed order", async (t) => {
-    process.env.HUB_URLS = HUB_URLS;
-    process.env.SOLANA_TX_RETRY_MAX_ATTEMPTS = "1";
-    t.after(() => {
-      delete process.env.SOLANA_TX_RETRY_MAX_ATTEMPTS;
-    });
+    const maxRetries = 1;
     const response = createOutboundEventResponse();
 
     t.mock.method(Connection.prototype, "getTransaction", async () => null);
@@ -311,7 +306,10 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, {
+      useMocks: false,
+      config: { HUB_URLS, SOLANA_TX_RETRY_MAX_ATTEMPTS: maxRetries },
+    });
     const eventsRepo = app.getDecorator<HubEventsRepository>(
       kHubEventsRepository
     );
@@ -329,11 +327,7 @@ describe("hub events service", { concurrency: 1 }, () => {
   });
 
   it("does not overwrite existing orders when events fail", async (t) => {
-    process.env.HUB_URLS = HUB_URLS;
-    process.env.SOLANA_TX_RETRY_MAX_ATTEMPTS = "1";
-    t.after(() => {
-      delete process.env.SOLANA_TX_RETRY_MAX_ATTEMPTS;
-    });
+    const maxRetries = 1;
 
     const response = createOutboundEventResponse();
     const emptyResponse = { data: [], cursor: response.cursor };
@@ -362,7 +356,10 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, {
+      useMocks: false,
+      config: { HUB_URLS, SOLANA_TX_RETRY_MAX_ATTEMPTS: maxRetries },
+    });
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
     await repo.create({
       id: "00000000-0000-4000-8000-000000000010",
@@ -395,7 +392,6 @@ describe("hub events service", { concurrency: 1 }, () => {
   });
 
   it("processes override events", async (t) => {
-    process.env.HUB_URLS = HUB_URLS;
     const overrideResponse = createOverrideEventResponse();
     const logsBySignature = new Map([
       ["sig-override", [createLogLine(createOverrideEventBytes())]],
@@ -458,7 +454,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
     await repo.create(existingOrder);
     response = overrideResponse;
@@ -473,7 +469,6 @@ describe("hub events service", { concurrency: 1 }, () => {
   });
 
   it("falls back to the secondary hub when primary fails", async (t) => {
-    process.env.HUB_URLS = HUB_URLS;
     const response = createOutboundEventResponse();
     const logsBySignature = new Map([
       ["sig-evt", [createLogLine(createOutboundEventBytes())]],
@@ -519,7 +514,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t);
+    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
     let stored: StoredOrder = null;
     await waitFor(async () => {

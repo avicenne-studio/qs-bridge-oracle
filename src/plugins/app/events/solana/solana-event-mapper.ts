@@ -1,4 +1,4 @@
-import { type SolanaStoredEvent } from "../schemas/solana-event.js";
+import { type SolanaStoredEvent } from "./schemas/solana-event.js";
 import { hexToBytes, toU64BigInt } from "./bytes.js";
 
 export function mapStoredEventToSolanaPayload(event: SolanaStoredEvent) {
