@@ -22,7 +22,8 @@ export type EnvConfig = {
   SOLANA_TX_RETRY_BASE_MS?: number;
   SOLANA_TX_RETRY_MAX_MS?: number;
   SOLANA_BPS_FEE: number;
-  RELAYER_FEE_PERCENT: string;
+  RELAYER_FEE_SOLANA: string;
+  RELAYER_FEE_QUBIC: string;
   EVENT_MAX_RETRIES: number;
   EVENTS_LOOKBACK_DAYS: number;
   EVENTS_PROCESS_INTERVAL_MS: number;
@@ -43,7 +44,8 @@ const schema = {
     "SOLANA_RPC_URL",
     "SOLANA_BPS_FEE",
     "SOLANA_TX_COMMITMENT",
-    "RELAYER_FEE_PERCENT",
+    "RELAYER_FEE_SOLANA",
+    "RELAYER_FEE_QUBIC",
   ],
   properties: {
     RATE_LIMIT_MAX: {
@@ -126,9 +128,13 @@ const schema = {
       minimum: 0,
       default: 0,
     },
-    RELAYER_FEE_PERCENT: {
+    RELAYER_FEE_SOLANA: {
       type: "string",
-      pattern: "^[0-9]+(\\.[0-9]+)?$",
+      pattern: "^[0-9]+$",
+    },
+    RELAYER_FEE_QUBIC: {
+      type: "string",
+      pattern: "^[0-9]+$",
     },
     EVENT_MAX_RETRIES: {
       type: "number",

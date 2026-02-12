@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { build, waitFor } from "../helper.js";
+import { build, waitFor } from "../helpers/build.js";
 import {
   ORDER_SIGNATURES_TABLE_NAME,
   kOrdersRepository,
@@ -96,6 +96,8 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       signature: "sig-hub-1",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-901",
+      source_payload: "{}",
     });
     const order2 = await ordersRepository.create({
       id: makeId(902),
@@ -109,6 +111,8 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       signature: "sig-hub-2",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-902",
+      source_payload: "{}",
     });
 
     payload = {
@@ -176,6 +180,8 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       signature: "sig-hub-3",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
+      source_nonce: "nonce-903",
+      source_payload: "{}",
     });
 
     payload = {
@@ -234,6 +240,8 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       signature: "sig-hub-4",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
+      source_nonce: "nonce-904",
+      source_payload: "{}",
     });
 
     payload = { data: [{ orderId: order!.id, signatures: ["sig-5"] }] };

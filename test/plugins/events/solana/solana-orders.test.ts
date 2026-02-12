@@ -79,6 +79,10 @@ function createHandlers(repo: Repo) {
     signSolanaOrder: async () => "signed-solana-order",
   };
   const validation = createValidation();
+  const relayerFeeAcceptance = {
+    acceptRelayToSolana: () => true,
+    acceptRelayToQubic: () => true,
+  };
   return {
     ...createSolanaOrderHandlers({
       ordersRepository: repo as never,
@@ -86,6 +90,7 @@ function createHandlers(repo: Repo) {
       config: { SOLANA_BPS_FEE: 25 },
       logger,
       validation,
+      relayerFeeAcceptance,
     }),
     logger,
     entries,
@@ -121,6 +126,7 @@ describe("solana order handlers", () => {
     assert.strictEqual(stored.to, bytesToHex(event.toAddress));
     assert.strictEqual(stored.signature, "signed-solana-order");
     assert.strictEqual(stored.origin_trx_hash, "sig-create-order");
+    assert.strictEqual(stored.oracle_accept_to_relay, true);
 
     const sourcePayload = JSON.parse(stored.source_payload ?? "{}");
     assert.deepStrictEqual(sourcePayload, {
@@ -247,7 +253,45 @@ describe("solana order handlers", () => {
     );
   });
 
-  it("updates orders for override events without resigning", async () => {
+  it("skips override events for finalized orders", async () => {
+    const repo = createInMemoryOrders();
+    const { handleOverrideOutboundEvent, entries } = createHandlers(repo);
+    const overrideEvent = createOverrideEvent();
+    const overrideNonce = bytesToHex(overrideEvent.nonce);
+    repo.store.set("00000000-0000-4000-8000-000000000006", {
+      id: "00000000-0000-4000-8000-000000000006",
+      source: "solana",
+      dest: "qubic",
+      from: "aa",
+      to: "bb",
+      amount: "1",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "finalized",
+      oracle_accept_to_relay: true,
+      source_nonce: overrideNonce,
+      source_payload: JSON.stringify({
+        v: 1,
+        networkIn: 1,
+        networkOut: 1,
+        tokenIn: hex32(1),
+        tokenOut: hex32(2),
+        nonce: overrideNonce,
+      }),
+    });
+
+    await handleOverrideOutboundEvent(overrideEvent);
+
+    const stored = await repo.findBySourceNonce(overrideNonce);
+    assert.ok(stored);
+    assert.strictEqual(stored.to, "bb");
+    assert.ok(
+      entries.some((entry) => entry.message?.includes("order is finalized"))
+    );
+  });
+
+  it("updates orders for override events with resigning and acceptance", async () => {
     const repo = createInMemoryOrders();
     let signerCalls = 0;
     const { logger } = createLogger();
@@ -257,6 +301,11 @@ describe("solana order handlers", () => {
         return "signed-solana-order";
       },
     };
+    const relayerFeeAcceptance = {
+      acceptRelayToSolana: () => true,
+      acceptRelayToQubic: (_amount: bigint, relayerFee: bigint) =>
+        relayerFee >= 5n,
+    };
     const { handleOutboundEvent, handleOverrideOutboundEvent } =
       createSolanaOrderHandlers({
         ordersRepository: repo as never,
@@ -264,6 +313,7 @@ describe("solana order handlers", () => {
         config: { SOLANA_BPS_FEE: 25 },
         logger,
         validation: createValidation(),
+        relayerFeeAcceptance,
       });
 
     const outbound = createOutboundEvent();
@@ -277,7 +327,8 @@ describe("solana order handlers", () => {
     assert.strictEqual(stored.signature, "signed-solana-order");
     assert.strictEqual(stored.to, bytesToHex(override.toAddress));
     assert.strictEqual(stored.relayerFee, "7");
-    assert.strictEqual(signerCalls, 1);
+    assert.strictEqual(stored.oracle_accept_to_relay, true);
+    assert.strictEqual(signerCalls, 2);
   });
 
   it("parses source payloads through handlers", () => {

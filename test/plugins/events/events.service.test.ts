@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { build, waitFor } from "../../helper.js";
+import { build, waitFor } from "../../helpers/build.js";
 import {
   kOrdersRepository,
   type OrdersRepository,
@@ -29,7 +29,7 @@ const hex32 = (value: number) =>
 async function startHubServer(
   t: { after: (fn: () => void) => void },
   port: number,
-  handler: (req: IncomingMessage, res: ServerResponse) => void
+  handler: (req: IncomingMessage, res: ServerResponse) => void,
 ) {
   const server = createServer(handler);
   await new Promise<void>((resolve) => server.listen(port, resolve));
@@ -103,7 +103,7 @@ function createOutboundEventBytes() {
       amount: 10n,
       relayerFee: 2n,
       nonce: new Uint8Array(32).fill(1),
-    })
+    }),
   );
 }
 
@@ -115,7 +115,7 @@ function createOverrideEventBytes() {
       toAddress: new Uint8Array(32).fill(8),
       relayerFee: 7n,
       nonce: new Uint8Array(32).fill(9),
-    })
+    }),
   );
 }
 
@@ -127,7 +127,7 @@ describe("hub events service", { concurrency: 1 }, () => {
   it("builds hub events paths", () => {
     assert.strictEqual(
       buildHubEventsPath("2024-01-01T00:00:00", 5, 10),
-      "/api/orders/events?created_after=2024-01-01T00%3A00%3A00&after_id=5&limit=10"
+      "/api/orders/events?created_after=2024-01-01T00%3A00%3A00&after_id=5&limit=10",
     );
   });
 
@@ -146,7 +146,7 @@ describe("hub events service", { concurrency: 1 }, () => {
             err: null,
             logMessages: logsBySignature.get(signature) ?? [],
           },
-        }) as never
+        }) as never,
     ).mock as MockMethod;
     t.mock.method(Connection.prototype, "getSignatureStatuses", async () => ({
       value: [{ confirmationStatus: "confirmed", err: null }],
@@ -173,14 +173,13 @@ describe("hub events service", { concurrency: 1 }, () => {
 
     const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-    const eventsRepo = app.getDecorator<HubEventsRepository>(
-      kHubEventsRepository
-    );
+    const eventsRepo =
+      app.getDecorator<HubEventsRepository>(kHubEventsRepository);
 
     let stored: StoredOrder = null;
     await waitFor(async () => {
       stored = await repo.findBySourceNonce(hex32(1));
-      return Boolean(stored);
+      return stored !== null
     }, 12_000);
     assert.ok(stored);
     assert.ok(stored && stored.signature);
@@ -226,10 +225,10 @@ describe("hub events service", { concurrency: 1 }, () => {
       () =>
         Boolean(
           warnMock?.calls.some(
-            (call) => call.arguments[1] === "Invalid hub events payload"
-          )
+            (call) => call.arguments[1] === "Invalid hub events payload",
+          ),
         ),
-      2_000
+      2_000,
     );
     assert.ok(warnMock);
     assert.ok(warnMock?.calls.length > 0);
@@ -269,10 +268,10 @@ describe("hub events service", { concurrency: 1 }, () => {
       () =>
         Boolean(
           errorMock?.calls.some(
-            (call) => call.arguments[1] === "Failed to persist hub event"
-          )
+            (call) => call.arguments[1] === "Failed to persist hub event",
+          ),
         ),
-      2_000
+      2_000,
     );
     assert.ok(errorMock);
   });
@@ -310,9 +309,8 @@ describe("hub events service", { concurrency: 1 }, () => {
       useMocks: false,
       config: { HUB_URLS, SOLANA_TX_RETRY_MAX_ATTEMPTS: maxRetries },
     });
-    const eventsRepo = app.getDecorator<HubEventsRepository>(
-      kHubEventsRepository
-    );
+    const eventsRepo =
+      app.getDecorator<HubEventsRepository>(kHubEventsRepository);
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
 
     await waitFor(async () => {
@@ -374,12 +372,12 @@ describe("hub events service", { concurrency: 1 }, () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       source_nonce: hex32(1),
+      source_payload: "{}",
     });
     shouldSendEvents = true;
 
-    const eventsRepo = app.getDecorator<HubEventsRepository>(
-      kHubEventsRepository
-    );
+    const eventsRepo =
+      app.getDecorator<HubEventsRepository>(kHubEventsRepository);
 
     await waitFor(async () => {
       const failedEvent = await eventsRepo.findBySignature("sig-evt");
@@ -396,13 +394,16 @@ describe("hub events service", { concurrency: 1 }, () => {
     const logsBySignature = new Map([
       ["sig-override", [createLogLine(createOverrideEventBytes())]],
     ]);
-    t.mock.method(Connection.prototype, "getTransaction", async (signature: string) =>
-      ({
-        meta: {
-          err: null,
-          logMessages: logsBySignature.get(signature) ?? [],
-        },
-      }) as never
+    t.mock.method(
+      Connection.prototype,
+      "getTransaction",
+      async (signature: string) =>
+        ({
+          meta: {
+            err: null,
+            logMessages: logsBySignature.get(signature) ?? [],
+          },
+        }) as never,
     );
     t.mock.method(Connection.prototype, "getSignatureStatuses", async () => ({
       value: [{ confirmationStatus: "confirmed", err: null }],
@@ -473,13 +474,16 @@ describe("hub events service", { concurrency: 1 }, () => {
     const logsBySignature = new Map([
       ["sig-evt", [createLogLine(createOutboundEventBytes())]],
     ]);
-    t.mock.method(Connection.prototype, "getTransaction", async (signature: string) =>
-      ({
-        meta: {
-          err: null,
-          logMessages: logsBySignature.get(signature) ?? [],
-        },
-      }) as never
+    t.mock.method(
+      Connection.prototype,
+      "getTransaction",
+      async (signature: string) =>
+        ({
+          meta: {
+            err: null,
+            logMessages: logsBySignature.get(signature) ?? [],
+          },
+        }) as never,
     );
     t.mock.method(Connection.prototype, "getSignatureStatuses", async () => ({
       value: [{ confirmationStatus: "confirmed", err: null }],
@@ -519,7 +523,7 @@ describe("hub events service", { concurrency: 1 }, () => {
     let stored: StoredOrder = null;
     await waitFor(async () => {
       stored = await repo.findBySourceNonce(hex32(1));
-      return Boolean(stored);
+      return stored !== null
     });
     assert.ok(stored);
   });

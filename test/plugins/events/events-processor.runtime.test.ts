@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
-import { build, waitFor } from "../../helper.js";
+import { build, waitFor } from "../../helpers/build.js";
 import {
   kHubEventsRepository,
   type HubEventsRepository,

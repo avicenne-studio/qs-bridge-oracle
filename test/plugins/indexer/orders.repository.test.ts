@@ -1,6 +1,6 @@
 import { it, describe } from "node:test";
 import assert from "node:assert";
-import { build } from "../../helper.js";
+import { build } from "../../helpers/build.js";
 import {
   kOrdersRepository,
   type OrdersRepository,
@@ -26,6 +26,8 @@ describe("ordersRepository", () => {
       signature: "sig-solana-1",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-101",
+      source_payload: "{}",
     });
 
     assert.ok(created);
@@ -60,6 +62,8 @@ describe("ordersRepository", () => {
       signature: "sig-a",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-201",
+      source_payload: "{}",
     });
     const order2 = await repo.create({
       id: makeId(202),
@@ -73,6 +77,8 @@ describe("ordersRepository", () => {
       signature: "sig-b",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-202",
+      source_payload: "{}",
     });
     await repo.create({
       id: makeId(203),
@@ -86,6 +92,8 @@ describe("ordersRepository", () => {
       signature: "sig-c",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-203",
+      source_payload: "{}",
     });
 
     const fetched = await repo.byIds([order2!.id, order1!.id, order2!.id]);
@@ -128,6 +136,8 @@ describe("ordersRepository", () => {
         signature: `sig-${i}`,
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
+        source_nonce: `nonce-${i}`,
+        source_payload: "{}",
       });
     }
 
@@ -143,6 +153,8 @@ describe("ordersRepository", () => {
       signature: "sig-skip",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
+      source_nonce: "nonce-skip",
+      source_payload: "{}",
     });
 
     const pending = await repo.findPendingOrders();
@@ -167,6 +179,8 @@ describe("ordersRepository", () => {
       signature: "sig-update",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-301",
+      source_payload: "{}",
     });
 
     const updated = await repo.update(created!.id, { amount: "42" });
@@ -194,6 +208,8 @@ describe("ordersRepository", () => {
       signature: "sig-ready",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
+      source_nonce: "nonce-311",
+      source_payload: "{}",
     });
 
     const updated = await repo.markReadyForRelay(created!.id);
@@ -234,6 +250,8 @@ describe("ordersRepository", () => {
       signature: "sig-delete",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-401",
+      source_payload: "{}",
     });
 
     const removed = await repo.delete(created!.id);
@@ -267,6 +285,8 @@ describe("ordersRepository", () => {
       signature: "sig-main",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-501",
+      source_payload: "{}",
     });
 
     const inserted = await repo.addSignatures(created!.id, [
@@ -296,6 +316,8 @@ describe("ordersRepository", () => {
       signature: "sig-empty",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-601",
+      source_payload: "{}",
     });
 
     const inserted = await repo.addSignatures(created!.id, []);
@@ -318,6 +340,8 @@ describe("ordersRepository", () => {
       signature: "sig-relay",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      source_nonce: "nonce-701",
+      source_payload: "{}",
     });
 
     const notRelayable = await repo.create({
@@ -332,6 +356,8 @@ describe("ordersRepository", () => {
       signature: "sig-skip",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
+      source_nonce: "nonce-702",
+      source_payload: "{}",
     });
 
     await repo.addSignatures(relayable!.id, ["sig-a", "sig-b"]);
@@ -360,6 +386,7 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       source_nonce: "deadbeef",
+      source_payload: "{}",
     });
 
     const found = await repo.findBySourceNonce("deadbeef");
