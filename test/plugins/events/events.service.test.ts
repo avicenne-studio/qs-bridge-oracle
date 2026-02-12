@@ -179,7 +179,7 @@ describe("hub events service", { concurrency: 1 }, () => {
     let stored: StoredOrder = null;
     await waitFor(async () => {
       stored = await repo.findBySourceNonce(hex32(1));
-      return Boolean(stored);
+      return stored !== null
     }, 12_000);
     assert.ok(stored);
     assert.ok(stored && stored.signature);
@@ -523,7 +523,7 @@ describe("hub events service", { concurrency: 1 }, () => {
     let stored: StoredOrder = null;
     await waitFor(async () => {
       stored = await repo.findBySourceNonce(hex32(1));
-      return Boolean(stored);
+      return stored !== null
     });
     assert.ok(stored);
   });
