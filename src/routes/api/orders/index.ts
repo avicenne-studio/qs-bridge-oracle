@@ -22,16 +22,11 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
       },
     },
     async function handler() {
-      try {
         const result = await ordersRepository.findPendingOrders();
 
         return {
           data: result,
         };
-      } catch (error) {
-        fastify.log.error({ err: error }, "Failed to list orders");
-        throw fastify.httpErrors.internalServerError("Failed to list orders");
-      }
     }
   );
 };
