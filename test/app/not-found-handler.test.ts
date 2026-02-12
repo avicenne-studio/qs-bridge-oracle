@@ -1,6 +1,6 @@
 import { it } from 'node:test'
 import assert from 'node:assert'
-import { build } from '../helper.js'
+import { build } from '../helpers/build.js'
 
 it('should call notFoundHandler', async (t) => {
   const app = await build(t)

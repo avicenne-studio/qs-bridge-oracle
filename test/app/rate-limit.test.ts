@@ -1,5 +1,5 @@
 import { it } from 'node:test'
-import { build } from '../helper.js'
+import { build } from '../helpers/build.js'
 import assert from 'node:assert'
 
 it('should be rate limited', async (t) => {

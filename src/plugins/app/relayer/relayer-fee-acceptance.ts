@@ -9,51 +9,36 @@ export type RelayerFeeAcceptance = {
 
 export const kRelayerFeeAcceptance = Symbol("app.relayerFeeAcceptance");
 
-const SOLANA_DECIMALS = 6;
-const QUBIC_DECIMALS = 8;
+const DECIMAL_PATTERN = /^[0-9]+$/;
 
-function pow10(decimals: number): bigint {
-  return 10n ** BigInt(decimals);
-}
-
-function ceilDiv(numerator: bigint, denominator: bigint): bigint {
-  return (numerator + denominator - 1n) / denominator;
-}
-
-function parsePercentToRatio(value: string, decimals: number): bigint {
-  const [whole, fraction = ""] = value.split(".");
-  const scale = fraction.length;
-  const percentScaled = BigInt(`${whole}${fraction}`);
-  const denominator = 100n * pow10(scale);
-  return ceilDiv(percentScaled * pow10(decimals), denominator);
-}
-
-function minimumRelayerFee(
-  amount: bigint,
-  ratio: bigint,
-  decimals: number
-): bigint {
-  if (amount < 0n) {
-    throw new Error("RelayerFeeAcceptance: amount must be non-negative");
+function parseRelayerFee(value: string, label: string): bigint {
+  if (!DECIMAL_PATTERN.test(value)) {
+    throw new Error(`RelayerFeeAcceptance: ${label} must be an integer string`);
   }
-  return ceilDiv(amount * ratio, pow10(decimals));
+  return BigInt(value);
 }
 
 function createRelayerFeeAcceptance(config: EnvConfig): RelayerFeeAcceptance {
-  const solanaRatio = parsePercentToRatio(
-    config.RELAYER_FEE_PERCENT,
-    SOLANA_DECIMALS
+  const solanaFee = parseRelayerFee(
+    config.RELAYER_FEE_SOLANA,
+    "RELAYER_FEE_SOLANA"
   );
-  const qubicRatio = parsePercentToRatio(
-    config.RELAYER_FEE_PERCENT,
-    QUBIC_DECIMALS
+  const qubicFee = parseRelayerFee(
+    config.RELAYER_FEE_QUBIC,
+    "RELAYER_FEE_QUBIC"
   );
   return {
     acceptRelayToSolana(amount, relayerFee) {
-      return relayerFee >= minimumRelayerFee(amount, solanaRatio, SOLANA_DECIMALS);
+      if (amount < 0n) {
+        throw new Error("RelayerFeeAcceptance: amount must be non-negative");
+      }
+      return relayerFee >= solanaFee;
     },
     acceptRelayToQubic(amount, relayerFee) {
-      return relayerFee >= minimumRelayerFee(amount, qubicRatio, QUBIC_DECIMALS);
+      if (amount < 0n) {
+        throw new Error("RelayerFeeAcceptance: amount must be non-negative");
+      }
+      return relayerFee >= qubicFee;
     },
   };
 }

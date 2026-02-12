@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { build } from "../../helper.js";
+import { build } from "../../helpers/build.js";
 import { signHubHeaders } from "../../utils/hub-signing.js";
 import {
   kOrdersRepository,
@@ -24,6 +24,8 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     signature: "sig-1",
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
+    source_nonce: "nonce-1",
+    source_payload: "{}",
   });
   await ordersRepository.create({
     id: makeId(2),
@@ -37,6 +39,8 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     signature: "sig-2",
     status: "ready-for-relay",
     oracle_accept_to_relay: false,
+    source_nonce: "nonce-2",
+    source_payload: "{}",
   });
   await ordersRepository.create({
     id: makeId(3),
@@ -51,6 +55,8 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     status: "failed",
     oracle_accept_to_relay: false,
     failure_reason_public: "Transaction failed",
+    source_nonce: "nonce-3",
+    source_payload: "{}",
   });
 }
 

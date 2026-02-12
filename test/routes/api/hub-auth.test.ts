@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { build } from "../../helper.js";
+import { build } from "../../helpers/build.js";
 import { signHubHeaders } from "../../utils/hub-signing.js";
 import {
   HUB_AUTH_TIME_SKEW_SECONDS,

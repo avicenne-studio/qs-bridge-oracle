@@ -37,7 +37,8 @@ async function buildEnvApp(overrides: EnvOverrides = {}) {
       HUB_KEYS_FILE: validHubKeys,
       SOLANA_RPC_URL: "http://localhost:8899",
       SOLANA_BPS_FEE: 25,
-      RELAYER_FEE_PERCENT: "0.1",
+      RELAYER_FEE_SOLANA: "1000",
+      RELAYER_FEE_QUBIC: "500",
     },
   };
 

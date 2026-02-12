@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { build, waitFor } from "../../helper.js";
+import { build, waitFor } from "../../helpers/build.js";
 import {
   kOrdersRepository,
   type OrdersRepository,
