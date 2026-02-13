@@ -1,8 +1,8 @@
 import Fastify from "fastify";
 import { createHash, randomUUID } from "node:crypto";
 
-const PORT = Number(process.env.FAKE_QUBIC_PORT ?? "3015");
-const HOST = process.env.FAKE_QUBIC_HOST ?? "127.0.0.1";
+const PORT = Number(globalThis.process.env.FAKE_QUBIC_PORT ?? "3015");
+const HOST = globalThis.process.env.FAKE_QUBIC_HOST ?? "127.0.0.1";
 
 const fastify = Fastify({ logger: true });
 
@@ -203,5 +203,5 @@ fastify.get("/unlocks", async (_request, reply) => {
 
 fastify.listen({ port: PORT, host: HOST }).catch((err) => {
   fastify.log.error({ err }, "Failed to start fake Qubic contract");
-  process.exit(1);
+  globalThis.process.exit(1);
 });

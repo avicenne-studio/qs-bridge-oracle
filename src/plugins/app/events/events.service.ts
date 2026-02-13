@@ -13,11 +13,12 @@ import {
   type HubEventCursor,
   type HubEventsRepository,
   type HubEventCursorsRepository,
+  type NewHubEvent,
 } from "./hub-events.repository.js";
 import {
-  SolanaEventsResponseSchema,
-  type SolanaEventsResponse,
-} from "./solana/schemas/solana-event.js";
+  HubEventsResponseSchema,
+  type HubEventsResponse,
+} from "./schemas/hub-event.js";
 import { parseHubUrls } from "../hub/hub-signatures.service.js";
 
 const DEFAULT_EVENTS_LIMIT = 50;
@@ -110,7 +111,7 @@ async function startHubEventsPolling(
       const cursor = cursors.get(server)!;
       const createdAfter = cursor.lastCreatedAt;
       const afterId = cursor.lastId;
-      return client.getJson<SolanaEventsResponse>(
+      return client.getJson<HubEventsResponse>(
         server,
         buildHubEventsPath(createdAfter, afterId, limit),
         signal
@@ -125,7 +126,7 @@ async function startHubEventsPolling(
         return;
       }
 
-      if (!validation.isValid(SolanaEventsResponseSchema, response)) {
+      if (!validation.isValid(HubEventsResponseSchema, response)) {
         fastify.log.warn(
           { hubUsed: context.used },
           "Invalid hub events payload"
@@ -148,7 +149,7 @@ async function startHubEventsPolling(
             nonce: event.nonce,
             payload: event.payload,
             createdAt: event.createdAt,
-          });
+          } as NewHubEvent);
           lastCreatedAt = event.createdAt;
           lastId = event.id;
         } catch (error) {

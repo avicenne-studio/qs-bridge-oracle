@@ -14,6 +14,10 @@ import {
   kSolanaEventValidator,
   type SolanaEventValidator,
 } from "../../../src/plugins/app/events/solana/solana-events-validator.js";
+import {
+  kQubicEventValidator,
+  type QubicEventValidator,
+} from "../../../src/plugins/app/events/qubic/qubic-events-validator.js";
 
 const hex32 = (value: number) =>
   Buffer.from(new Uint8Array(32).fill(value)).toString("hex");
@@ -162,4 +166,105 @@ test("processor creates failed orders for outbound events", async (t) => {
   const order = await ordersRepo.findBySourceNonce(hex32(34));
   assert.ok(order);
   assert.strictEqual(order?.status, "failed");
+});
+
+test("processor handles qubic lock events", async (t) => {
+  const intervalMs = 50;
+
+  const app = await build(t, {
+    config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
+  });
+  const qubicValidator =
+    app.getDecorator<QubicEventValidator>(kQubicEventValidator);
+  t.mock.method(qubicValidator, "validate", async () => {});
+
+  const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
+  const ordersRepo = app.getDecorator<OrdersRepository>(kOrdersRepository);
+
+  await repo.upsert({
+    hubUrl: "http://hub-1",
+    signature: "trx-qubic",
+    slot: null,
+    chain: "qubic",
+    type: "lock",
+    nonce: "123",
+    payload: {
+      fromAddress: "id(1,2,3,4)",
+      toAddress: "0xabc",
+      amount: "10",
+      relayerFee: "12",
+      nonce: "123",
+    },
+    createdAt: "2024-01-01 00:00:00",
+  });
+
+  await waitFor(async () => {
+    const order = await ordersRepo.findBySourceNonce("123");
+    return Boolean(order);
+  }, 2_000);
+
+  const order = await ordersRepo.findBySourceNonce("123");
+  assert.ok(order);
+  assert.strictEqual(order?.source, "qubic");
+  assert.strictEqual(order?.dest, "solana");
+});
+
+test("processor handles qubic override events", async (t) => {
+  const intervalMs = 50;
+
+  const app = await build(t, {
+    config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
+  });
+  const qubicValidator =
+    app.getDecorator<QubicEventValidator>(kQubicEventValidator);
+  t.mock.method(qubicValidator, "validate", async () => {});
+
+  const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
+
+  await repo.upsert({
+    hubUrl: "http://hub-1",
+    signature: "trx-qubic-override",
+    slot: null,
+    chain: "qubic",
+    type: "override-lock",
+    nonce: "777",
+    payload: {
+      fromAddress: "id(1,2,3,4)",
+      toAddress: "0xdef",
+      amount: "10",
+      relayerFee: "9",
+      nonce: "777",
+    },
+    createdAt: "2024-01-01 00:00:00",
+  });
+
+  await waitFor(async () => {
+    const stored = await repo.findBySignature("trx-qubic-override");
+    return stored?.status === "done";
+  }, 2_000);
+});
+
+test("processor skips unsupported chain events", async (t) => {
+  const intervalMs = 50;
+
+  const app = await build(t, {
+    config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
+  });
+  const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
+
+  await repo.upsert({
+    hubUrl: "http://hub-1",
+    signature: "trx-unknown",
+    slot: null,
+    chain: "unknown",
+    type: "mystery",
+    nonce: "999",
+    payload: {},
+    createdAt: "2024-01-01 00:00:00",
+  } as never);
+
+  await waitFor(async () => {
+    const stored = await repo.findBySignature("trx-unknown");
+    return stored?.status === "done";
+  }, 2_000);
 });

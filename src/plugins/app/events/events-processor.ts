@@ -22,12 +22,19 @@ import {
   kSolanaEventValidator,
   type SolanaEventValidator,
 } from "./solana/solana-events-validator.js";
+import { type SolanaStoredEvent } from "./solana/schemas/solana-event.js";
+import {
+  kQubicEventValidator,
+  type QubicEventValidator,
+} from "./qubic/qubic-events-validator.js";
+import { type QubicStoredEvent } from "./qubic/schemas/qubic-event.js";
 import { kValidation, type ValidationService } from "../common/validation.js";
 import {
   createFailedOrderFromOutboundEvent,
   createSolanaOrderHandlers,
 } from "./solana/solana-orders.js";
 import { mapStoredEventToSolanaPayload } from "./solana/solana-event-mapper.js";
+import { createQubicOrderHandlers } from "./qubic/qubic-orders.js";
 
 const DEFAULT_PROCESS_LIMIT = 50;
 
@@ -57,7 +64,8 @@ async function processEvent(
   deps: {
     ordersRepository: OrdersRepository;
     signerService: SignerService;
-    validator: SolanaEventValidator;
+    solanaValidator: SolanaEventValidator;
+    qubicValidator: QubicEventValidator;
     config: EnvConfig;
     validation: ValidationService;
     relayerFeeAcceptance: RelayerFeeAcceptance;
@@ -67,35 +75,65 @@ async function processEvent(
   const {
     ordersRepository,
     signerService,
-    validator,
+    solanaValidator,
+    qubicValidator,
     config,
     validation,
     relayerFeeAcceptance,
     logger,
   } = deps;
-  await validator.validate(event);
-  logger.info(
-    { signature: event.signature, type: event.type, slot: event.slot },
-    "Solana event validated"
-  );
-  const handlers = createSolanaOrderHandlers({
-    ordersRepository,
-    signerService,
-    config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
-    logger,
-    validation,
-    relayerFeeAcceptance,
-  });
-  const mapped = mapStoredEventToSolanaPayload(event);
-  if (mapped.type === "outbound") {
-    await handlers.handleOutboundEvent(mapped.event, {
-      signature: event.signature,
+
+  if (event.chain === "solana") {
+    const solanaEvent = event as SolanaStoredEvent;
+    await solanaValidator.validate(solanaEvent);
+    logger.info(
+      { signature: event.signature, type: event.type, slot: event.slot },
+      "Solana event validated"
+    );
+    const handlers = createSolanaOrderHandlers({
+      ordersRepository,
+      signerService,
+      config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
+      logger,
+      validation,
+      relayerFeeAcceptance,
     });
-  } else {
-    await handlers.handleOverrideOutboundEvent(mapped.event, {
-      signature: event.signature,
-    });
+    const mapped = mapStoredEventToSolanaPayload(solanaEvent);
+    if (mapped.type === "outbound") {
+      await handlers.handleOutboundEvent(mapped.event, {
+        signature: event.signature,
+      });
+    } else {
+      await handlers.handleOverrideOutboundEvent(mapped.event, {
+        signature: event.signature,
+      });
+    }
+    return;
   }
+
+  if (event.chain === "qubic") {
+    const qubicEvent = event as QubicStoredEvent;
+    await qubicValidator.validate(qubicEvent);
+    logger.info(
+      { signature: event.signature, type: event.type, slot: event.slot },
+      "Qubic event validated"
+    );
+    const handlers = createQubicOrderHandlers({
+      ordersRepository,
+      logger,
+      relayerFeeAcceptance,
+    });
+    if (qubicEvent.type === "lock") {
+      await handlers.handleLockEvent(qubicEvent.payload, {
+        signature: qubicEvent.signature,
+      });
+    } else {
+      await handlers.handleOverrideLockEvent(qubicEvent.payload);
+    }
+    return;
+  }
+
+  logger.warn({ chain: event.chain }, "Unsupported event chain");
 }
 
 async function handleFailure(opts: {
@@ -121,9 +159,9 @@ async function handleFailure(opts: {
     failureReasonInternal,
   });
 
-  if (status === "failed" && event.type === "outbound") {
+  if (status === "failed" && event.type === "outbound" && event.chain === "solana") {
     const publicReason = toPublicFailureReason(error);
-    const mapped = mapStoredEventToSolanaPayload(event);
+    const mapped = mapStoredEventToSolanaPayload(event as SolanaStoredEvent);
     if (mapped.type !== "outbound") {
       return;
     }
@@ -155,14 +193,21 @@ async function processPendingEvents(
     eventsRepository: HubEventsRepository;
     ordersRepository: OrdersRepository;
     signerService: SignerService;
-    validator: SolanaEventValidator;
+    solanaValidator: SolanaEventValidator;
+    qubicValidator: QubicEventValidator;
     config: EnvConfig;
     validation: ValidationService;
     relayerFeeAcceptance: RelayerFeeAcceptance;
   }
 ) {
-  const { eventsRepository, ordersRepository, signerService, validator, config } =
-    deps;
+  const {
+    eventsRepository,
+    ordersRepository,
+    signerService,
+    solanaValidator,
+    qubicValidator,
+    config,
+  } = deps;
   const pending = await eventsRepository.listPending(DEFAULT_PROCESS_LIMIT);
   if (pending.length === 0) {
     return;
@@ -173,7 +218,8 @@ async function processPendingEvents(
       await processEvent(event, {
         ordersRepository,
         signerService,
-        validator,
+        solanaValidator,
+        qubicValidator,
         config,
         validation: deps.validation,
         relayerFeeAcceptance: deps.relayerFeeAcceptance,
@@ -199,7 +245,8 @@ function startProcessor(
     eventsRepository: HubEventsRepository;
     ordersRepository: OrdersRepository;
     signerService: SignerService;
-    validator: SolanaEventValidator;
+    solanaValidator: SolanaEventValidator;
+    qubicValidator: QubicEventValidator;
     config: EnvConfig;
     validation: ValidationService;
     relayerFeeAcceptance: RelayerFeeAcceptance;
@@ -238,8 +285,10 @@ export default fp(
     const ordersRepository =
       fastify.getDecorator<OrdersRepository>(kOrdersRepository);
     const signerService = fastify.getDecorator<SignerService>(kSignerService);
-    const validator =
+    const solanaValidator =
       fastify.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
+    const qubicValidator =
+      fastify.getDecorator<QubicEventValidator>(kQubicEventValidator);
     const validation =
       fastify.getDecorator<ValidationService>(kValidation);
     const relayerFeeAcceptance =
@@ -250,7 +299,8 @@ export default fp(
         eventsRepository,
         ordersRepository,
         signerService,
-        validator,
+        solanaValidator,
+        qubicValidator,
         config,
         validation,
         relayerFeeAcceptance,
@@ -267,6 +317,7 @@ export default fp(
       "signer-service",
       "relayerFeeAcceptance",
       "solana-events-validator",
+      "qubic-events-validator",
     ],
   }
 );

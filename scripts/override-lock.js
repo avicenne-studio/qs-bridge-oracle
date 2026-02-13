@@ -1,6 +1,5 @@
-
 const DEFAULT_URL = "http://127.0.0.1:3015";
-const baseUrl = process.env.FAKE_QUBIC_URL ?? DEFAULT_URL;
+const baseUrl = globalThis.process.env.FAKE_QUBIC_URL ?? DEFAULT_URL;
 
 function parseArgs(argv) {
   const args = {};
@@ -22,14 +21,14 @@ function parseArgs(argv) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv);
+  const args = parseArgs(globalThis.process.argv);
   const body = {
     to: args.to ?? "",
     relayerFee: args.relayerFee ?? "0",
     nonce: args.nonce,
   };
 
-  const res = await fetch(`${baseUrl}/override-lock`, {
+  const res = await globalThis.fetch(`${baseUrl}/override-lock`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -37,14 +36,14 @@ async function main() {
 
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) {
-    console.error("override-lock failed", payload);
-    process.exit(1);
+    globalThis.console.error("override-lock failed", payload);
+    globalThis.process.exit(1);
   }
 
-  console.log(JSON.stringify(payload, null, 2));
+  globalThis.console.log(JSON.stringify(payload, null, 2));
 }
 
 main().catch((err) => {
-  console.error("override-lock failed", err);
-  process.exit(1);
+  globalThis.console.error("override-lock failed", err);
+  globalThis.process.exit(1);
 });
