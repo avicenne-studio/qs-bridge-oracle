@@ -346,9 +346,51 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     logger.info({ orderId: existing.id }, "Solana outbound order updated");
   };
 
+  const handleInboundEvent = async (
+    event: { nonce: Uint8Array },
+    meta?: { signature?: string }
+  ) => {
+    if (!meta?.signature) {
+      logger.warn("Solana inbound event missing transaction signature");
+      return;
+    }
+    const sourceNonce = bytesToHex(event.nonce);
+    const existing = await ordersRepository.findBySourceNonce(sourceNonce);
+    if (!existing) {
+      logger.warn(
+        { sourceNonce },
+        "Solana inbound event received for unknown order"
+      );
+      return;
+    }
+    if (existing.dest !== "solana") {
+      logger.warn(
+        { orderId: existing.id, dest: existing.dest },
+        "Solana inbound event ignored (order is not Qubic->Solana)"
+      );
+      return;
+    }
+    if (existing.status === "finalized") {
+      logger.info(
+        { orderId: existing.id },
+        "Solana inbound event ignored because order is finalized"
+      );
+      return;
+    }
+    await ordersRepository.update(existing.id, {
+      destination_trx_hash: meta.signature,
+      status: "finalized",
+    });
+    logger.info(
+      { orderId: existing.id, destination_trx_hash: meta.signature },
+      "Solana inbound order finalized"
+    );
+  };
+
   return {
     handleOutboundEvent,
     handleOverrideOutboundEvent,
+    handleInboundEvent,
     parseSourcePayload: (payload?: string) =>
       parseSourcePayload(payload, validation),
     serializeSourcePayload,

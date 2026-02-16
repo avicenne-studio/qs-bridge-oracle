@@ -47,6 +47,7 @@ function createOutboundEvent() {
   const nonce = new Uint8Array(32);
   nonce[31] = 1;
   return {
+    discriminator: 1,
     networkIn: 1,
     networkOut: 1,
     tokenIn: new Uint8Array(32).fill(1),
@@ -63,6 +64,7 @@ function createOverrideEvent() {
   const nonce = new Uint8Array(32);
   nonce[31] = 1;
   return {
+    discriminator: 2,
     toAddress: new Uint8Array(32).fill(9),
     relayerFee: 7n,
     nonce,
@@ -176,6 +178,7 @@ describe("solana order handlers", () => {
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
         source_nonce: existingNonce,
+        source_payload: JSON.stringify({ v: 1, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: existingNonce }),
       },
     ]);
     const { handleOutboundEvent } = createHandlers(repo);
@@ -207,6 +210,7 @@ describe("solana order handlers", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       source_nonce: overrideNonce,
+      source_payload: JSON.stringify({ v: 1, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: overrideNonce }),
     });
 
     await handleOverrideOutboundEvent(overrideEvent);
@@ -225,7 +229,7 @@ describe("solana order handlers", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       source_nonce: overrideNonce,
-      source_payload: JSON.stringify({ v: 2 }),
+      source_payload: JSON.stringify({ v: 2, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: overrideNonce }),
     });
 
     await handleOverrideOutboundEvent(overrideEvent);
@@ -347,5 +351,121 @@ describe("solana order handlers", () => {
     assert.ok(parsed);
     assert.strictEqual(parsed?.tokenIn, hex32(1));
     assert.strictEqual(parseSourcePayload(undefined), null);
+  });
+
+  it("finalizes order when inbound event with signature", async () => {
+    const inboundNonce = new Uint8Array(32);
+    inboundNonce[31] = 7;
+    const sourceNonce = bytesToHex(inboundNonce);
+    const repo = createInMemoryOrders([
+      {
+        id: "00000000-0000-4000-8000-000000000007",
+        source: "qubic",
+        dest: "solana",
+        from: "id(1,2,3)",
+        to: "0xabc",
+        amount: "10",
+        relayerFee: "1",
+        origin_trx_hash: "trx-lock",
+        signature: "sig",
+        status: "pending",
+        oracle_accept_to_relay: true,
+        source_nonce: sourceNonce,
+        source_payload: JSON.stringify({ v: 1 }),
+      },
+    ]);
+    const { handleInboundEvent } = createHandlers(repo);
+
+    await handleInboundEvent({ nonce: inboundNonce }, { signature: "mint-tx-hash" });
+
+    const stored = await repo.findBySourceNonce(sourceNonce);
+    assert.ok(stored);
+    assert.strictEqual(stored?.destination_trx_hash, "mint-tx-hash");
+    assert.strictEqual(stored?.status, "finalized");
+  });
+
+  it("warns when inbound event missing signature", async () => {
+    const repo = createInMemoryOrders();
+    const { handleInboundEvent, entries } = createHandlers(repo);
+    const nonce = new Uint8Array(32);
+    nonce[31] = 8;
+
+    await handleInboundEvent({ nonce }, {});
+
+    const msg = (e: (typeof entries)[0]) => (typeof e.payload === "string" ? e.payload : e.message ?? "");
+    assert.ok(entries.some((e) => msg(e).includes("inbound") && msg(e).includes("signature")));
+  });
+
+  it("warns when inbound event for unknown order", async () => {
+    const repo = createInMemoryOrders();
+    const { handleInboundEvent, entries } = createHandlers(repo);
+    const nonce = new Uint8Array(32);
+    nonce[31] = 9;
+
+    await handleInboundEvent({ nonce }, { signature: "mint-tx" });
+
+    assert.ok(entries.some((e) => e.message?.includes("unknown order")));
+  });
+
+  it("ignores inbound when order dest is not solana", async () => {
+    const nonce = new Uint8Array(32);
+    nonce[31] = 10;
+    const sourceNonce = bytesToHex(nonce);
+    const repo = createInMemoryOrders([
+      {
+        id: "00000000-0000-4000-8000-000000000010",
+        source: "solana",
+        dest: "qubic",
+        from: "aa",
+        to: "bb",
+        amount: "1",
+        relayerFee: "0",
+        origin_trx_hash: "trx",
+        signature: "sig",
+        status: "pending",
+        oracle_accept_to_relay: true,
+        source_nonce: sourceNonce,
+        source_payload: JSON.stringify({ v: 1 }),
+      },
+    ]);
+    const { handleInboundEvent } = createHandlers(repo);
+
+    await handleInboundEvent({ nonce }, { signature: "mint-tx" });
+
+    const stored = await repo.findBySourceNonce(sourceNonce);
+    assert.ok(stored);
+    assert.strictEqual(stored?.destination_trx_hash, undefined);
+    assert.strictEqual(stored?.status, "pending");
+  });
+
+  it("ignores inbound when order already finalized", async () => {
+    const nonce = new Uint8Array(32);
+    nonce[31] = 11;
+    const sourceNonce = bytesToHex(nonce);
+    const repo = createInMemoryOrders([
+      {
+        id: "00000000-0000-4000-8000-000000000011",
+        source: "qubic",
+        dest: "solana",
+        from: "aa",
+        to: "bb",
+        amount: "1",
+        relayerFee: "0",
+        origin_trx_hash: "trx",
+        destination_trx_hash: "existing-mint",
+        signature: "sig",
+        status: "finalized",
+        oracle_accept_to_relay: true,
+        source_nonce: sourceNonce,
+        source_payload: JSON.stringify({ v: 1 }),
+      },
+    ]);
+    const { handleInboundEvent } = createHandlers(repo);
+
+    await handleInboundEvent({ nonce }, { signature: "new-mint-tx" });
+
+    const stored = await repo.findBySourceNonce(sourceNonce);
+    assert.ok(stored);
+    assert.strictEqual(stored?.destination_trx_hash, "existing-mint");
   });
 });

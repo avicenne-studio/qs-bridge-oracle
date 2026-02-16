@@ -1,5 +1,8 @@
 import { Static, Type } from "@sinclair/typebox";
-import { StringSchema } from "../../../common/schemas/common.js";
+import {
+  StringSchema,
+  NetworkIdSchema,
+} from "../../../common/schemas/common.js";
 
 export const SolanaHex32Schema = Type.String({ pattern: "^[0-9a-fA-F]{64}$" });
 const Hex32Schema = SolanaHex32Schema;
@@ -8,13 +11,14 @@ const AmountSchema = Type.String({ pattern: "^[0-9]+$" });
 export const SolanaEventTypeSchema = Type.Union([
   Type.Literal("outbound"),
   Type.Literal("override-outbound"),
+  Type.Literal("inbound"),
 ]);
 
 export const SolanaEventChainSchema = Type.Literal("solana");
 
 export const SolanaOutboundEventPayloadSchema = Type.Object({
-  networkIn: Type.Integer({ minimum: 0 }),
-  networkOut: Type.Integer({ minimum: 0 }),
+  networkIn: NetworkIdSchema,
+  networkOut: NetworkIdSchema,
   tokenIn: Hex32Schema,
   tokenOut: Hex32Schema,
   fromAddress: Hex32Schema,
@@ -30,9 +34,22 @@ export const SolanaOverrideOutboundEventPayloadSchema = Type.Object({
   nonce: Hex32Schema,
 });
 
+export const SolanaInboundEventPayloadSchema = Type.Object({
+  networkIn: NetworkIdSchema,
+  networkOut: NetworkIdSchema,
+  tokenIn: Hex32Schema,
+  tokenOut: Hex32Schema,
+  fromAddress: Hex32Schema,
+  toAddress: Hex32Schema,
+  amount: AmountSchema,
+  relayerFee: AmountSchema,
+  nonce: Hex32Schema,
+});
+
 export const SolanaEventPayloadSchema = Type.Union([
   SolanaOutboundEventPayloadSchema,
   SolanaOverrideOutboundEventPayloadSchema,
+  SolanaInboundEventPayloadSchema,
 ]);
 
 export const SolanaStoredEventSchema = Type.Object({

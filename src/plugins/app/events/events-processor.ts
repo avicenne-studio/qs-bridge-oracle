@@ -99,8 +99,12 @@ async function processEvent(
       await solanaHandlers.handleOutboundEvent(mapped.event, {
         signature: event.signature,
       });
-    } else {
+    } else if (mapped.type === "override-outbound") {
       await solanaHandlers.handleOverrideOutboundEvent(mapped.event, {
+        signature: event.signature,
+      });
+    } else if (mapped.type === "inbound") {
+      await solanaHandlers.handleInboundEvent(mapped.event, {
         signature: event.signature,
       });
     }
