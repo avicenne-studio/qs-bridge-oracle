@@ -2,6 +2,7 @@ import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { kKnex, type KnexAccessor } from "../../infra/@knex.js";
 import { type SolanaEventPayload } from "./solana/schemas/solana-event.js";
+import { type QubicEventPayload } from "./qubic/schemas/qubic-event.js";
 
 export const HUB_EVENTS_TABLE_NAME = "hub_events";
 export const HUB_EVENT_CURSORS_TABLE_NAME = "hub_event_cursors";
@@ -10,26 +11,15 @@ export const kHubEventCursorsRepository = Symbol("app.hubEventCursorsRepository"
 
 export type HubEventStatus = "pending" | "done" | "failed";
 
-export type NewHubEvent = {
-  hubUrl: string;
-  signature: string;
-  slot: number | null;
-  chain: "solana";
-  type: "outbound" | "override-outbound";
-  nonce: string;
-  payload: SolanaEventPayload;
-  createdAt: string;
-};
-
 export type StoredHubEvent = {
   id: number;
   hubUrl: string;
   signature: string;
   slot?: number;
-  chain: "solana";
-  type: "outbound" | "override-outbound";
+  chain: "solana" | "qubic";
+  type: "outbound" | "override-outbound" | "lock" | "override-lock";
   nonce: string;
-  payload: SolanaEventPayload;
+  payload: SolanaEventPayload | QubicEventPayload;
   createdAt: string;
   status: HubEventStatus;
   retryCount: number;
@@ -38,6 +28,18 @@ export type StoredHubEvent = {
   lastFailureAt?: string | null;
   processedAt?: string | null;
 };
+
+export type NewHubEvent = Omit<
+  StoredHubEvent,
+  | "id"
+  | "status"
+  | "retryCount"
+  | "failureCode"
+  | "failureReasonInternal"
+  | "lastFailureAt"
+  | "processedAt"
+  | "slot"
+> & { slot: number | null };
 
 type PersistedHubEvent = {
   id: number;
@@ -79,7 +81,7 @@ function normalizeEvent(row: PersistedHubEvent): StoredHubEvent {
     chain: row.chain as StoredHubEvent["chain"],
     type: row.type as StoredHubEvent["type"],
     nonce: row.nonce,
-    payload: JSON.parse(row.payload) as SolanaEventPayload,
+    payload: JSON.parse(row.payload) as StoredHubEvent["payload"],
     createdAt: row.created_at,
     status: row.status,
     retryCount: row.retry_count,

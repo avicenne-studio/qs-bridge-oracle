@@ -26,7 +26,10 @@
     "test": "c8 npm run test:run",
     "test:run": "glob -c \"tsx --env-file=.env.test --test\" \"./test/**/*.ts\"",
     "lint": "eslint --ignore-pattern=dist",
-    "lint:fix": "npm run lint -- --fix"
+    "lint:fix": "npm run lint -- --fix",
+    "fake-qubic": "node scripts/fake-qubic-smart-contract.js",
+    "lock": "node scripts/lock.js",
+    "override-lock": "node scripts/override-lock.js"
   },
   "keywords": [],
   "author": "Michelet Jean <jean.antoine.michelet@gmail.com>",

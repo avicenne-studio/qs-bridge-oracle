@@ -1,7 +1,8 @@
 import { Static, Type } from "@sinclair/typebox";
 import { StringSchema } from "../../../common/schemas/common.js";
 
-const Hex32Schema = Type.String({ pattern: "^[0-9a-fA-F]{64}$" });
+export const SolanaHex32Schema = Type.String({ pattern: "^[0-9a-fA-F]{64}$" });
+const Hex32Schema = SolanaHex32Schema;
 const AmountSchema = Type.String({ pattern: "^[0-9]+$" });
 
 export const SolanaEventTypeSchema = Type.Union([

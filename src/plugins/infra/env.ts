@@ -17,6 +17,7 @@ export type EnvConfig = {
   HUB_URLS: string;
   HUB_KEYS_FILE: string;
   SOLANA_RPC_URL: string;
+  QUBIC_RPC_URL: string;
   SOLANA_TX_COMMITMENT: "processed" | "confirmed" | "finalized";
   SOLANA_TX_RETRY_MAX_ATTEMPTS?: number;
   SOLANA_TX_RETRY_BASE_MS?: number;
@@ -42,6 +43,7 @@ const schema = {
     "HUB_URLS",
     "HUB_KEYS_FILE",
     "SOLANA_RPC_URL",
+    "QUBIC_RPC_URL",
     "SOLANA_BPS_FEE",
     "SOLANA_TX_COMMITMENT",
     "RELAYER_FEE_SOLANA",
@@ -101,6 +103,9 @@ const schema = {
       type: "string",
     },
     SOLANA_RPC_URL: {
+      type: "string",
+    },
+    QUBIC_RPC_URL: {
       type: "string",
     },
     SOLANA_TX_COMMITMENT: {
