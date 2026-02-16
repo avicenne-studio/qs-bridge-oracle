@@ -10,14 +10,8 @@ import {
   kOrdersRepository,
   type OrdersRepository,
 } from "../../../src/plugins/app/indexer/orders.repository.js";
-import {
-  kSolanaEventValidator,
-  type SolanaEventValidator,
-} from "../../../src/plugins/app/events/solana/solana-events-validator.js";
-import {
-  kQubicEventValidator,
-  type QubicEventValidator,
-} from "../../../src/plugins/app/events/qubic/qubic-events-validator.js";
+import { kSolanaEventValidator } from "../../../src/plugins/app/events/solana/solana-events-validator.js";
+import { kQubicEventValidator } from "../../../src/plugins/app/events/qubic/qubic-events-validator.js";
 
 const hex32 = (value: number) =>
   Buffer.from(new Uint8Array(32).fill(value)).toString("hex");
@@ -41,11 +35,13 @@ test("processor skips overlapping runs", async (t) => {
 
   const app = await build(t, {
     config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
-  });
-  const validator =
-    app.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
-  t.mock.method(validator, "validate", async () => {
-    await new Promise<void>((resolve) => setTimeout(resolve, 120));
+    decorators: {
+      [kSolanaEventValidator]: {
+        validate: async () => {
+          await new Promise<void>((resolve) => setTimeout(resolve, 120));
+        },
+      },
+    },
   });
 
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
@@ -100,11 +96,13 @@ test("processor skips failed order creation when payload mapping mismatches", as
       EVENTS_PROCESS_INTERVAL_MS: intervalMs,
       EVENT_MAX_RETRIES: maxRetries,
     },
-  });
-  const validator =
-    app.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
-  t.mock.method(validator, "validate", async () => {
-    throw new Error("Transaction failed");
+    decorators: {
+      [kSolanaEventValidator]: {
+        validate: async () => {
+          throw new Error("Transaction failed");
+        },
+      },
+    },
   });
 
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
@@ -138,11 +136,13 @@ test("processor creates failed orders for outbound events", async (t) => {
       EVENTS_PROCESS_INTERVAL_MS: intervalMs,
       EVENT_MAX_RETRIES: maxRetries,
     },
-  });
-  const validator =
-    app.getDecorator<SolanaEventValidator>(kSolanaEventValidator);
-  t.mock.method(validator, "validate", async () => {
-    throw new Error("Transaction failed");
+    decorators: {
+      [kSolanaEventValidator]: {
+        validate: async () => {
+          throw new Error("Transaction failed");
+        },
+      },
+    },
   });
 
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
@@ -173,10 +173,12 @@ test("processor handles qubic lock events", async (t) => {
 
   const app = await build(t, {
     config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
+    decorators: {
+      [kQubicEventValidator]: {
+        validate: async () => {},
+      },
+    },
   });
-  const qubicValidator =
-    app.getDecorator<QubicEventValidator>(kQubicEventValidator);
-  t.mock.method(qubicValidator, "validate", async () => {});
 
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
   const ordersRepo = app.getDecorator<OrdersRepository>(kOrdersRepository);
@@ -243,6 +245,58 @@ test("processor handles qubic override events", async (t) => {
   await waitFor(async () => {
     const stored = await repo.findBySignature("trx-qubic-override");
     return stored?.status === "done";
+  }, 2_000);
+});
+
+test("processor stores destination transaction hash for qubic unlock events", async (t) => {
+  const intervalMs = 50;
+
+  const app = await build(t, {
+    config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
+    decorators: {
+      [kQubicEventValidator]: {
+        validate: async () => {},
+      },
+    },
+  });
+
+  const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
+  const ordersRepo = app.getDecorator<OrdersRepository>(kOrdersRepository);
+
+  await ordersRepo.create({
+    id: "00000000-0000-4000-8000-000000000999",
+    source: "qubic",
+    dest: "solana",
+    from: "id(1,2,3,4)",
+    to: "0xabc",
+    amount: "10",
+    relayerFee: "1",
+    origin_trx_hash: "trx-lock",
+    signature: "sig",
+    status: "pending",
+    oracle_accept_to_relay: true,
+    source_nonce: "999",
+    source_payload: JSON.stringify({ v: 1 }),
+  });
+
+  await repo.upsert({
+    hubUrl: "http://hub-1",
+    signature: "trx-unlock",
+    slot: null,
+    chain: "qubic",
+    type: "unlock",
+    nonce: "999",
+    payload: {
+      toAddress: "0xabc",
+      amount: "10",
+      nonce: "999",
+    },
+    createdAt: "2024-01-01 00:00:00",
+  });
+
+  await waitFor(async () => {
+    const order = await ordersRepo.findBySourceNonce("999");
+    return order?.destination_trx_hash === "trx-unlock";
   }, 2_000);
 });
 

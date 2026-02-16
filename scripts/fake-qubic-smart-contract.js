@@ -158,15 +158,22 @@ fastify.post("/override-lock", async (request, reply) => {
 
 fastify.post("/unlock", async (request, reply) => {
   const body = request.body ?? {};
-  const record = {
-    trxHash: String(body.trxHash ?? randomUUID()),
+  const payload = {
     toAddress: String(body.to ?? ""),
     amount: String(body.amount ?? "0"),
-    nonce: String(body.nonce ?? ""),
+    nonce: String(body.nonce ?? Date.now()),
+  };
+  const event = storeEvent("unlock", payload);
+  const tx = buildTransaction(event);
+  const record = {
+    trxHash: tx.trxHash ?? String(body.trxHash ?? randomUUID()),
+    toAddress: payload.toAddress,
+    amount: payload.amount,
+    nonce: payload.nonce,
     createdAt: nowIso(),
   };
   unlocks.push(record);
-  return reply.code(201).send({ trxHash: record.trxHash });
+  return reply.code(201).send({ trxHash: record.trxHash, event });
 });
 
 fastify.get("/events", async (_request, reply) => {

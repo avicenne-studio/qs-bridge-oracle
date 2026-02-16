@@ -27,7 +27,12 @@ import {
   kQubicEventValidator,
   type QubicEventValidator,
 } from "./qubic/qubic-events-validator.js";
-import { type QubicStoredEvent } from "./qubic/schemas/qubic-event.js";
+import {
+  type QubicStoredEvent,
+  type QubicLockEventPayload,
+  type QubicOverrideLockEventPayload,
+  type QubicUnlockEventPayload,
+} from "./qubic/schemas/qubic-event.js";
 import { kValidation, type ValidationService } from "../common/validation.js";
 import {
   createFailedOrderFromOutboundEvent,
@@ -110,11 +115,23 @@ async function processEvent(
       "Qubic event validated"
     );
     if (qubicEvent.type === "lock") {
-      await qubicHandlers.handleLockEvent(qubicEvent.payload, {
-        signature: qubicEvent.signature,
-      });
+      await qubicHandlers.handleLockEvent(
+        qubicEvent.payload as QubicLockEventPayload,
+        {
+          signature: qubicEvent.signature,
+        }
+      );
+    } else if (qubicEvent.type === "override-lock") {
+      await qubicHandlers.handleOverrideLockEvent(
+        qubicEvent.payload as QubicOverrideLockEventPayload
+      );
     } else {
-      await qubicHandlers.handleOverrideLockEvent(qubicEvent.payload);
+      await qubicHandlers.handleUnlockEvent(
+        qubicEvent.payload as QubicUnlockEventPayload,
+        {
+          signature: qubicEvent.signature,
+        }
+      );
     }
     return;
   }

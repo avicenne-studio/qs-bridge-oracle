@@ -61,6 +61,7 @@ export default fp(
           table.string("amount").notNullable();
           table.string("relayerFee").notNullable().defaultTo("0");
           table.string("origin_trx_hash", 255).notNullable();
+          table.string("destination_trx_hash", 255).nullable();
           table.string("source_nonce").notNullable().unique();
           table.string("source_payload").notNullable();
           table.string("signature", SIGNATURE_MAX_LENGTH).notNullable();

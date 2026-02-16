@@ -17,7 +17,7 @@ export type StoredHubEvent = {
   signature: string;
   slot?: number;
   chain: "solana" | "qubic";
-  type: "outbound" | "override-outbound" | "lock" | "override-lock";
+  type: "outbound" | "override-outbound" | "lock" | "override-lock" | "unlock";
   nonce: string;
   payload: SolanaEventPayload | QubicEventPayload;
   createdAt: string;

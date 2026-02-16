@@ -162,4 +162,59 @@ describe("qubic order handlers", () => {
       entries.some((entry) => entry.message?.includes("unknown order"))
     );
   });
+
+  it("updates destination transaction hash for unlock events", async () => {
+    const { repo, handleLockEvent, handleUnlockEvent } = createHandlers();
+    const payload = createLockPayload();
+    await handleLockEvent(payload, { signature: "trx-lock" });
+
+    await handleUnlockEvent(
+      {
+        toAddress: payload.toAddress,
+        amount: payload.amount,
+        nonce: payload.nonce,
+      },
+      { signature: "trx-unlock" }
+    );
+
+    const stored = await repo.findBySourceNonce(payload.nonce);
+    assert.ok(stored);
+    assert.strictEqual(stored?.destination_trx_hash, "trx-unlock");
+  });
+
+  it("warns when unlock events have no matching order", async () => {
+    const { handleUnlockEvent, entries } = createHandlers();
+
+    await handleUnlockEvent(
+      {
+        toAddress: "id(9,9,9,9)",
+        amount: "1",
+        nonce: "999",
+      },
+      { signature: "trx-unlock" }
+    );
+
+    assert.ok(
+      entries.some((entry) => entry.message?.includes("unknown order"))
+    );
+  });
+
+  it("warns when unlock events are missing signatures", async () => {
+    const { repo, handleLockEvent, handleUnlockEvent, entries } = createHandlers();
+    const payload = createLockPayload();
+    await handleLockEvent(payload, { signature: "trx-lock" });
+
+    await handleUnlockEvent({
+      toAddress: payload.toAddress,
+      amount: payload.amount,
+      nonce: payload.nonce,
+    });
+
+    const stored = await repo.findBySourceNonce(payload.nonce);
+    assert.ok(stored);
+    assert.strictEqual(stored?.destination_trx_hash, undefined);
+    assert.ok(
+      entries.some((entry) => entry.message?.includes("missing signature"))
+    );
+  });
 });

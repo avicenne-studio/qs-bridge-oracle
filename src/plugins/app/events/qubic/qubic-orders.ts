@@ -3,7 +3,11 @@ import type { FastifyBaseLogger } from "fastify";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import { createHash, randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { type QubicEventPayload } from "./schemas/qubic-event.js";
+import {
+  type QubicLockEventPayload,
+  type QubicOverrideLockEventPayload,
+  type QubicUnlockEventPayload,
+} from "./schemas/qubic-event.js";
 import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.js";
 
 const PROTOCOL_NAME = "qs-bridge";
@@ -47,7 +51,7 @@ function serializeSourcePayload(payload: QubicOrderSourcePayloadV1): string {
   return JSON.stringify(payload);
 }
 
-function buildSourcePayload(event: QubicEventPayload): QubicOrderSourcePayloadV1 {
+function buildSourcePayload(event: QubicLockEventPayload): QubicOrderSourcePayloadV1 {
   return {
     v: 1,
     nonce: event.nonce,
@@ -63,7 +67,7 @@ function createPlaceholderSignature(): string {
 }
 
 function createOrderFromLockEvent(
-  event: QubicEventPayload,
+  event: QubicLockEventPayload,
   signature: string,
   orderId: string,
   sourceNonce: string,
@@ -91,7 +95,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
   const { ordersRepository, logger, relayerFeeAcceptance } = deps;
 
   const handleLockEvent = async (
-    event: QubicEventPayload,
+    event: QubicLockEventPayload,
     meta?: { signature?: string }
   ) => {
     logger.debug(
@@ -137,7 +141,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     logger.info({ orderId }, "Qubic lock order stored");
   };
 
-  const handleOverrideLockEvent = async (event: QubicEventPayload) => {
+  const handleOverrideLockEvent = async (event: QubicOverrideLockEventPayload) => {
     logger.debug(
       {
         relayerFee: event.relayerFee,
@@ -180,8 +184,47 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     logger.info({ orderId: existing.id }, "Qubic lock order updated");
   };
 
+  const handleUnlockEvent = async (
+    event: QubicUnlockEventPayload,
+    meta?: { signature?: string }
+  ) => {
+    logger.debug(
+      {
+        amount: event.amount,
+        nonce: event.nonce,
+        to: event.toAddress,
+      },
+      "Qubic unlock event payload"
+    );
+
+    const sourceNonce = event.nonce;
+    const existing = await ordersRepository.findBySourceNonce(sourceNonce);
+    if (!existing) {
+      logger.warn(
+        { sourceNonce },
+        "Qubic unlock event received for unknown order"
+      );
+      return;
+    }
+
+    if (!meta?.signature) {
+      logger.warn(
+        { orderId: existing.id },
+        "Qubic unlock event missing signature"
+      );
+      return;
+    }
+
+    await ordersRepository.update(existing.id, {
+      destination_trx_hash: meta.signature,
+    });
+
+    logger.info({ orderId: existing.id }, "Qubic unlock order updated");
+  };
+
   return {
     handleLockEvent,
     handleOverrideLockEvent,
+    handleUnlockEvent,
   };
 }
