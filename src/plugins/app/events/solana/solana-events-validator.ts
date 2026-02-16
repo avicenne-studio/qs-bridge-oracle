@@ -197,6 +197,9 @@ export function createSolanaEventValidator(deps: ValidatorDeps): SolanaEventVali
 
 export default fp(
   async function solanaEventsValidatorPlugin(fastify: FastifyInstance) {
+    if (fastify.hasDecorator(kSolanaEventValidator)) {
+      return;
+    }
     const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
     const commitment = config.SOLANA_TX_COMMITMENT;
     const connection = new Connection(config.SOLANA_RPC_URL, commitment);

@@ -27,6 +27,9 @@ export const OracleOrderSchema = Type.Object({
   amount: AmountSchema,
   relayerFee: AmountSchema,
   origin_trx_hash: Type.String({ minLength: 1, maxLength: 255 }),
+  destination_trx_hash: Type.Optional(
+    Type.String({ minLength: 1, maxLength: 255 })
+  ),
   signature: SignatureSchema,
   status: OracleOrderStatus,
   oracle_accept_to_relay: Type.Boolean(),
