@@ -159,21 +159,42 @@ export function parseHexBytes32(value, field) {
   return new Uint8Array(Buffer.from(normalized, "hex"));
 }
 
-export function parseArgs(argv) {
+function toCamelCase(input) {
+  return input.replace(/-([a-z0-9])/g, (_, letter) => letter.toUpperCase());
+}
+
+export function parseArgs(argv, options = {}) {
+  const { startIndex = 0 } = options;
   const args = { _: [] };
-  for (let i = 0; i < argv.length; i += 1) {
-    const value = argv[i];
-    if (value === "--to-address") {
-      args.toAddress = argv[i + 1];
-      i += 1;
+  for (let i = startIndex; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (token === "--") {
+      args._.push(...argv.slice(i + 1));
+      break;
+    }
+    if (!token.startsWith("--")) {
+      args._.push(token);
       continue;
     }
-    if (value === "--relayer-fee") {
-      args.relayerFee = argv[i + 1];
-      i += 1;
+
+    const withoutPrefix = token.slice(2);
+    const eqIndex = withoutPrefix.indexOf("=");
+    const rawKey =
+      eqIndex >= 0 ? withoutPrefix.slice(0, eqIndex) : withoutPrefix;
+    const key = toCamelCase(rawKey);
+
+    if (eqIndex >= 0) {
+      args[key] = withoutPrefix.slice(eqIndex + 1);
       continue;
     }
-    args._.push(value);
+
+    const next = argv[i + 1];
+    if (!next || next.startsWith("--")) {
+      args[key] = true;
+      continue;
+    }
+    args[key] = next;
+    i += 1;
   }
   return args;
 }

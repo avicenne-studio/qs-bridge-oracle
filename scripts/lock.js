@@ -1,27 +1,10 @@
+import { parseArgs } from "./utils.js";
+
 const DEFAULT_URL = "http://127.0.0.1:3015";
 const baseUrl = globalThis.process.env.FAKE_QUBIC_URL ?? DEFAULT_URL;
 
-function parseArgs(argv) {
-  const args = {};
-  for (let i = 2; i < argv.length; i += 1) {
-    const value = argv[i];
-    if (!value.startsWith("--")) {
-      continue;
-    }
-    const key = value.slice(2);
-    const next = argv[i + 1];
-    if (!next || next.startsWith("--")) {
-      args[key] = "";
-      continue;
-    }
-    args[key] = next;
-    i += 1;
-  }
-  return args;
-}
-
 async function main() {
-  const args = parseArgs(globalThis.process.argv);
+  const args = parseArgs(globalThis.process.argv, { startIndex: 2 });
   const body = {
     from: args.from ?? "",
     to: args.to ?? "",
