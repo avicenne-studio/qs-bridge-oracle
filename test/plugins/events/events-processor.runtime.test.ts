@@ -214,10 +214,12 @@ test("processor handles qubic override events", async (t) => {
 
   const app = await build(t, {
     config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
+    decorators: {
+      [kQubicEventValidator]: {
+        validate: async () => {},
+      }
+    },
   });
-  const qubicValidator =
-    app.getDecorator<QubicEventValidator>(kQubicEventValidator);
-  t.mock.method(qubicValidator, "validate", async () => {});
 
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
 

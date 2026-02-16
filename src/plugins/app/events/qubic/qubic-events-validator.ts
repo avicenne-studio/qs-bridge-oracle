@@ -108,6 +108,9 @@ export function createQubicEventValidator(deps: {
 
 export default fp(
   async function qubicEventsValidatorPlugin(fastify: FastifyInstance) {
+    if (fastify.hasDecorator(kQubicEventValidator)) {
+      return;
+    }
     const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
     const undiciGetClient =
       fastify.getDecorator<UndiciGetClientService>(kUndiciGetClient);

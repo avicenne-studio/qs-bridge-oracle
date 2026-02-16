@@ -69,17 +69,16 @@ async function processEvent(
     config: EnvConfig;
     validation: ValidationService;
     relayerFeeAcceptance: RelayerFeeAcceptance;
+    solanaHandlers: ReturnType<typeof createSolanaOrderHandlers>;
+    qubicHandlers: ReturnType<typeof createQubicOrderHandlers>;
     logger: FastifyInstance["log"];
   }
 ) {
   const {
-    ordersRepository,
-    signerService,
     solanaValidator,
     qubicValidator,
-    config,
-    validation,
-    relayerFeeAcceptance,
+    solanaHandlers,
+    qubicHandlers,
     logger,
   } = deps;
 
@@ -90,21 +89,13 @@ async function processEvent(
       { signature: event.signature, type: event.type, slot: event.slot },
       "Solana event validated"
     );
-    const handlers = createSolanaOrderHandlers({
-      ordersRepository,
-      signerService,
-      config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
-      logger,
-      validation,
-      relayerFeeAcceptance,
-    });
     const mapped = mapStoredEventToSolanaPayload(solanaEvent);
     if (mapped.type === "outbound") {
-      await handlers.handleOutboundEvent(mapped.event, {
+      await solanaHandlers.handleOutboundEvent(mapped.event, {
         signature: event.signature,
       });
     } else {
-      await handlers.handleOverrideOutboundEvent(mapped.event, {
+      await solanaHandlers.handleOverrideOutboundEvent(mapped.event, {
         signature: event.signature,
       });
     }
@@ -118,17 +109,12 @@ async function processEvent(
       { signature: event.signature, type: event.type, slot: event.slot },
       "Qubic event validated"
     );
-    const handlers = createQubicOrderHandlers({
-      ordersRepository,
-      logger,
-      relayerFeeAcceptance,
-    });
     if (qubicEvent.type === "lock") {
-      await handlers.handleLockEvent(qubicEvent.payload, {
+      await qubicHandlers.handleLockEvent(qubicEvent.payload, {
         signature: qubicEvent.signature,
       });
     } else {
-      await handlers.handleOverrideLockEvent(qubicEvent.payload);
+      await qubicHandlers.handleOverrideLockEvent(qubicEvent.payload);
     }
     return;
   }
@@ -198,6 +184,8 @@ async function processPendingEvents(
     config: EnvConfig;
     validation: ValidationService;
     relayerFeeAcceptance: RelayerFeeAcceptance;
+    solanaHandlers: ReturnType<typeof createSolanaOrderHandlers>;
+    qubicHandlers: ReturnType<typeof createQubicOrderHandlers>;
   }
 ) {
   const {
@@ -223,6 +211,8 @@ async function processPendingEvents(
         config,
         validation: deps.validation,
         relayerFeeAcceptance: deps.relayerFeeAcceptance,
+        solanaHandlers: deps.solanaHandlers,
+        qubicHandlers: deps.qubicHandlers,
         logger: fastify.log,
       });
       await eventsRepository.markDone(event.id);
@@ -250,6 +240,8 @@ function startProcessor(
     config: EnvConfig;
     validation: ValidationService;
     relayerFeeAcceptance: RelayerFeeAcceptance;
+    solanaHandlers: ReturnType<typeof createSolanaOrderHandlers>;
+    qubicHandlers: ReturnType<typeof createQubicOrderHandlers>;
   }
 ) {
   let running = false;
@@ -293,6 +285,19 @@ export default fp(
       fastify.getDecorator<ValidationService>(kValidation);
     const relayerFeeAcceptance =
       fastify.getDecorator<RelayerFeeAcceptance>(kRelayerFeeAcceptance);
+    const solanaHandlers = createSolanaOrderHandlers({
+      ordersRepository,
+      signerService,
+      config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
+      logger: fastify.log,
+      validation,
+      relayerFeeAcceptance,
+    });
+    const qubicHandlers = createQubicOrderHandlers({
+      ordersRepository,
+      logger: fastify.log,
+      relayerFeeAcceptance,
+    });
 
     fastify.addHook("onReady", async () => {
       startProcessor(fastify, {
@@ -304,6 +309,8 @@ export default fp(
         config,
         validation,
         relayerFeeAcceptance,
+        solanaHandlers,
+        qubicHandlers,
       });
     });
   },
