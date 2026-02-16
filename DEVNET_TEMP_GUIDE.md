@@ -103,7 +103,56 @@ npm run override-outbound-order -- .temp/outbound-order.json .temp/recipient.jso
   --to-address 0x5555444444444444444444444444444444444444444444444444444444444444
 ```
 
-## 7) Claim protocol fee (protocol fee recipient only)
+## 7) Fake Qubic smart contract (local simulation)
+
+The fake Qubic contract runs a local Fastify server with:
+- `POST /lock`
+- `POST /override-lock`
+- `POST /unlock`
+- `GET /events`
+- `GET /transactions/:trxHash`
+
+Start it:
+
+```bash
+# default: http://127.0.0.1:3015
+npm run fake-qubic
+```
+
+Optional overrides:
+
+```bash
+FAKE_QUBIC_HOST=0.0.0.0 FAKE_QUBIC_PORT=3015 npm run fake-qubic
+```
+
+### Lock (Qubic -> Solana)
+
+```bash
+npm run lock -- \
+  --from "id(1,2,3,4)" \
+  --to "0xabc" \
+  --amount 1000000 \
+  --relayerFee 1000 \
+  --nonce 42
+```
+
+### Override lock
+
+```bash
+npm run override-lock -- \
+  --to "0xdef" \
+  --relayerFee 500 \
+  --nonce 42
+```
+
+Point the scripts to a non-default server:
+
+```bash
+FAKE_QUBIC_URL=http://127.0.0.1:3015 npm run lock -- --from "id(1,2,3,4)" --to "0xabc" --amount 1000 --relayerFee 10 --nonce 1
+FAKE_QUBIC_URL=http://127.0.0.1:3015 npm run override-lock -- --to "0xdef" --relayerFee 5 --nonce 1
+```
+
+## 8) Claim protocol fee (protocol fee recipient only)
 
 ```bash
 npm run claim-protocol-fee -- .temp/protocol-fee-recipient.json
@@ -111,7 +160,7 @@ npm run claim-protocol-fee -- .temp/protocol-fee-recipient.json
 
 Note: this claims **protocol fee**, not oracle claimable balances.
 
-## 8) Re-run with a new nonce
+## 9) Re-run with a new nonce
 
 Inbound orders are one-time per nonce. To submit a new one, update the nonce:
 
