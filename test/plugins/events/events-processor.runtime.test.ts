@@ -300,6 +300,70 @@ test("processor stores destination transaction hash for qubic unlock events", as
   }, 2_000);
 });
 
+test("processor finalizes order for solana inbound events", async (t) => {
+  const intervalMs = 50;
+  const inboundNonce = hex32(55);
+
+  const app = await build(t, {
+    config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
+    decorators: {
+      [kSolanaEventValidator]: {
+        validate: async () => {},
+      },
+    },
+  });
+
+  const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
+  const ordersRepo = app.getDecorator<OrdersRepository>(kOrdersRepository);
+
+  await ordersRepo.create({
+    id: "00000000-0000-4000-8000-000000000055",
+    source: "qubic",
+    dest: "solana",
+    from: "id(1,2,3)",
+    to: "0xabc",
+    amount: "10",
+    relayerFee: "1",
+    origin_trx_hash: "trx-lock",
+    signature: "sig",
+    status: "pending",
+    oracle_accept_to_relay: true,
+    source_nonce: inboundNonce,
+    source_payload: JSON.stringify({ v: 1 }),
+  });
+
+  await repo.upsert({
+    hubUrl: "http://hub-1",
+    signature: "mint-tx-solana",
+    slot: 100,
+    chain: "solana",
+    type: "inbound",
+    nonce: inboundNonce,
+    payload: {
+      networkIn: 1,
+      networkOut: 2,
+      tokenIn: hex32(1),
+      tokenOut: hex32(2),
+      fromAddress: hex32(3),
+      toAddress: hex32(4),
+      amount: "10",
+      relayerFee: "2",
+      nonce: inboundNonce,
+    },
+    createdAt: "2024-01-01 00:00:00",
+  });
+
+  await waitFor(async () => {
+    const order = await ordersRepo.findBySourceNonce(inboundNonce);
+    return order?.destination_trx_hash === "mint-tx-solana" && order?.status === "finalized";
+  }, 2_000);
+
+  const order = await ordersRepo.findBySourceNonce(inboundNonce);
+  assert.ok(order);
+  assert.strictEqual(order?.destination_trx_hash, "mint-tx-solana");
+  assert.strictEqual(order?.status, "finalized");
+});
+
 test("processor skips unsupported chain events", async (t) => {
   const intervalMs = 50;
 

@@ -18,3 +18,10 @@ export const SignatureSchema = Type.String({
   minLength: 1,
   maxLength: SIGNATURE_MAX_LENGTH
 })
+
+export enum Network {
+  Qubic = 1,
+  Solana = 2,
+}
+
+export const NetworkIdSchema = Type.Enum(Network)

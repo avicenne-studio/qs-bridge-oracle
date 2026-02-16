@@ -43,7 +43,7 @@ type ValidatorDeps = {
 };
 
 type NormalizedDecodedEvent = {
-  type: "outbound" | "override-outbound";
+  type: "outbound" | "override-outbound" | "inbound";
   payload: SolanaEventPayload;
 };
 
@@ -54,7 +54,20 @@ function normalizeDecodedEvent(
     return null;
   }
   if (decoded.type === "inbound") {
-    return null;
+    return {
+      type: "inbound",
+      payload: {
+        networkIn: decoded.event.networkIn,
+        networkOut: decoded.event.networkOut,
+        tokenIn: bytesToHex(decoded.event.tokenIn),
+        tokenOut: bytesToHex(decoded.event.tokenOut),
+        fromAddress: bytesToHex(decoded.event.fromAddress),
+        toAddress: bytesToHex(decoded.event.toAddress),
+        amount: decoded.event.amount.toString(),
+        relayerFee: decoded.event.relayerFee.toString(),
+        nonce: bytesToHex(decoded.event.nonce),
+      },
+    };
   }
   if (decoded.type === "outbound") {
     return {
