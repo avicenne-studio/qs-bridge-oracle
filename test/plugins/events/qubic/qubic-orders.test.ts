@@ -180,6 +180,7 @@ describe("qubic order handlers", () => {
     const stored = await repo.findBySourceNonce(payload.nonce);
     assert.ok(stored);
     assert.strictEqual(stored?.destination_trx_hash, "trx-unlock");
+    assert.strictEqual(stored?.status, "finalized");
   });
 
   it("warns when unlock events have no matching order", async () => {

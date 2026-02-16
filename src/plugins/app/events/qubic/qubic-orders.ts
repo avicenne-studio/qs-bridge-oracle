@@ -51,7 +51,9 @@ function serializeSourcePayload(payload: QubicOrderSourcePayloadV1): string {
   return JSON.stringify(payload);
 }
 
-function buildSourcePayload(event: QubicLockEventPayload): QubicOrderSourcePayloadV1 {
+function buildSourcePayload(
+  event: QubicLockEventPayload,
+): QubicOrderSourcePayloadV1 {
   return {
     v: 1,
     nonce: event.nonce,
@@ -72,7 +74,7 @@ function createOrderFromLockEvent(
   orderId: string,
   sourceNonce: string,
   originTrxHash: string,
-  oracleAcceptToRelay: boolean
+  oracleAcceptToRelay: boolean,
 ): OracleOrder {
   return {
     id: orderId,
@@ -96,7 +98,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
 
   const handleLockEvent = async (
     event: QubicLockEventPayload,
-    meta?: { signature?: string }
+    meta?: { signature?: string },
   ) => {
     logger.debug(
       {
@@ -106,16 +108,13 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
         from: event.fromAddress,
         to: event.toAddress,
       },
-      "Qubic lock event payload"
+      "Qubic lock event payload",
     );
 
     const sourceNonce = event.nonce;
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (existing) {
-      logger.info(
-        { orderId: existing.id },
-        "Qubic lock order already exists"
-      );
+      logger.info({ orderId: existing.id }, "Qubic lock order already exists");
       return;
     }
 
@@ -125,7 +124,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     const signature = createPlaceholderSignature();
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToSolana(
       BigInt(event.amount),
-      BigInt(event.relayerFee)
+      BigInt(event.relayerFee),
     );
 
     const order = createOrderFromLockEvent(
@@ -134,21 +133,23 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
       orderId,
       sourceNonce,
       originTrxHash,
-      oracleAcceptToRelay
+      oracleAcceptToRelay,
     );
 
     await ordersRepository.create(order);
     logger.info({ orderId }, "Qubic lock order stored");
   };
 
-  const handleOverrideLockEvent = async (event: QubicOverrideLockEventPayload) => {
+  const handleOverrideLockEvent = async (
+    event: QubicOverrideLockEventPayload,
+  ) => {
     logger.debug(
       {
         relayerFee: event.relayerFee,
         nonce: event.nonce,
         to: event.toAddress,
       },
-      "Qubic override lock event payload"
+      "Qubic override lock event payload",
     );
 
     const sourceNonce = event.nonce;
@@ -156,14 +157,14 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     if (!existing) {
       logger.warn(
         { sourceNonce },
-        "Qubic override event received for unknown order"
+        "Qubic override event received for unknown order",
       );
       return;
     }
     if (existing.status === "finalized") {
       logger.info(
         { orderId: existing.id },
-        "Qubic override event ignored because order is finalized"
+        "Qubic override event ignored because order is finalized",
       );
       return;
     }
@@ -171,7 +172,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     const updatedSignature = createPlaceholderSignature();
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToSolana(
       BigInt(existing.amount),
-      BigInt(event.relayerFee)
+      BigInt(event.relayerFee),
     );
 
     await ordersRepository.update(existing.id, {
@@ -186,7 +187,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
 
   const handleUnlockEvent = async (
     event: QubicUnlockEventPayload,
-    meta?: { signature?: string }
+    meta?: { signature?: string },
   ) => {
     logger.debug(
       {
@@ -194,7 +195,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
         nonce: event.nonce,
         to: event.toAddress,
       },
-      "Qubic unlock event payload"
+      "Qubic unlock event payload",
     );
 
     const sourceNonce = event.nonce;
@@ -202,7 +203,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     if (!existing) {
       logger.warn(
         { sourceNonce },
-        "Qubic unlock event received for unknown order"
+        "Qubic unlock event received for unknown order",
       );
       return;
     }
@@ -210,13 +211,14 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     if (!meta?.signature) {
       logger.warn(
         { orderId: existing.id },
-        "Qubic unlock event missing signature"
+        "Qubic unlock event missing signature",
       );
       return;
     }
 
     await ordersRepository.update(existing.id, {
       destination_trx_hash: meta.signature,
+      status: "finalized",
     });
 
     logger.info({ orderId: existing.id }, "Qubic unlock order updated");
