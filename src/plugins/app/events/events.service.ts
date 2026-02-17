@@ -2,9 +2,9 @@ import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { kPoller, type PollerService } from "../../infra/poller.js";
 import {
-  kUndiciGetClient,
-  type UndiciGetClientService,
-} from "../../infra/undici-get-client.js";
+  kUndiciClient,
+  type UndiciClientService,
+} from "../../infra/undici-client.js";
 import { kValidation, type ValidationService } from "../common/validation.js";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import {
@@ -79,8 +79,8 @@ async function startHubEventsPolling(
 ) {
   const primary = urls[0];
   const fallback = urls[1];
-  const undiciGetClient =
-    fastify.getDecorator<UndiciGetClientService>(kUndiciGetClient);
+  const undiciClient =
+    fastify.getDecorator<UndiciClientService>(kUndiciClient);
   const poller = fastify.getDecorator<PollerService>(kPoller);
   const validation = fastify.getDecorator<ValidationService>(kValidation);
   const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
@@ -88,7 +88,7 @@ async function startHubEventsPolling(
     fastify.getDecorator<HubEventsRepository>(kHubEventsRepository);
   const cursorsRepository =
     fastify.getDecorator<HubEventCursorsRepository>(kHubEventCursorsRepository);
-  const client = undiciGetClient.create();
+  const client = undiciClient.create();
   const defaults = poller.defaults;
   const cursors: HubEventsState = new Map();
   const limit = DEFAULT_EVENTS_LIMIT;
@@ -201,7 +201,7 @@ export default fp(
     dependencies: [
       "env",
       "polling",
-      "undici-get-client",
+      "undici-client",
       "hub-events-repository",
       "validation",
     ],

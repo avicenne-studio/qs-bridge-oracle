@@ -88,6 +88,7 @@ function createOrderFromLockEvent(
     signature,
     status: "pending",
     oracle_accept_to_relay: oracleAcceptToRelay,
+    relay_attempts: 0,
     source_nonce: sourceNonce,
     source_payload: serializeSourcePayload(buildSourcePayload(event)),
   };

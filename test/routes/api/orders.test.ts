@@ -24,6 +24,7 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     signature: "sig-1",
     status: "ready-for-relay",
     oracle_accept_to_relay: true,
+    relay_attempts: 0,
     source_nonce: "nonce-1",
     source_payload: "{}",
   });
@@ -39,6 +40,7 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     signature: "sig-2",
     status: "ready-for-relay",
     oracle_accept_to_relay: false,
+    relay_attempts: 0,
     source_nonce: "nonce-2",
     source_payload: "{}",
   });
@@ -54,6 +56,7 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     signature: "sig-3",
     status: "failed",
     oracle_accept_to_relay: false,
+    relay_attempts: 0,
     failure_reason_public: "Transaction failed",
     source_nonce: "nonce-3",
     source_payload: "{}",

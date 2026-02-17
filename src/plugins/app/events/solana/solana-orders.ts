@@ -124,6 +124,7 @@ function createOrderFromOutboundEvent(
     signature,
     status: "pending",
     oracle_accept_to_relay: oracleAcceptToRelay,
+    relay_attempts: 0,
     source_nonce: sourceNonce,
     source_payload: serializeSourcePayload(buildSourcePayload(event)),
   };
@@ -149,6 +150,7 @@ export function createFailedOrderFromOutboundEvent(
     signature: signatureSeed,
     status: "failed",
     oracle_accept_to_relay: false,
+    relay_attempts: 0,
     source_nonce: sourceNonce,
     source_payload: serializeSourcePayload(buildSourcePayload(event)),
     failure_reason_public: failureReasonPublic,

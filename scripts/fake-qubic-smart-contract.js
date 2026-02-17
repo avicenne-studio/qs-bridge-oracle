@@ -9,6 +9,7 @@ const fastify = Fastify({ logger: true });
 const events = [];
 const transactions = new Map();
 const unlocks = [];
+const unlockedNonces = new Set();
 const state = {
   orders: new Map(), // nonce -> order
 };
@@ -163,6 +164,9 @@ fastify.post("/unlock", async (request, reply) => {
     amount: String(body.amount ?? "0"),
     nonce: String(body.nonce ?? Date.now()),
   };
+  if (unlockedNonces.has(payload.nonce)) {
+    return reply.code(409).send({ message: "nonce already unlocked" });
+  }
   const event = storeEvent("unlock", payload);
   const tx = buildTransaction(event);
   const record = {
@@ -172,6 +176,7 @@ fastify.post("/unlock", async (request, reply) => {
     nonce: payload.nonce,
     createdAt: nowIso(),
   };
+  unlockedNonces.add(payload.nonce);
   unlocks.push(record);
   return reply.code(201).send({ trxHash: record.trxHash, event });
 });

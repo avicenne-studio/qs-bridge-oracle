@@ -6,9 +6,9 @@ import fp from "fastify-plugin";
 import type { EnvConfig } from "../../src/plugins/infra/env.js";
 import { kEnvConfig } from "../../src/plugins/infra/env.js";
 import { kPoller } from "../../src/plugins/infra/poller.js";
-import { kUndiciGetClient } from "../../src/plugins/infra/undici-get-client.js";
+import { kUndiciClient } from "../../src/plugins/infra/undici-client.js";
 import { createMockPollerService } from "./infra/poller-mock.js";
-import { createMockUndiciGetClientService } from "./infra/undici-get-client-mock.js";
+import { createMockUndiciClientService } from "./infra/undici-client-mock.js";
 
 // Fill in this config with all the configurations
 // needed for testing the application
@@ -59,6 +59,9 @@ export const DEFAULT_TEST_CONFIG: EnvConfig = {
   SOLANA_BPS_FEE: 0,
   RELAYER_FEE_SOLANA: "1000",
   RELAYER_FEE_QUBIC: "500",
+  RELAYER_ENABLED: false,
+  RELAYER_PROCESS_INTERVAL_MS: 50,
+  RELAYER_MAX_ATTEMPTS: 3,
   EVENT_MAX_RETRIES: 3,
   EVENTS_LOOKBACK_DAYS: 14,
   EVENTS_PROCESS_INTERVAL_MS: 50,
@@ -111,8 +114,8 @@ export async function build(
     if (!app.hasDecorator(kPoller)) {
       app.decorate(kPoller, createMockPollerService());
     }
-    if (!app.hasDecorator(kUndiciGetClient)) {
-      app.decorate(kUndiciGetClient, createMockUndiciGetClientService());
+    if (!app.hasDecorator(kUndiciClient)) {
+      app.decorate(kUndiciClient, createMockUndiciClientService());
     }
   }
 

@@ -68,6 +68,7 @@ export default fp(
           table.string("failure_reason_public").nullable();
           table.string("status").notNullable().defaultTo("ready-for-relay");
           table.boolean("oracle_accept_to_relay").notNullable().defaultTo(true);
+          table.integer("relay_attempts").notNullable().defaultTo(0);
         });
       }
 

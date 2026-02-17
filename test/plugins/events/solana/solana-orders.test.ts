@@ -177,6 +177,7 @@ describe("solana order handlers", () => {
         signature: "sig",
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
+        relay_attempts: 0,
         source_nonce: existingNonce,
         source_payload: JSON.stringify({ v: 1, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: existingNonce }),
       },
@@ -209,6 +210,7 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
       source_nonce: overrideNonce,
       source_payload: JSON.stringify({ v: 1, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: overrideNonce }),
     });
@@ -228,6 +230,7 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
       source_nonce: overrideNonce,
       source_payload: JSON.stringify({ v: 2, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: overrideNonce }),
     });
@@ -247,6 +250,7 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
       source_nonce: overrideNonce,
       source_payload: "{bad",
     });
@@ -274,6 +278,7 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "finalized",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
       source_nonce: overrideNonce,
       source_payload: JSON.stringify({
         v: 1,

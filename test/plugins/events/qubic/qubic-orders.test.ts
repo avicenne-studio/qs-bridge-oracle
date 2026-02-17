@@ -139,6 +139,7 @@ describe("qubic order handlers", () => {
       signature: "sig-final",
       status: "finalized",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
       source_nonce: payload.nonce,
       source_payload: JSON.stringify({ v: 1 }),
     });

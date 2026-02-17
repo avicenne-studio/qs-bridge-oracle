@@ -371,6 +371,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       signature: "sig-existing",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
       source_nonce: hex32(1),
       source_payload: "{}",
     });
@@ -421,6 +422,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       signature: "sig",
       status: "pending",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
       source_nonce: hex32(9),
       source_payload: JSON.stringify({
         v: 1,

@@ -8,9 +8,9 @@ import {
   type PollerService,
 } from "../../../src/plugins/infra/poller.js";
 import {
-  kUndiciGetClient,
-  type UndiciGetClientService,
-} from "../../../src/plugins/infra/undici-get-client.js";
+  kUndiciClient,
+  type UndiciClientService,
+} from "../../../src/plugins/infra/undici-client.js";
 
 const noop = () => {};
 
@@ -150,8 +150,8 @@ describe("poller plugin", () => {
   it("integrates with the Undici GET client transport with fallback", async (t) => {
     const app = await build(t, { useMocks: false });
     const pollerService: PollerService = app.getDecorator(kPoller);
-    const undiciGetClient: UndiciGetClientService =
-      app.getDecorator(kUndiciGetClient);
+    const undiciClient: UndiciClientService =
+      app.getDecorator(kUndiciClient);
 
     const fastState = { count: 0 };
     const fastServer = createServer((req, res) => {
@@ -181,7 +181,7 @@ describe("poller plugin", () => {
 
     type Response = { server: string; round: number };
 
-    const client = undiciGetClient.create();
+    const client = undiciClient.create();
     const observed: Response[] = [];
 
     let done: (() => void) | null = null;
