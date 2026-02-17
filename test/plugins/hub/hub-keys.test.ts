@@ -42,6 +42,7 @@ async function buildHubKeysApp(overrides: HubKeysEnvOverrides = {}) {
       SOLANA_RPC_URL: "http://localhost:8899",
       QUBIC_RPC_URL: "http://127.0.0.1:3015",
       SOLANA_BPS_FEE: 25,
+      TOKEN_MINT: "4bbjhGLSYwku6Y44dqwcroRfj2vHCdiHJ9SUmndc4FVg",
       RELAYER_FEE_SOLANA: "1000",
       RELAYER_FEE_QUBIC: "500",
     },

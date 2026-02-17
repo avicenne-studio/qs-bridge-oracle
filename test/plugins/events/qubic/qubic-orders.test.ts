@@ -1,8 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 import { createQubicOrderHandlers } from "../../../../src/plugins/app/events/qubic/qubic-orders.js";
 import type { FastifyBaseLogger } from "fastify";
+import type { SignerService } from "../../../../src/plugins/app/signer/signer.service.js";
+
+const hex32 = (value: number) =>
+  Buffer.from(new Uint8Array(32).fill(value)).toString("hex");
 
 function createLogger() {
   const entries: Array<{ level: string; payload: unknown; message?: string }> =
@@ -21,6 +26,16 @@ function createLogger() {
   };
 }
 
+function createMockSignerService(): SignerService {
+  let callCount = 0;
+  return {
+    signQubicLockOrder: async () => {
+      callCount++;
+      return Buffer.from(`mock-sig-${callCount}`).toString("base64");
+    },
+  };
+}
+
 function createHandlers() {
   const repo = createInMemoryOrders();
   const { logger, entries } = createLogger();
@@ -29,11 +44,14 @@ function createHandlers() {
       relayerFee >= 10n,
     acceptRelayToQubic: () => true,
   };
+  const signerService = createMockSignerService();
   return {
     repo,
     entries,
     ...createQubicOrderHandlers({
       ordersRepository: repo as never,
+      signerService,
+      config: { TOKEN_MINT: "4bbjhGLSYwku6Y44dqwcroRfj2vHCdiHJ9SUmndc4FVg" },
       logger,
       relayerFeeAcceptance,
     }),
@@ -42,21 +60,21 @@ function createHandlers() {
 
 function createLockPayload() {
   return {
-    fromAddress: "id(1,2,3,4)",
-    toAddress: "0xabc",
+    fromAddress: hex32(1),
+    toAddress: hex32(2),
     amount: "100",
     relayerFee: "12",
-    nonce: "42",
+    nonce: hex32(3),
   };
 }
 
 function createOverridePayload() {
   return {
-    fromAddress: "id(1,2,3,4)",
-    toAddress: "0xdef",
+    fromAddress: hex32(1),
+    toAddress: hex32(4),
     amount: "100",
     relayerFee: "5",
-    nonce: "42",
+    nonce: hex32(3),
   };
 }
 
@@ -84,9 +102,21 @@ describe("qubic order handlers", () => {
       v: 1,
       nonce: payload.nonce,
       fromAddress: payload.fromAddress,
-      protocol: "qs-bridge",
+      protocol: "QubicBridge",
       version: "1",
     });
+  });
+
+  it("produces a real Ed25519 signature (not a placeholder)", async () => {
+    const { repo, handleLockEvent } = createHandlers();
+    const payload = createLockPayload();
+
+    await handleLockEvent(payload, { signature: "trx-lock" });
+
+    const stored = await repo.findBySourceNonce(payload.nonce);
+    assert.ok(stored);
+    const sigBytes = Buffer.from(stored!.signature, "base64");
+    assert.ok(sigBytes.length > 0, "Signature should be non-empty base64");
   });
 
   it("skips lock events for existing orders", async () => {
@@ -189,9 +219,9 @@ describe("qubic order handlers", () => {
 
     await handleUnlockEvent(
       {
-        toAddress: "id(9,9,9,9)",
+        toAddress: hex32(99),
         amount: "1",
-        nonce: "999",
+        nonce: hex32(100),
       },
       { signature: "trx-unlock" }
     );

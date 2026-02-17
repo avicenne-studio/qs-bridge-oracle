@@ -1,22 +1,33 @@
 import { OracleOrder } from "../../indexer/schemas/order.js";
 import type { FastifyBaseLogger } from "fastify";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
+import { PublicKey } from "@solana/web3.js";
 import {
   type QubicLockEventPayload,
   type QubicOverrideLockEventPayload,
   type QubicUnlockEventPayload,
 } from "./schemas/qubic-event.js";
 import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.js";
+import { type SignerService } from "../../signer/signer.service.js";
+import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../../../clients/js/programs/qsBridge.js";
+import { hexToBytes } from "../solana/bytes.js";
 
-const PROTOCOL_NAME = "qs-bridge";
+const PROTOCOL_NAME = "QubicBridge";
 const PROTOCOL_VERSION = "1";
+import { Network } from "../../common/schemas/common.js";
+const QUBIC_TOKEN_ADDRESS = new Uint8Array(32);
+const CONTRACT_ADDRESS_BYTES = new PublicKey(
+  QS_BRIDGE_PROGRAM_ADDRESS
+).toBytes();
 
 type Logger = FastifyBaseLogger;
 
 type QubicOrderDependencies = {
   ordersRepository: OrdersRepository;
+  signerService: SignerService;
+  config: { TOKEN_MINT: string };
   logger: Logger;
   relayerFeeAcceptance: RelayerFeeAcceptance;
 };
@@ -63,9 +74,31 @@ function buildSourcePayload(
   };
 }
 
-function createPlaceholderSignature(): string {
-  // TODO: Replace placeholder signature with real Solana signature.
-  return createHash("sha256").update(randomUUID()).digest("hex");
+async function signLockOrder(
+  signerService: SignerService,
+  tokenMintBytes: Uint8Array,
+  event: {
+    fromAddress: string;
+    toAddress: string;
+    amount: string;
+    relayerFee: string;
+    nonce: string;
+  },
+): Promise<string> {
+  return signerService.signQubicLockOrder({
+    protocolName: PROTOCOL_NAME,
+    protocolVersion: PROTOCOL_VERSION,
+    contractAddress: CONTRACT_ADDRESS_BYTES,
+    networkIn: Network.Qubic,
+    networkOut: Network.Solana,
+    tokenIn: QUBIC_TOKEN_ADDRESS,
+    tokenOut: tokenMintBytes,
+    fromAddress: hexToBytes(event.fromAddress),
+    toAddress: hexToBytes(event.toAddress),
+    amount: BigInt(event.amount),
+    relayerFee: BigInt(event.relayerFee),
+    nonce: hexToBytes(event.nonce),
+  });
 }
 
 function createOrderFromLockEvent(
@@ -95,7 +128,8 @@ function createOrderFromLockEvent(
 }
 
 export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
-  const { ordersRepository, logger, relayerFeeAcceptance } = deps;
+  const { ordersRepository, signerService, config, logger, relayerFeeAcceptance } = deps;
+  const tokenMintBytes = new PublicKey(config.TOKEN_MINT).toBytes();
 
   const handleLockEvent = async (
     event: QubicLockEventPayload,
@@ -122,7 +156,12 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     const signatureSeed = meta?.signature ?? sourceNonce;
     const originTrxHash = meta?.signature ?? sourceNonce;
     const orderId = orderIdFromSignature(signatureSeed);
-    const signature = createPlaceholderSignature();
+    const signature = await signLockOrder(
+      signerService,
+      tokenMintBytes,
+      event,
+    );
+    logger.info({ orderId, signature }, "Qubic lock order signed");
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToSolana(
       BigInt(event.amount),
       BigInt(event.relayerFee),
@@ -170,7 +209,17 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
       return;
     }
 
-    const updatedSignature = createPlaceholderSignature();
+    const updatedSignature = await signLockOrder(
+      signerService,
+      tokenMintBytes,
+      {
+        fromAddress: existing.from,
+        toAddress: event.toAddress,
+        amount: existing.amount,
+        relayerFee: event.relayerFee,
+        nonce: event.nonce,
+      },
+    );
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToSolana(
       BigInt(existing.amount),
       BigInt(event.relayerFee),

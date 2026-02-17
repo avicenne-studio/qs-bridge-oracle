@@ -9,29 +9,20 @@ import {
 } from "./bytes.js";
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { PublicKey } from "@solana/web3.js";
 import { type SignerService } from "../../signer/signer.service.js";
-import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../../../clients/js/programs/qsBridge.js";
 import {
   SolanaOrderSourcePayloadSchema,
   type SolanaOrderSourcePayloadV1,
 } from "./schemas/solana-order-source-payload.js";
 import { type ValidationService } from "../../common/validation.js";
 import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.js";
-
-export const QUBIC_NETWORK_ID = 1;
-const PROTOCOL_NAME = "qs-bridge";
-const PROTOCOL_VERSION = "1";
-const CONTRACT_ADDRESS_BYTES = new PublicKey(
-  QS_BRIDGE_PROGRAM_ADDRESS
-).toBytes();
+import { Network } from "../../common/schemas/common.js";
 
 type Logger = FastifyBaseLogger;
 
 type SolanaOrderDependencies = {
   ordersRepository: OrdersRepository;
   signerService: SignerService;
-  config: { SOLANA_BPS_FEE: number };
   logger: Logger;
   validation: ValidationService;
   relayerFeeAcceptance: RelayerFeeAcceptance;
@@ -46,7 +37,6 @@ type NormalizedOrder = {
   toAddress: Uint8Array;
   amount: bigint;
   relayerFee: bigint;
-  bpsFee: number;
   nonce: Uint8Array;
 };
 
@@ -159,7 +149,6 @@ export function createFailedOrderFromOutboundEvent(
 
 function normalizeOutboundEvent(
   event: OutboundEvent,
-  bpsFee: number
 ): NormalizedOrder {
   return {
     networkIn: event.networkIn,
@@ -170,37 +159,26 @@ function normalizeOutboundEvent(
     toAddress: new Uint8Array(event.toAddress),
     amount: event.amount,
     relayerFee: event.relayerFee,
-    bpsFee,
     nonce: new Uint8Array(event.nonce),
   };
 }
 
-async function signSolanaOrder(
-  signerService: SignerService,
+// TODO: Implement real signing for the Qubic contract once its message
+// hash format is known. For now return a deterministic placeholder so that
+// the order can be stored and later re-signed.
+function signOutboundOrder(
+  _signerService: SignerService,
   normalized: NormalizedOrder
-): Promise<string> {
-  return signerService.signSolanaOrder({
-    protocolName: PROTOCOL_NAME,
-    protocolVersion: PROTOCOL_VERSION,
-    contractAddress: CONTRACT_ADDRESS_BYTES,
-    networkIn: normalized.networkIn,
-    networkOut: normalized.networkOut,
-    tokenIn: normalized.tokenIn,
-    tokenOut: normalized.tokenOut,
-    fromAddress: normalized.fromAddress,
-    toAddress: normalized.toAddress,
-    amount: normalized.amount,
-    relayerFee: normalized.relayerFee,
-    bpsFee: normalized.bpsFee,
-    nonce: normalized.nonce,
-  });
+): string {
+  const tag = Buffer.from("qubic-order-placeholder");
+  const nonce = Buffer.from(normalized.nonce);
+  return createHash("sha256").update(tag).update(nonce).digest("base64");
 }
 
 function buildNormalizedOrderFromOverride(
   existing: OracleOrder,
   sourcePayload: SolanaOrderSourcePayloadV1,
   event: OverrideOutboundEvent,
-  bpsFee: number
 ): NormalizedOrder {
   return {
     networkIn: sourcePayload.networkIn,
@@ -211,7 +189,6 @@ function buildNormalizedOrderFromOverride(
     toAddress: new Uint8Array(event.toAddress),
     amount: BigInt(existing.amount),
     relayerFee: event.relayerFee,
-    bpsFee,
     nonce: hexToBytes(sourcePayload.nonce),
   };
 }
@@ -220,7 +197,6 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
   const {
     ordersRepository,
     signerService,
-    config,
     logger,
     validation,
     relayerFeeAcceptance,
@@ -243,7 +219,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       "Solana outbound event payload"
     );
     
-    if (event.networkOut !== QUBIC_NETWORK_ID) {
+    if (event.networkOut !== Network.Qubic) {
       logger.warn(
         { networkOut: event.networkOut },
         "Solana outbound event ignored for unsupported destination"
@@ -261,8 +237,8 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     const signatureSeed = meta?.signature ?? sourceNonce;
     const originTrxHash = meta?.signature ?? sourceNonce;
     const orderId = orderIdFromSignature(signatureSeed);
-    const normalized = normalizeOutboundEvent(event, config.SOLANA_BPS_FEE);
-    const signature = await signSolanaOrder(signerService, normalized);
+    const normalized = normalizeOutboundEvent(event);
+    const signature = signOutboundOrder(signerService, normalized);
     logger.info({ orderId, signature }, "Solana outbound order signed");
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToQubic(
       event.amount,
@@ -325,13 +301,12 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
 
     const updatedTo = bytesToHex(event.toAddress);
     const updatedRelayerFee = event.relayerFee.toString();
-    const updatedSignature = await signSolanaOrder(
+    const updatedSignature = signOutboundOrder(
       signerService,
       buildNormalizedOrderFromOverride(
         existing,
         sourcePayload,
         event,
-        config.SOLANA_BPS_FEE
       )
     );
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToQubic(

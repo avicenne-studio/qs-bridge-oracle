@@ -10,7 +10,6 @@ import {
   createKeyPairSignerFromBytes,
   createSignableMessage,
   getBytesEncoder,
-  getU16Encoder,
   getU32Encoder,
   getU64Encoder,
   getUtf8Encoder,
@@ -25,7 +24,7 @@ import validationPlugin from "../../../src/plugins/app/common/validation.js";
 import signerService, {
   decodeSecretKey,
   normalizeSignatureValue,
-  signSolanaOrderWithSigner,
+  signQubicLockOrderWithSigner,
   kSignerService,
   type SignerService,
 } from "../../../src/plugins/app/signer/signer.service.js";
@@ -86,6 +85,7 @@ async function buildSignerApp(overrides: SignerEnvOverrides = {}) {
       SOLANA_RPC_URL: "http://localhost:8899",
       QUBIC_RPC_URL: "http://127.0.0.1:3015",
       SOLANA_BPS_FEE: 25,
+      TOKEN_MINT: "4bbjhGLSYwku6Y44dqwcroRfj2vHCdiHJ9SUmndc4FVg",
       RELAYER_FEE_SOLANA: "1000",
       RELAYER_FEE_QUBIC: "500",
     },
@@ -162,7 +162,7 @@ describe("signerService", () => {
     t.after(() => app.close());
     const signer: SignerService = app.getDecorator(kSignerService);
 
-    assert.strictEqual(typeof signer.signSolanaOrder, "function");
+    assert.strictEqual(typeof signer.signQubicLockOrder, "function");
   });
 
   it("signs a solana order using the fixture keypair", async (t: TestContext) => {
@@ -171,7 +171,7 @@ describe("signerService", () => {
     const signer: SignerService = app.getDecorator(kSignerService);
 
     const order = {
-      protocolName: "qs-bridge",
+      protocolName: "QubicBridge",
       protocolVersion: "1",
       contractAddress: bytes32(1),
       networkIn: 1,
@@ -182,11 +182,10 @@ describe("signerService", () => {
       toAddress: bytes32(5),
       amount: 1n,
       relayerFee: 0n,
-      bpsFee: 25,
       nonce: bytes32(6),
     };
 
-    const signature = await signer.signSolanaOrder(order);
+    const signature = await signer.signQubicLockOrder(order);
 
     const encoded = concatBytes([
       encodeString(order.protocolName),
@@ -200,7 +199,6 @@ describe("signerService", () => {
       new Uint8Array(getBytesEncoder().encode(order.toAddress)),
       new Uint8Array(getU64Encoder().encode(order.amount)),
       new Uint8Array(getU64Encoder().encode(order.relayerFee)),
-      new Uint8Array(getU16Encoder().encode(order.bpsFee)),
       new Uint8Array(getBytesEncoder().encode(order.nonce)),
     ]);
     const digest = createHash("sha256").update(encoded).digest();
@@ -223,8 +221,8 @@ describe("signerService", () => {
     t.after(() => app.close());
     const signer: SignerService = app.getDecorator(kSignerService);
 
-    const signature = await signer.signSolanaOrder({
-      protocolName: "qs-bridge",
+    const signature = await signer.signQubicLockOrder({
+      protocolName: "QubicBridge",
       protocolVersion: "1",
       contractAddress: bytes32(10),
       networkIn: "1",
@@ -235,7 +233,6 @@ describe("signerService", () => {
       toAddress: bytes32(14),
       amount: "1",
       relayerFee: "0",
-      bpsFee: "25",
       nonce: bytes32(15),
     });
 
@@ -247,8 +244,8 @@ describe("signerService", () => {
     t.after(() => app.close());
     const signer: SignerService = app.getDecorator(kSignerService);
 
-    const signature = await signer.signSolanaOrder({
-      protocolName: "qs-bridge",
+    const signature = await signer.signQubicLockOrder({
+      protocolName: "QubicBridge",
       protocolVersion: "1",
       contractAddress: bytes32(20),
       networkIn: 1,
@@ -259,7 +256,6 @@ describe("signerService", () => {
       toAddress: bytes32(24),
       amount: 1,
       relayerFee: 0,
-      bpsFee: 25,
       nonce: bytes32(25),
     });
 
@@ -272,7 +268,7 @@ describe("signerService", () => {
     const signer: SignerService = app.getDecorator(kSignerService);
 
     const baseOrder = {
-      protocolName: "qs-bridge",
+      protocolName: "QubicBridge",
       protocolVersion: "1",
       contractAddress: bytes32(30),
       networkIn: 1,
@@ -283,12 +279,11 @@ describe("signerService", () => {
       toAddress: bytes32(34),
       amount: 1n,
       relayerFee: 0n,
-      bpsFee: 25,
       nonce: bytes32(35),
     };
 
     await assert.rejects(
-      signer.signSolanaOrder({
+      signer.signQubicLockOrder({
         ...baseOrder,
         networkIn: 4294967296,
       }),
@@ -296,19 +291,11 @@ describe("signerService", () => {
     );
 
     await assert.rejects(
-      signer.signSolanaOrder({
+      signer.signQubicLockOrder({
         ...baseOrder,
         amount: -1n,
       }),
       /amount must be uint64/
-    );
-
-    await assert.rejects(
-      signer.signSolanaOrder({
-        ...baseOrder,
-        bpsFee: 70000,
-      }),
-      /bpsFee must be uint16/
     );
   });
 
@@ -318,8 +305,8 @@ describe("signerService", () => {
     const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signSolanaOrder({
-        protocolName: "qs-bridge",
+      signer.signQubicLockOrder({
+        protocolName: "QubicBridge",
         protocolVersion: "1",
         contractAddress: bytes32(1),
         networkIn: 1,
@@ -330,7 +317,6 @@ describe("signerService", () => {
         toAddress: bytes32(5),
         amount: 1n,
         relayerFee: 0n,
-        bpsFee: 25,
         nonce: bytes32(6),
       }),
       /tokenIn must be 32 bytes/
@@ -353,8 +339,8 @@ describe("signerService", () => {
     const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signSolanaOrder({
-        protocolName: "qs-bridge",
+      signer.signQubicLockOrder({
+        protocolName: "QubicBridge",
         protocolVersion: "1",
         contractAddress: bytes32(40),
         networkIn: 1,
@@ -365,7 +351,6 @@ describe("signerService", () => {
         toAddress: bytes32(44),
         amount: 1n,
         relayerFee: 0n,
-        bpsFee: 25,
         nonce: bytes32(45),
       }),
       /secret key must be 64 bytes/
@@ -388,8 +373,8 @@ describe("signerService", () => {
     const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signSolanaOrder({
-        protocolName: "qs-bridge",
+      signer.signQubicLockOrder({
+        protocolName: "QubicBridge",
         protocolVersion: "1",
         contractAddress: bytes32(50),
         networkIn: 1,
@@ -400,7 +385,6 @@ describe("signerService", () => {
         toAddress: bytes32(54),
         amount: 1n,
         relayerFee: 0n,
-        bpsFee: 25,
         nonce: bytes32(55),
       }),
       /public key does not match secret key/
@@ -421,9 +405,9 @@ describe("signerService", () => {
     );
 
     await assert.rejects(
-      signSolanaOrderWithSigner(
+      signQubicLockOrderWithSigner(
         {
-          protocolName: "qs-bridge",
+          protocolName: "QubicBridge",
           protocolVersion: "1",
           contractAddress: bytes32(60),
           networkIn: 1,
@@ -434,7 +418,6 @@ describe("signerService", () => {
           toAddress: bytes32(64),
           amount: 1n,
           relayerFee: 0n,
-          bpsFee: 25,
           nonce: bytes32(65),
         },
         {

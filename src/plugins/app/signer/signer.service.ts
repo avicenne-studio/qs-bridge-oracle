@@ -6,7 +6,6 @@ import {
   createKeyPairSignerFromBytes,
   createSignableMessage,
   getBytesEncoder,
-  getU16Encoder,
   getU32Encoder,
   getU64Encoder,
   getUtf8Encoder,
@@ -21,7 +20,7 @@ import { kValidation, type ValidationService } from "../common/validation.js";
 
 const MAX_U64 = (1n << 64n) - 1n;
 
-export type SolanaOrderToSign = {
+export type QubicLockOrderToSign = {
   protocolName: string;
   protocolVersion: string;
   contractAddress: Uint8Array;
@@ -33,7 +32,6 @@ export type SolanaOrderToSign = {
   toAddress: Uint8Array;
   amount: bigint | number | string;
   relayerFee: bigint | number | string;
-  bpsFee: number | string;
   nonce: Uint8Array;
 };
 
@@ -44,7 +42,7 @@ type SolanaSigner = {
   ) => Promise<readonly Readonly<Record<string, unknown>>[]>;
 };
 
-type SolanaOrderMessage = {
+type QubicLockOrderMessage = {
   protocolName: string;
   protocolVersion: string;
   contractAddress: Uint8Array;
@@ -56,12 +54,11 @@ type SolanaOrderMessage = {
   toAddress: Uint8Array;
   amount: bigint;
   relayerFee: bigint;
-  bpsFee: number;
   nonce: Uint8Array;
 };
 
 export type SignerService = {
-  signSolanaOrder: (order: SolanaOrderToSign) => Promise<string>;
+  signQubicLockOrder: (order: QubicLockOrderToSign) => Promise<string>;
 };
 
 export const kSignerService = Symbol("app.signerService");
@@ -98,21 +95,13 @@ function parseU64(value: bigint | number | string, field: string): bigint {
   return parsed;
 }
 
-function parseU16(value: number | string, field: string): number {
-  const parsed = typeof value === "string" ? Number(value) : value;
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 0xffff) {
-    throw new Error(`SignerService(SOLANA_KEYS): ${field} must be uint16`);
-  }
-  return parsed;
-}
-
 function assertFixedBytes(value: Uint8Array, field: string, length: number) {
   if (value.length !== length) {
     throw new Error(`SignerService(SOLANA_KEYS): ${field} must be ${length} bytes`);
   }
 }
 
-function normalizeSolanaOrder(order: SolanaOrderToSign): SolanaOrderMessage {
+function normalizeQubicLockOrder(order: QubicLockOrderToSign): QubicLockOrderMessage {
   return {
     protocolName: order.protocolName,
     protocolVersion: order.protocolVersion,
@@ -125,7 +114,6 @@ function normalizeSolanaOrder(order: SolanaOrderToSign): SolanaOrderMessage {
     toAddress: order.toAddress,
     amount: parseU64(order.amount, "amount"),
     relayerFee: parseU64(order.relayerFee, "relayerFee"),
-    bpsFee: parseU16(order.bpsFee, "bpsFee"),
     nonce: order.nonce,
   };
 }
@@ -147,8 +135,8 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
   return merged;
 }
 
-function serializeSolanaOrder(order: SolanaOrderToSign): Uint8Array {
-  const normalized = normalizeSolanaOrder(order);
+function serializeQubicLockOrder(order: QubicLockOrderToSign): Uint8Array {
+  const normalized = normalizeQubicLockOrder(order);
   assertFixedBytes(normalized.contractAddress, "contractAddress", 32);
   assertFixedBytes(normalized.tokenIn, "tokenIn", 32);
   assertFixedBytes(normalized.tokenOut, "tokenOut", 32);
@@ -168,7 +156,6 @@ function serializeSolanaOrder(order: SolanaOrderToSign): Uint8Array {
     new Uint8Array(getBytesEncoder().encode(normalized.toAddress)),
     new Uint8Array(getU64Encoder().encode(normalized.amount)),
     new Uint8Array(getU64Encoder().encode(normalized.relayerFee)),
-    new Uint8Array(getU16Encoder().encode(normalized.bpsFee)),
     new Uint8Array(getBytesEncoder().encode(normalized.nonce)),
   ]);
 }
@@ -201,11 +188,11 @@ async function createSolanaSignerFromKeys(keys: SignerKeys): Promise<SolanaSigne
   return signer;
 }
 
-export async function signSolanaOrderWithSigner(
-  order: SolanaOrderToSign,
+export async function signQubicLockOrderWithSigner(
+  order: QubicLockOrderToSign,
   signer: SolanaSigner
 ): Promise<string> {
-  const serializedOrder = serializeSolanaOrder(order);
+  const serializedOrder = serializeQubicLockOrder(order);
   const digest = createHash("sha256").update(serializedOrder).digest();
   const signableMessage = createSignableMessage(digest);
   const [sigDict] = await signer.signMessages([signableMessage]);
@@ -230,14 +217,14 @@ export default fp(
     );
 
     let cachedSigner: SolanaSigner | null = null;
-    const signSolanaOrder = async (order: SolanaOrderToSign) => {
+    const signQubicLockOrder = async (order: QubicLockOrderToSign) => {
       if (!cachedSigner) {
         cachedSigner = await createSolanaSignerFromKeys(solana);
       }
-      return signSolanaOrderWithSigner(order, cachedSigner);
+      return signQubicLockOrderWithSigner(order, cachedSigner);
     };
 
-    fastify.decorate(kSignerService, { signSolanaOrder });
+    fastify.decorate(kSignerService, { signQubicLockOrder });
   },
   {
     name: "signer-service",

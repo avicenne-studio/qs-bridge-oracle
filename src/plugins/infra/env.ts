@@ -23,6 +23,7 @@ export type EnvConfig = {
   SOLANA_TX_RETRY_BASE_MS?: number;
   SOLANA_TX_RETRY_MAX_MS?: number;
   SOLANA_BPS_FEE: number;
+  TOKEN_MINT: string;
   RELAYER_FEE_SOLANA: string;
   RELAYER_FEE_QUBIC: string;
   RELAYER_ENABLED: boolean;
@@ -48,6 +49,7 @@ const schema = {
     "SOLANA_RPC_URL",
     "QUBIC_RPC_URL",
     "SOLANA_BPS_FEE",
+    "TOKEN_MINT",
     "SOLANA_TX_COMMITMENT",
     "RELAYER_FEE_SOLANA",
     "RELAYER_FEE_QUBIC",
@@ -135,6 +137,9 @@ const schema = {
       type: "number",
       minimum: 0,
       default: 0,
+    },
+    TOKEN_MINT: {
+      type: "string",
     },
     RELAYER_FEE_SOLANA: {
       type: "string",
