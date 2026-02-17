@@ -3,22 +3,27 @@ import { createServer } from "node:http";
 import { AddressInfo } from "node:net";
 import { build } from "../../helpers/build.js";
 import {
-  kUndiciGetClient,
-  type UndiciGetClientService,
-} from "../../../src/plugins/infra/undici-get-client.js";
+  kUndiciClient,
+  type UndiciClientService,
+} from "../../../src/plugins/infra/undici-client.js";
 
-describe("undici get client plugin", () => {
-  it("performs GET requests with merged headers and JSON parsing", async (t: TestContext) => {
+describe("undici client plugin", () => {
+  it("performs GET and POST requests with merged headers and JSON parsing", async (t: TestContext) => {
     const app = await build(t, { useMocks: false });
-    const undiciGetClient: UndiciGetClientService =
-      app.getDecorator(kUndiciGetClient);
+    const undiciClient: UndiciClientService =
+      app.getDecorator(kUndiciClient);
 
     const receivedHeaders: Record<string, string | string[] | undefined>[] = [];
     const server = createServer((req, res) => {
       receivedHeaders.push(req.headers);
-      if (req.url === "/poll") {
+      if (req.url === "/poll" && req.method === "GET") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.url === "/submit" && req.method === "POST") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ trxHash: "trx-1" }));
         return;
       }
 
@@ -34,7 +39,7 @@ describe("undici get client plugin", () => {
     const { port } = server.address() as AddressInfo;
     const origin = `http://127.0.0.1:${port}`;
 
-    const client = undiciGetClient.create({
+    const client = undiciClient.create({
       headers: { "x-default": "base" },
     });
 
@@ -49,20 +54,28 @@ describe("undici get client plugin", () => {
     t.assert.strictEqual(receivedHeaders[0]["x-extra"], "1");
     t.assert.strictEqual(receivedHeaders[0]["x-default"], "override");
 
-    await t.assert.rejects(
-      client.getJson(origin, "/fail"),
-      /HTTP 503/
+    const posted = await client.postJson<{ trxHash: string }>(
+      origin,
+      "/submit",
+      { ok: true },
+      undefined,
+      { "x-default": "override-post" }
     );
+
+    t.assert.deepStrictEqual(posted, { trxHash: "trx-1" });
+    t.assert.strictEqual(receivedHeaders[1]["x-default"], "override-post");
+
+    await t.assert.rejects(client.getJson(origin, "/fail"), /HTTP 503/);
 
     await client.close();
   });
 
   it("closes created clients on app shutdown and exposes defaults", async (t: TestContext) => {
     const app = await build(undefined, { useMocks: false });
-    const undiciGetClient: UndiciGetClientService =
-      app.getDecorator(kUndiciGetClient);
+    const undiciClient: UndiciClientService =
+      app.getDecorator(kUndiciClient);
 
-    t.assert.deepStrictEqual(undiciGetClient.defaults, {
+    t.assert.deepStrictEqual(undiciClient.defaults, {
       connectionsPerOrigin: 1,
       pipelining: 1,
       headers: {},
@@ -71,7 +84,7 @@ describe("undici get client plugin", () => {
       connectTimeout: 5_000,
     });
 
-    const client = undiciGetClient.create();
+    const client = undiciClient.create();
     let closed = false;
     const originalClose = client.close.bind(client);
     client.close = async () => {

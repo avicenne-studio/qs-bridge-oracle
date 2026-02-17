@@ -143,20 +143,12 @@ async function handleFailure(opts: {
   event: StoredHubEvent;
   error: unknown;
   maxRetries: number;
-  relayerMaxAttempts: number;
   eventsRepository: HubEventsRepository;
   ordersRepository: OrdersRepository;
   logger: FastifyInstance["log"];
 }) {
-  const {
-    event,
-    error,
-    maxRetries,
-    relayerMaxAttempts,
-    eventsRepository,
-    ordersRepository,
-    logger,
-  } = opts;
+  const { event, error, maxRetries, eventsRepository, ordersRepository, logger } =
+    opts;
   const nextRetryCount = event.retryCount + 1;
   const failureReasonInternal = normalizeErrorMessage(error);
   const failureCode = event.type;
@@ -179,8 +171,7 @@ async function handleFailure(opts: {
     const failedOrder = createFailedOrderFromOutboundEvent(
       mapped.event,
       { signature: event.signature },
-      publicReason,
-      relayerMaxAttempts
+      publicReason
     );
     const sourceNonce = failedOrder.source_nonce;
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
@@ -247,7 +238,6 @@ async function processPendingEvents(
         event,
         error,
         maxRetries: config.EVENT_MAX_RETRIES,
-        relayerMaxAttempts: config.RELAYER_MAX_ATTEMPTS,
         eventsRepository,
         ordersRepository,
         logger: fastify.log,
@@ -315,10 +305,7 @@ export default fp(
     const solanaHandlers = createSolanaOrderHandlers({
       ordersRepository,
       signerService,
-      config: {
-        SOLANA_BPS_FEE: config.SOLANA_BPS_FEE,
-        RELAYER_MAX_ATTEMPTS: config.RELAYER_MAX_ATTEMPTS,
-      },
+      config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
       logger: fastify.log,
       validation,
       relayerFeeAcceptance,
@@ -327,7 +314,6 @@ export default fp(
       ordersRepository,
       logger: fastify.log,
       relayerFeeAcceptance,
-      config: { RELAYER_MAX_ATTEMPTS: config.RELAYER_MAX_ATTEMPTS },
     });
 
     fastify.addHook("onReady", async () => {

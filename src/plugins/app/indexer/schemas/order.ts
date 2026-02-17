@@ -35,7 +35,6 @@ export const OracleOrderSchema = Type.Object({
   status: OracleOrderStatus,
   oracle_accept_to_relay: Type.Boolean(),
   relay_attempts: Type.Integer({ minimum: 0 }),
-  max_relay_attempts: Type.Integer({ minimum: 1 }),
   source_nonce: StringSchema,
   source_payload: StringSchema,
   failure_reason_public: Type.Optional(StringSchema),

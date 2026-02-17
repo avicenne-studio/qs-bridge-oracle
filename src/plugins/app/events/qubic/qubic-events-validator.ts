@@ -3,10 +3,10 @@ import { FastifyInstance } from "fastify";
 import type { FastifyBaseLogger } from "fastify";
 import { Type } from "@sinclair/typebox";
 import {
-  kUndiciGetClient,
-  type UndiciGetClient,
-  type UndiciGetClientService,
-} from "../../../infra/undici-get-client.js";
+  kUndiciClient,
+  type UndiciClient,
+  type UndiciClientService,
+} from "../../../infra/undici-client.js";
 import { kEnvConfig, type EnvConfig } from "../../../infra/env.js";
 import { kValidation, type ValidationService } from "../../common/validation.js";
 import { StringSchema } from "../../common/schemas/common.js";
@@ -55,7 +55,7 @@ function buildTransactionsPath(basePath: string, signature: string, expected: Qu
 }
 
 export function createDefaultQubicTransactionFetcher(
-  client: UndiciGetClient,
+  client: UndiciClient,
   rpcUrl: string
 ): QubicTransactionFetcher {
   const url = new URL(rpcUrl);
@@ -112,10 +112,10 @@ export default fp(
       return;
     }
     const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
-    const undiciGetClient =
-      fastify.getDecorator<UndiciGetClientService>(kUndiciGetClient);
+    const undiciClient =
+      fastify.getDecorator<UndiciClientService>(kUndiciClient);
     const validation = fastify.getDecorator<ValidationService>(kValidation);
-    const client = undiciGetClient.create();
+    const client = undiciClient.create();
 
     const validator = createQubicEventValidator({
       fetchTransaction: createDefaultQubicTransactionFetcher(
@@ -130,6 +130,6 @@ export default fp(
   },
   {
     name: "qubic-events-validator",
-    dependencies: ["env", "undici-get-client", "validation"],
+    dependencies: ["env", "undici-client", "validation"],
   }
 );

@@ -27,7 +27,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-101",
       source_payload: "{}",
     });
@@ -65,7 +64,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-201",
       source_payload: "{}",
     });
@@ -82,7 +80,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-202",
       source_payload: "{}",
     });
@@ -99,7 +96,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-203",
       source_payload: "{}",
     });
@@ -145,7 +141,6 @@ describe("ordersRepository", () => {
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
         relay_attempts: 0,
-        max_relay_attempts: 3,
         source_nonce: `nonce-${i}`,
         source_payload: "{}",
       });
@@ -164,7 +159,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-skip",
       source_payload: "{}",
     });
@@ -192,7 +186,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 2,
       source_nonce: "nonce-relay",
       source_payload: "{}",
     });
@@ -210,7 +203,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 2,
-      max_relay_attempts: 2,
       source_nonce: "nonce-skip",
       source_payload: "{}",
     });
@@ -228,12 +220,11 @@ describe("ordersRepository", () => {
       status: "pending",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 2,
       source_nonce: "nonce-nope",
       source_payload: "{}",
     });
 
-    const results = await repo.findReadyForRelay();
+    const results = await repo.findReadyForRelay(2);
     assert.strictEqual(results.length, 1);
     assert.strictEqual(results[0].id, ready?.id);
   });
@@ -255,7 +246,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-301",
       source_payload: "{}",
     });
@@ -286,7 +276,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-311",
       source_payload: "{}",
     });
@@ -330,7 +319,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-401",
       source_payload: "{}",
     });
@@ -367,7 +355,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-501",
       source_payload: "{}",
     });
@@ -400,7 +387,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-601",
       source_payload: "{}",
     });
@@ -426,7 +412,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-701",
       source_payload: "{}",
     });
@@ -444,7 +429,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "nonce-702",
       source_payload: "{}",
     });
@@ -475,7 +459,6 @@ describe("ordersRepository", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: "deadbeef",
       source_payload: "{}",
     });

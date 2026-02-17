@@ -36,7 +36,6 @@ function createHandlers() {
       ordersRepository: repo as never,
       logger,
       relayerFeeAcceptance,
-      config: { RELAYER_MAX_ATTEMPTS: 3 },
     }),
   };
 }
@@ -141,7 +140,6 @@ describe("qubic order handlers", () => {
       status: "finalized",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 3,
       source_nonce: payload.nonce,
       source_payload: JSON.stringify({ v: 1 }),
     });

@@ -30,7 +30,6 @@ function normalizeOrderRow(row: StoredOrder): StoredOrder {
     ...row,
     oracle_accept_to_relay: Boolean(row.oracle_accept_to_relay),
     relay_attempts: Number(row.relay_attempts),
-    max_relay_attempts: Number(row.max_relay_attempts),
     failure_reason_public: row.failure_reason_public ?? undefined,
   };
 }
@@ -114,14 +113,14 @@ function createRepository(fastify: FastifyInstance) {
       return rows.map((row) => normalizeOrderRow(row as StoredOrder));
     },
 
-    async findReadyForRelay(limit = MAX_READY_FOR_RELAY) {
+    async findReadyForRelay(maxRelayAttempts: number, limit = MAX_READY_FOR_RELAY) {
       const rows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .select("*")
         .where({
           status: "ready-for-relay",
         })
         .andWhere("oracle_accept_to_relay", 1)
-        .andWhereRaw("relay_attempts < max_relay_attempts")
+        .andWhere("relay_attempts", "<", maxRelayAttempts)
         .orderBy("id", "asc")
         .limit(limit);
 
@@ -184,13 +183,11 @@ function createRepository(fastify: FastifyInstance) {
           "orders.status",
           "orders.oracle_accept_to_relay",
           "orders.relay_attempts",
-          "orders.max_relay_attempts",
           "orders.id",
           "signatures.signature as order_signature"
         )
         .where("orders.oracle_accept_to_relay", 1)
         .andWhere("orders.status", "ready-for-relay")
-        .andWhereRaw("orders.relay_attempts < orders.max_relay_attempts")
         .orderBy("orders.id", "asc");
 
       const orders = new Map<string, StoredOrderWithSignatures>();

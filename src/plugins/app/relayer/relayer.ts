@@ -1,8 +1,11 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
-import { request } from "undici";
 import { createHash, randomUUID } from "node:crypto";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
+import {
+  kUndiciClient,
+  type UndiciClientService,
+} from "../../infra/undici-client.js";
 import {
   kOrdersRepository,
   type OrdersRepository,
@@ -16,10 +19,6 @@ export type RelayerService = {
 export const kRelayerService = Symbol("app.relayerService");
 
 type RelayResult = { trxHash: string };
-
-function toPublicRelayFailure(): string {
-  return "Relay failed";
-}
 
 function buildQubicUnlockPath(rpcUrl: string): { origin: string; path: string } {
   const url = new URL(rpcUrl);
@@ -38,23 +37,16 @@ function buildQubicUnlockPayload(order: OracleOrder) {
 
 async function relayToQubic(
   order: OracleOrder,
-  config: EnvConfig
+  deps: { config: EnvConfig; undiciClient: UndiciClientService }
 ): Promise<RelayResult> {
-  const { origin, path } = buildQubicUnlockPath(config.QUBIC_RPC_URL);
+  const { origin, path } = buildQubicUnlockPath(deps.config.QUBIC_RPC_URL);
   const payload = buildQubicUnlockPayload(order);
-  const res = await request(`${origin}${path}`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-    headers: {
-      "content-type": "application/json",
-    },
-  });
-
-  if (res.statusCode < 200 || res.statusCode >= 300) {
-    throw new Error(`HTTP ${res.statusCode}`);
-  }
-
-  const body = (await res.body.json()) as { trxHash?: string };
+  const client = deps.undiciClient.create();
+  const body = await client.postJson<{ trxHash?: string }>(
+    origin,
+    path,
+    payload
+  );
   if (!body.trxHash) {
     throw new Error("Relay response missing trxHash");
   }
@@ -72,26 +64,22 @@ function relayToSolana(order: OracleOrder, logger: FastifyInstance["log"]): Rela
   return { trxHash };
 }
 
-function resolveMaxRelayAttempts(order: OracleOrder) {
-  return order.max_relay_attempts;
-}
-
 async function relayOrder(
   order: OracleOrder,
   deps: {
     ordersRepository: OrdersRepository;
     config: EnvConfig;
+    undiciClient: UndiciClientService;
     logger: FastifyInstance["log"];
   }
 ) {
-  const { ordersRepository, config, logger } = deps;
-  const maxRelayAttempts = resolveMaxRelayAttempts(order);
+  const { ordersRepository, config, undiciClient, logger } = deps;
   const nextAttempts = order.relay_attempts + 1;
 
   try {
     const result =
       order.dest === "qubic"
-        ? await relayToQubic(order, config)
+        ? await relayToQubic(order, { config, undiciClient })
         : relayToSolana(order, logger);
 
     await ordersRepository.update(order.id, {
@@ -101,12 +89,12 @@ async function relayOrder(
     logger.info({ orderId: order.id }, "Order relayed successfully");
   } catch (error) {
     logger.error({ err: error, orderId: order.id }, "Relay failed");
-    const shouldFail = nextAttempts >= maxRelayAttempts;
+    const shouldFail = nextAttempts >= config.RELAYER_MAX_ATTEMPTS;
 
     await ordersRepository.update(order.id, {
       relay_attempts: nextAttempts,
       status: shouldFail ? "failed" : "ready-for-relay",
-      failure_reason_public: shouldFail ? toPublicRelayFailure() : undefined,
+      failure_reason_public: shouldFail ? "Relay failed" : undefined,
     });
   }
 }
@@ -114,15 +102,23 @@ async function relayOrder(
 export function createRelayerService(deps: {
   ordersRepository: OrdersRepository;
   config: EnvConfig;
+  undiciClient: UndiciClientService;
   logger: FastifyInstance["log"];
 }): RelayerService {
-  const { ordersRepository, config, logger } = deps;
+  const { ordersRepository, config, undiciClient, logger } = deps;
 
   return {
     async relayPending() {
-      const candidates = await ordersRepository.findReadyForRelay();
+      const candidates = await ordersRepository.findReadyForRelay(
+        config.RELAYER_MAX_ATTEMPTS
+      );
       for (const order of candidates) {
-        await relayOrder(order, { ordersRepository, config, logger });
+        await relayOrder(order, {
+          ordersRepository,
+          config,
+          undiciClient,
+          logger,
+        });
       }
     },
   };
@@ -156,22 +152,27 @@ export function startRelayer(
   });
 
   queueMicrotask(() => {
+    // Kick off a first run right after startup without blocking plugin init.
     runOnce().catch(() => undefined);
   });
 }
 
 export default fp(
   async function relayerPlugin(fastify: FastifyInstance) {
-    if (fastify.hasDecorator(kRelayerService)) {
-      return;
-    }
     const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
     const ordersRepository =
       fastify.getDecorator<OrdersRepository>(kOrdersRepository);
+    if (!config.RELAYER_ENABLED) {
+      fastify.log.info("Relayer disabled by configuration");
+      return;
+    }
+    const undiciClient =
+      fastify.getDecorator<UndiciClientService>(kUndiciClient);
 
     const relayer = createRelayerService({
       ordersRepository,
       config,
+      undiciClient,
       logger: fastify.log,
     });
 
@@ -183,6 +184,6 @@ export default fp(
   },
   {
     name: "relayer",
-    dependencies: ["env", "orders-repository"],
+    dependencies: ["env", "orders-repository", "undici-client"],
   }
 );

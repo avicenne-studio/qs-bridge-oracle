@@ -45,6 +45,7 @@ describe("relayer plugin", () => {
       useMocks: false,
       config: {
         QUBIC_RPC_URL: `${url}/rpc`,
+        RELAYER_ENABLED: true,
         RELAYER_PROCESS_INTERVAL_MS: 5_000,
       },
     });
@@ -64,7 +65,6 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 2,
       source_nonce: "nonce-1",
       source_payload: "{}",
     });
@@ -93,7 +93,9 @@ describe("relayer plugin", () => {
       useMocks: false,
       config: {
         QUBIC_RPC_URL: url,
+        RELAYER_ENABLED: true,
         RELAYER_PROCESS_INTERVAL_MS: 5_000,
+        RELAYER_MAX_ATTEMPTS: 2,
       },
     });
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
@@ -112,7 +114,6 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 1,
-      max_relay_attempts: 2,
       source_nonce: "nonce-2",
       source_payload: "{}",
     });
@@ -123,6 +124,56 @@ describe("relayer plugin", () => {
     assert.strictEqual(updated?.status, "failed");
     assert.strictEqual(updated?.relay_attempts, 2);
     assert.strictEqual(updated?.failure_reason_public, "Relay failed");
+  });
+
+  it("keeps orders ready when relay attempts remain", async (t) => {
+    const server = Fastify({ logger: false });
+    server.post("/unlock", async (_request, reply) => {
+      return reply.code(500).send({ message: "boom" });
+    });
+    await server.listen({ port: 0, host: "127.0.0.1" });
+    const address = server.server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Unable to determine server address");
+    }
+    const url = `http://127.0.0.1:${address.port}`;
+    t.after(() => server.close());
+
+    const app = await build(t, {
+      useMocks: false,
+      config: {
+        QUBIC_RPC_URL: url,
+        RELAYER_ENABLED: true,
+        RELAYER_PROCESS_INTERVAL_MS: 5_000,
+        RELAYER_MAX_ATTEMPTS: 3,
+      },
+    });
+    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
+    const relayer = app.getDecorator<RelayerService>(kRelayerService);
+
+    const order = await repo.create({
+      id: makeId(5),
+      source: "solana",
+      dest: "qubic",
+      from: "A",
+      to: "B",
+      amount: "10",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      source_nonce: "nonce-5",
+      source_payload: "{}",
+    });
+
+    await relayer.relayPending();
+
+    const updated = await repo.findById(order!.id);
+    assert.strictEqual(updated?.status, "ready-for-relay");
+    assert.strictEqual(updated?.relay_attempts, 1);
+    assert.strictEqual(updated?.failure_reason_public, undefined);
   });
 
   it("fails when the qubic unlock response is missing a transaction hash", async (t) => {
@@ -140,7 +191,9 @@ describe("relayer plugin", () => {
       useMocks: false,
       config: {
         QUBIC_RPC_URL: url,
+        RELAYER_ENABLED: true,
         RELAYER_PROCESS_INTERVAL_MS: 5_000,
+        RELAYER_MAX_ATTEMPTS: 1,
       },
     });
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
@@ -159,7 +212,6 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 1,
       source_nonce: "nonce-4",
       source_payload: "{}",
     });
@@ -175,6 +227,7 @@ describe("relayer plugin", () => {
     const app = await build(t, {
       useMocks: false,
       config: {
+        RELAYER_ENABLED: true,
         RELAYER_PROCESS_INTERVAL_MS: 5_000,
       },
     });
@@ -194,7 +247,6 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      max_relay_attempts: 2,
       source_nonce: "nonce-3",
       source_payload: "{}",
     });
@@ -204,15 +256,6 @@ describe("relayer plugin", () => {
     const updated = await repo.findById(order!.id);
     assert.strictEqual(updated?.status, "relayed");
     assert.ok(updated?.destination_trx_hash);
-  });
-
-  it("short-circuits when the relayer decorator already exists", async (t) => {
-    const app = await build(t, {
-      decorators: {
-        [kRelayerService]: { relayPending: async () => {} },
-      },
-    });
-    assert.ok(app.hasDecorator(kRelayerService));
   });
 
   it("prevents overlapping relayer cycles and logs failures", async (t) => {

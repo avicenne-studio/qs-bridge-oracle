@@ -19,7 +19,6 @@ type QubicOrderDependencies = {
   ordersRepository: OrdersRepository;
   logger: Logger;
   relayerFeeAcceptance: RelayerFeeAcceptance;
-  config: { RELAYER_MAX_ATTEMPTS: number };
 };
 
 type QubicOrderSourcePayloadV1 = {
@@ -76,7 +75,6 @@ function createOrderFromLockEvent(
   sourceNonce: string,
   originTrxHash: string,
   oracleAcceptToRelay: boolean,
-  maxRelayAttempts: number,
 ): OracleOrder {
   return {
     id: orderId,
@@ -91,14 +89,13 @@ function createOrderFromLockEvent(
     status: "pending",
     oracle_accept_to_relay: oracleAcceptToRelay,
     relay_attempts: 0,
-    max_relay_attempts: maxRelayAttempts,
     source_nonce: sourceNonce,
     source_payload: serializeSourcePayload(buildSourcePayload(event)),
   };
 }
 
 export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
-  const { ordersRepository, logger, relayerFeeAcceptance, config } = deps;
+  const { ordersRepository, logger, relayerFeeAcceptance } = deps;
 
   const handleLockEvent = async (
     event: QubicLockEventPayload,
@@ -138,7 +135,6 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
       sourceNonce,
       originTrxHash,
       oracleAcceptToRelay,
-      config.RELAYER_MAX_ATTEMPTS,
     );
 
     await ordersRepository.create(order);
