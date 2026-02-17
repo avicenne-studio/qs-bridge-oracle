@@ -16,6 +16,7 @@ import {
   kHubEventsRepository,
   type HubEventsRepository,
 } from "../../../src/plugins/app/events/hub-events.repository.js";
+import { kRelayerService } from "../../../src/plugins/app/relayer/relayer.js";
 
 const HUB_PRIMARY_PORT = 6201;
 const HUB_FALLBACK_PORT = 6202;
@@ -25,6 +26,19 @@ type StoredOrder = OracleOrder | null;
 
 const hex32 = (value: number) =>
   Buffer.from(new Uint8Array(32).fill(value)).toString("hex");
+
+async function buildWithRelayerDisabled(
+  t: Parameters<typeof build>[0],
+  options?: Parameters<typeof build>[1] extends infer O ? O : never,
+) {
+  return build(t, {
+    ...(options ?? {}),
+    decorators: {
+      [kRelayerService]: { relayPending: async () => {} },
+      ...(options as { decorators?: Record<PropertyKey, unknown> })?.decorators,
+    },
+  });
+}
 
 async function startHubServer(
   t: { after: (fn: () => void) => void },
@@ -171,7 +185,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
+    const app = await buildWithRelayerDisabled(t, { useMocks: false, config: { HUB_URLS } });
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
     const eventsRepo =
       app.getDecorator<HubEventsRepository>(kHubEventsRepository);
@@ -213,7 +227,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    await build(t, {
+    await buildWithRelayerDisabled(t, {
       useMocks: false,
       config: { HUB_URLS },
       beforeRegister: (instance) => {
@@ -257,7 +271,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
+    const app = await buildWithRelayerDisabled(t, { useMocks: false, config: { HUB_URLS } });
     const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
     t.mock.method(repo, "upsert", async () => {
       throw new Error("db down");
@@ -305,7 +319,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t, {
+    const app = await buildWithRelayerDisabled(t, {
       useMocks: false,
       config: { HUB_URLS, SOLANA_TX_RETRY_MAX_ATTEMPTS: maxRetries },
     });
@@ -354,7 +368,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t, {
+    const app = await buildWithRelayerDisabled(t, {
       useMocks: false,
       config: { HUB_URLS, SOLANA_TX_RETRY_MAX_ATTEMPTS: maxRetries },
     });
@@ -371,6 +385,8 @@ describe("hub events service", { concurrency: 1 }, () => {
       signature: "sig-existing",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: hex32(1),
       source_payload: "{}",
     });
@@ -421,6 +437,8 @@ describe("hub events service", { concurrency: 1 }, () => {
       signature: "sig",
       status: "pending",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: hex32(9),
       source_payload: JSON.stringify({
         v: 1,
@@ -455,7 +473,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
+    const app = await buildWithRelayerDisabled(t, { useMocks: false, config: { HUB_URLS } });
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
     await repo.create(existingOrder);
     response = overrideResponse;
@@ -518,7 +536,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       res.end();
     });
 
-    const app = await build(t, { useMocks: false, config: { HUB_URLS } });
+    const app = await buildWithRelayerDisabled(t, { useMocks: false, config: { HUB_URLS } });
     const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
     let stored: StoredOrder = null;
     await waitFor(async () => {

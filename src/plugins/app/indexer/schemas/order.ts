@@ -13,6 +13,7 @@ export const OracleChain = Type.Union([
 export const OracleOrderStatus = Type.Union([
   Type.Literal("pending"),
   Type.Literal("ready-for-relay"),
+  Type.Literal("relayed"),
   Type.Literal("failed"),
   Type.Literal("finalized"),
 ]);
@@ -33,6 +34,8 @@ export const OracleOrderSchema = Type.Object({
   signature: SignatureSchema,
   status: OracleOrderStatus,
   oracle_accept_to_relay: Type.Boolean(),
+  relay_attempts: Type.Integer({ minimum: 0 }),
+  max_relay_attempts: Type.Integer({ minimum: 1 }),
   source_nonce: StringSchema,
   source_payload: StringSchema,
   failure_reason_public: Type.Optional(StringSchema),

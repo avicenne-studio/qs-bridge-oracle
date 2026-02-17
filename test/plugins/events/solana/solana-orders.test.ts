@@ -87,7 +87,7 @@ function createHandlers(repo: Repo) {
     ...createSolanaOrderHandlers({
       ordersRepository: repo as never,
       signerService,
-      config: { SOLANA_BPS_FEE: 25 },
+      config: { SOLANA_BPS_FEE: 25, RELAYER_MAX_ATTEMPTS: 3 },
       logger,
       validation,
       relayerFeeAcceptance,
@@ -153,7 +153,7 @@ describe("solana order handlers", () => {
 
   it("builds failed orders when signature metadata is missing", async () => {
     const event = createOutboundEvent();
-    const failed = createFailedOrderFromOutboundEvent(event, {}, "failed");
+    const failed = createFailedOrderFromOutboundEvent(event, {}, "failed", 3);
 
     assert.strictEqual(failed.status, "failed");
     assert.strictEqual(failed.origin_trx_hash, bytesToHex(event.nonce));
@@ -175,6 +175,8 @@ describe("solana order handlers", () => {
         signature: "sig",
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
+        relay_attempts: 0,
+        max_relay_attempts: 3,
         source_nonce: existingNonce,
       },
     ]);
@@ -206,6 +208,8 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: overrideNonce,
     });
 
@@ -224,6 +228,8 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: overrideNonce,
       source_payload: JSON.stringify({ v: 2 }),
     });
@@ -243,6 +249,8 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: overrideNonce,
       source_payload: "{bad",
     });
@@ -270,6 +278,8 @@ describe("solana order handlers", () => {
       signature: "sig",
       status: "finalized",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: overrideNonce,
       source_payload: JSON.stringify({
         v: 1,

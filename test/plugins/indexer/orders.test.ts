@@ -22,6 +22,8 @@ describe("OracleOrder utilities", () => {
       signature: "SOLANA_SIGNATURE_EXAMPLE",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce",
       source_payload: "payload",
     };
@@ -42,6 +44,8 @@ describe("OracleOrder utilities", () => {
       signature: "QUBIC_SIGNATURE_EXAMPLE",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce",
       source_payload: "payload",
     };

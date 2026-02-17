@@ -275,6 +275,8 @@ test("processor stores destination transaction hash for qubic unlock events", as
     signature: "sig",
     status: "pending",
     oracle_accept_to_relay: true,
+    relay_attempts: 0,
+    max_relay_attempts: 3,
     source_nonce: "999",
     source_payload: JSON.stringify({ v: 1 }),
   });

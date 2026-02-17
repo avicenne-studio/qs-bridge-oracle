@@ -96,6 +96,8 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       signature: "sig-hub-1",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-901",
       source_payload: "{}",
     });
@@ -111,6 +113,8 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       signature: "sig-hub-2",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-902",
       source_payload: "{}",
     });
@@ -180,6 +184,8 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       signature: "sig-hub-3",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-903",
       source_payload: "{}",
     });
@@ -240,6 +246,8 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       signature: "sig-hub-4",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-904",
       source_payload: "{}",
     });

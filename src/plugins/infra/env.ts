@@ -25,6 +25,8 @@ export type EnvConfig = {
   SOLANA_BPS_FEE: number;
   RELAYER_FEE_SOLANA: string;
   RELAYER_FEE_QUBIC: string;
+  RELAYER_PROCESS_INTERVAL_MS: number;
+  RELAYER_MAX_ATTEMPTS: number;
   EVENT_MAX_RETRIES: number;
   EVENTS_LOOKBACK_DAYS: number;
   EVENTS_PROCESS_INTERVAL_MS: number;
@@ -140,6 +142,16 @@ const schema = {
     RELAYER_FEE_QUBIC: {
       type: "string",
       pattern: "^[0-9]+$",
+    },
+    RELAYER_PROCESS_INTERVAL_MS: {
+      type: "number",
+      minimum: 500,
+      default: 3000,
+    },
+    RELAYER_MAX_ATTEMPTS: {
+      type: "number",
+      minimum: 1,
+      default: 3,
     },
     EVENT_MAX_RETRIES: {
       type: "number",

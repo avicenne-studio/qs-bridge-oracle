@@ -26,6 +26,8 @@ describe("ordersRepository", () => {
       signature: "sig-solana-1",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-101",
       source_payload: "{}",
     });
@@ -62,6 +64,8 @@ describe("ordersRepository", () => {
       signature: "sig-a",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-201",
       source_payload: "{}",
     });
@@ -77,6 +81,8 @@ describe("ordersRepository", () => {
       signature: "sig-b",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-202",
       source_payload: "{}",
     });
@@ -92,6 +98,8 @@ describe("ordersRepository", () => {
       signature: "sig-c",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-203",
       source_payload: "{}",
     });
@@ -136,6 +144,8 @@ describe("ordersRepository", () => {
         signature: `sig-${i}`,
         status: "ready-for-relay",
         oracle_accept_to_relay: true,
+        relay_attempts: 0,
+        max_relay_attempts: 3,
         source_nonce: `nonce-${i}`,
         source_payload: "{}",
       });
@@ -153,6 +163,8 @@ describe("ordersRepository", () => {
       signature: "sig-skip",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-skip",
       source_payload: "{}",
     });
@@ -161,6 +173,69 @@ describe("ordersRepository", () => {
     assert.strictEqual(pending.length, 50);
     assert.strictEqual(pending[0].id, makeId(1));
     assert.strictEqual(pending[49].id, makeId(50));
+  });
+
+  it("should return ready-to-relay orders within retry limits", async (t) => {
+    const app = await build(t);
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
+
+    const ready = await repo.create({
+      id: makeId(2001),
+      source: "solana",
+      dest: "qubic",
+      from: "RelayA",
+      to: "RelayB",
+      amount: "1",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig-ready",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 2,
+      source_nonce: "nonce-relay",
+      source_payload: "{}",
+    });
+
+    await repo.create({
+      id: makeId(2002),
+      source: "solana",
+      dest: "qubic",
+      from: "SkipA",
+      to: "SkipB",
+      amount: "1",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig-skip",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 2,
+      max_relay_attempts: 2,
+      source_nonce: "nonce-skip",
+      source_payload: "{}",
+    });
+
+    await repo.create({
+      id: makeId(2003),
+      source: "solana",
+      dest: "qubic",
+      from: "NopeA",
+      to: "NopeB",
+      amount: "1",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig-nope",
+      status: "pending",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 2,
+      source_nonce: "nonce-nope",
+      source_payload: "{}",
+    });
+
+    const results = await repo.findReadyForRelay();
+    assert.strictEqual(results.length, 1);
+    assert.strictEqual(results[0].id, ready?.id);
   });
 
   it("should update an order", async (t) => {
@@ -179,6 +254,8 @@ describe("ordersRepository", () => {
       signature: "sig-update",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-301",
       source_payload: "{}",
     });
@@ -208,6 +285,8 @@ describe("ordersRepository", () => {
       signature: "sig-ready",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-311",
       source_payload: "{}",
     });
@@ -250,6 +329,8 @@ describe("ordersRepository", () => {
       signature: "sig-delete",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-401",
       source_payload: "{}",
     });
@@ -285,6 +366,8 @@ describe("ordersRepository", () => {
       signature: "sig-main",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-501",
       source_payload: "{}",
     });
@@ -316,6 +399,8 @@ describe("ordersRepository", () => {
       signature: "sig-empty",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-601",
       source_payload: "{}",
     });
@@ -340,6 +425,8 @@ describe("ordersRepository", () => {
       signature: "sig-relay",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-701",
       source_payload: "{}",
     });
@@ -356,6 +443,8 @@ describe("ordersRepository", () => {
       signature: "sig-skip",
       status: "ready-for-relay",
       oracle_accept_to_relay: false,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "nonce-702",
       source_payload: "{}",
     });
@@ -385,6 +474,8 @@ describe("ordersRepository", () => {
       signature: "sig-nonce",
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      max_relay_attempts: 3,
       source_nonce: "deadbeef",
       source_payload: "{}",
     });

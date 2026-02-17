@@ -31,7 +31,7 @@ type Logger = FastifyBaseLogger;
 type SolanaOrderDependencies = {
   ordersRepository: OrdersRepository;
   signerService: SignerService;
-  config: { SOLANA_BPS_FEE: number };
+  config: { SOLANA_BPS_FEE: number; RELAYER_MAX_ATTEMPTS: number };
   logger: Logger;
   validation: ValidationService;
   relayerFeeAcceptance: RelayerFeeAcceptance;
@@ -110,7 +110,8 @@ function createOrderFromOutboundEvent(
   orderId: string,
   sourceNonce: string,
   originTrxHash: string,
-  oracleAcceptToRelay: boolean
+  oracleAcceptToRelay: boolean,
+  maxRelayAttempts: number
 ): OracleOrder {
   return {
     id: orderId,
@@ -124,6 +125,8 @@ function createOrderFromOutboundEvent(
     signature,
     status: "pending",
     oracle_accept_to_relay: oracleAcceptToRelay,
+    relay_attempts: 0,
+    max_relay_attempts: maxRelayAttempts,
     source_nonce: sourceNonce,
     source_payload: serializeSourcePayload(buildSourcePayload(event)),
   };
@@ -132,7 +135,8 @@ function createOrderFromOutboundEvent(
 export function createFailedOrderFromOutboundEvent(
   event: OutboundEvent,
   meta: { signature?: string },
-  failureReasonPublic: string
+  failureReasonPublic: string,
+  maxRelayAttempts: number
 ): OracleOrder {
   const sourceNonce = bytesToHex(event.nonce);
   const signatureSeed = meta.signature ?? sourceNonce;
@@ -149,6 +153,8 @@ export function createFailedOrderFromOutboundEvent(
     signature: signatureSeed,
     status: "failed",
     oracle_accept_to_relay: false,
+    relay_attempts: 0,
+    max_relay_attempts: maxRelayAttempts,
     source_nonce: sourceNonce,
     source_payload: serializeSourcePayload(buildSourcePayload(event)),
     failure_reason_public: failureReasonPublic,
@@ -273,7 +279,8 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       orderId,
       sourceNonce,
       originTrxHash,
-      oracleAcceptToRelay
+      oracleAcceptToRelay,
+      config.RELAYER_MAX_ATTEMPTS
     );
     order.source_payload = serializeSourcePayload(buildSourcePayload(event));
     await ordersRepository.create(order);
