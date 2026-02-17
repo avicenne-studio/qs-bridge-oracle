@@ -37,12 +37,11 @@ function buildQubicUnlockPayload(order: OracleOrder) {
 
 async function relayToQubic(
   order: OracleOrder,
-  deps: { config: EnvConfig; undiciClient: UndiciClientService }
+  deps: { config: EnvConfig; client: ReturnType<UndiciClientService["create"]> }
 ): Promise<RelayResult> {
   const { origin, path } = buildQubicUnlockPath(deps.config.QUBIC_RPC_URL);
   const payload = buildQubicUnlockPayload(order);
-  const client = deps.undiciClient.create();
-  const body = await client.postJson<{ trxHash?: string }>(
+  const body = await deps.client.postJson<{ trxHash?: string }>(
     origin,
     path,
     payload
@@ -69,17 +68,17 @@ async function relayOrder(
   deps: {
     ordersRepository: OrdersRepository;
     config: EnvConfig;
-    undiciClient: UndiciClientService;
+    client: ReturnType<UndiciClientService["create"]>;
     logger: FastifyInstance["log"];
   }
 ) {
-  const { ordersRepository, config, undiciClient, logger } = deps;
+  const { ordersRepository, config, client, logger } = deps;
   const nextAttempts = order.relay_attempts + 1;
 
   try {
     const result =
       order.dest === "qubic"
-        ? await relayToQubic(order, { config, undiciClient })
+        ? await relayToQubic(order, { config, client })
         : relayToSolana(order, logger);
 
     await ordersRepository.update(order.id, {
@@ -106,6 +105,7 @@ export function createRelayerService(deps: {
   logger: FastifyInstance["log"];
 }): RelayerService {
   const { ordersRepository, config, undiciClient, logger } = deps;
+  const client = undiciClient.create();
 
   return {
     async relayPending() {
@@ -116,7 +116,7 @@ export function createRelayerService(deps: {
         await relayOrder(order, {
           ordersRepository,
           config,
-          undiciClient,
+          client,
           logger,
         });
       }
