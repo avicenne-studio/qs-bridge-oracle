@@ -29,15 +29,9 @@ function leftPadToLength(bytes: Uint8Array, length: number): Uint8Array {
 
 function qubicIdToBytes(s: string): Uint8Array {
   const str = s.toUpperCase();
-  if (!QUBIC_ID_ALPHABET.test(str)) {
-    throw new Error("Qubic ID must contain only A-Z");
-  }
   const len = str.length;
   const segmentLength =
-    len === 60 ? 15 : len === 56 ? 14 : len === 52 ? 13 : len === 48 ? 12 : 0;
-  if (segmentLength === 0 || len !== segmentLength * 4) {
-    throw new Error("Qubic ID must be 48, 52, 56 or 60 characters (4 segments)");
-  }
+    len === 60 ? 15 : len === 56 ? 14 : len === 52 ? 13 : 12;
   const publicKeyBytes = new Uint8Array(32);
   const view = new DataView(publicKeyBytes.buffer, 0);
   for (let i = 0; i < 4; i++) {
@@ -45,9 +39,6 @@ function qubicIdToBytes(s: string): Uint8Array {
     for (let j = segmentLength - 1; j >= 0; j--) {
       const idx = i * segmentLength + j;
       const code = str.charCodeAt(idx) - CHAR_A;
-      if (code < 0 || code > 25) {
-        throw new Error("Qubic ID must use letters A-Z");
-      }
       view.setBigUint64(
         i * 8,
         view.getBigUint64(i * 8, true) * 26n + BigInt(code),
@@ -60,45 +51,30 @@ function qubicIdToBytes(s: string): Uint8Array {
 
 /** Hex (64), Qubic ID (48-60), or Solana base58 -> 32 bytes. */
 export function addressOrIdToBytes(value: string): Uint8Array {
-  const s = typeof value === "string" ? value.trim() : String(value);
+  const s = value.trim();
   const hexCandidate = normalizeHex(s.replace(/\s/g, ""));
   if (hexCandidate.length === ADDRESS_HEX_LENGTH && HEX_PATTERN.test(hexCandidate)) {
     return hexToBytes(s.replace(/\s/g, ""));
   }
   if (s.length >= 48 && s.length <= 60 && s.length % 4 === 0 && QUBIC_ID_ALPHABET.test(s)) {
-    try {
-      return qubicIdToBytes(s);
-    } catch {
-      // fall through to Solana base58
-    }
+    return qubicIdToBytes(s);
   }
-  const decoded = new Uint8Array(new PublicKey(s).toBytes());
-  if (decoded.length !== 32) {
-    throw new Error("address must decode to 32 bytes");
-  }
-  return decoded;
+  return new Uint8Array(new PublicKey(s).toBytes());
 }
 
-/** Hex or decimal nonce -> 32 bytes left-padded. */
+/** Hex nonce (with optional 0x prefix) -> 32 bytes left-padded. */
 export function nonceToBytes(value: string): Uint8Array {
   const normalized = normalizeHex(value);
-  let bytes: Uint8Array;
-  if (normalized.length > 0 && HEX_PATTERN.test(normalized)) {
-    if (normalized.length % 2 !== 0) {
-      throw new Error("hex nonce must be byte aligned");
-    }
-    bytes = new Uint8Array(Buffer.from(normalized, "hex"));
-  } else if (DECIMAL_PATTERN.test(value)) {
-    let n = BigInt(value);
-    bytes = new Uint8Array(32);
-    for (let i = 31; i >= 0 && n > 0n; i--) {
-      bytes[i] = Number(n & 0xffn);
-      n >>= 8n;
-    }
-  } else {
-    throw new Error("nonce must be hex or decimal");
+  if (normalized.length === 0 || !HEX_PATTERN.test(normalized)) {
+    throw new Error("nonce must be a hex string");
   }
-  return leftPadToLength(bytes, NONCE_BYTE_LENGTH);
+  if (normalized.length % 2 !== 0) {
+    throw new Error("hex nonce must be byte aligned");
+  }
+  return leftPadToLength(
+    new Uint8Array(Buffer.from(normalized, "hex")),
+    NONCE_BYTE_LENGTH,
+  );
 }
 
 export function bytesToHex(value: ReadonlyUint8Array): string {

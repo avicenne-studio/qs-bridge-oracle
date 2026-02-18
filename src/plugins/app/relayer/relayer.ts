@@ -28,8 +28,7 @@ const ALREADY_RELAYED_CODES = ["7050003", "4615009", "-32002"];
 const ALREADY_RELAYED_MESSAGES = ["already been initialized", "uninitialized account"];
 
 function isLikelyAlreadyRelayed(error: unknown): boolean {
-  const msg =
-    error instanceof Error ? error.message : String(error ?? "");
+  const msg = error instanceof Error ? error.message : String(error);
   if (ALREADY_RELAYED_MESSAGES.some((m) => msg.includes(m))) {
     return true;
   }
@@ -41,14 +40,14 @@ function isLikelyAlreadyRelayed(error: unknown): boolean {
 
 function toRelayErrorPayload(error: unknown): { message: string; code?: string } {
   if (error instanceof Error) {
+    const ctx = (error as { context?: { __code?: number } }).context;
     const code =
-      "context" in error &&
-      typeof (error as { context?: { __code?: number } }).context === "object"
-        ? String((error as { context: { __code?: number } }).context?.__code ?? "")
+      typeof ctx === "object" && ctx !== null && ctx.__code !== undefined
+        ? String(ctx.__code)
         : undefined;
     return { message: error.message, ...(code && { code }) };
   }
-  return { message: String(error ?? "Unknown error") };
+  return { message: String(error) };
 }
 
 async function relayOrder(
@@ -147,7 +146,7 @@ export function startRelayer(
     try {
       await deps.relayer.relayPending();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error ?? "Unknown");
+      const message = error instanceof Error ? error.message : String(error);
       fastify.log.error({ relayCycleError: message }, "Relayer cycle failed");
     } finally {
       running = false;

@@ -279,4 +279,350 @@ describe("relayer plugin", () => {
     assert.ok(calls >= 1);
     assert.ok(logMock.calls.length >= 1);
   });
+
+  it("logs warning when relay fails with already-relayed message", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(10), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-10", source_payload: "{}",
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+    const warnLogs: unknown[][] = [];
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updatedWith = data;
+          return { ...orderData, ...data };
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => { throw new Error("already been initialized"); },
+        }),
+      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn(...args: unknown[]) { warnLogs.push(args); },
+        error() {},
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+    assert.ok(warnLogs.length >= 1, "expected warn log for already-relayed message");
+  });
+
+  it("logs warning when relay fails with already-relayed code", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(11), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-11", source_payload: "{}",
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+    const warnLogs: unknown[][] = [];
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updatedWith = data;
+          return { ...orderData, ...data };
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => { throw new Error("error 7050003 from chain"); },
+        }),
+      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn(...args: unknown[]) { warnLogs.push(args); },
+        error() {},
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+    assert.ok(warnLogs.length >= 1, "expected warn log for already-relayed code");
+  });
+
+  it("extracts error code from context property on relay failure", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(12), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-12", source_payload: "{}",
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updatedWith = data;
+          return { ...orderData, ...data };
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => {
+            const err = new Error("rpc error") as Error & { context: { __code: number } };
+            err.context = { __code: 42 };
+            throw err;
+          },
+        }),
+      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+  });
+
+  it("handles non-Error thrown during relay", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(13), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-13", source_payload: "{}",
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updatedWith = data;
+          return { ...orderData, ...data };
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => {
+            throw "string error";
+          },
+        }),
+      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+  });
+
+  it("logs error when order update fails after relay failure", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(14), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-14", source_payload: "{}",
+    };
+
+    const errorLogs: unknown[][] = [];
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async () => {
+          throw new Error("db write failed");
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => {
+            throw new Error("relay boom");
+          },
+        }),
+      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn() {},
+        error(...args: unknown[]) { errorLogs.push(args); },
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    const updateFailLog = errorLogs.find(
+      (args) =>
+        typeof args[1] === "string" &&
+        args[1].includes("Failed to update order after relay failure")
+    );
+    assert.ok(updateFailLog, "expected a log about update failure after relay");
+  });
+
+  it("stringifies non-Error update failures after relay error", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(15), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-15", source_payload: "{}",
+    };
+
+    const errorLogs: unknown[][] = [];
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async () => {
+          throw "raw string db failure";
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => { throw new Error("relay error"); },
+        }),
+      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn() {},
+        error(...args: unknown[]) { errorLogs.push(args); },
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    const updateFailLog = errorLogs.find(
+      (args) =>
+        typeof args[1] === "string" &&
+        args[1].includes("Failed to update order after relay failure")
+    );
+    assert.ok(updateFailLog, "expected a log about update failure after relay");
+  });
+
+  it("handles non-Error thrown in startRelayer cycle", async (t) => {
+    const app = Fastify({ logger: false });
+    const relayer = {
+      async relayPending() {
+        throw "non-error cycle failure";
+      },
+    };
+    const { mock: logMock } = t.mock.method(app.log, "error");
+
+    startRelayer(app, {
+      relayer,
+      config: { RELAYER_PROCESS_INTERVAL_MS: 20 } as EnvConfig,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await app.close();
+
+    assert.ok(logMock.calls.length >= 1);
+  });
+
+  it("handles relay error without context property", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(16), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-16", source_payload: "{}",
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updatedWith = data;
+          return { ...orderData, ...data };
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => { throw new Error("plain error without context"); },
+        }),
+      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+  });
+
+  it("handles relay error with context.__code of zero", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(17), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-17", source_payload: "{}",
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updatedWith = data;
+          return { ...orderData, ...data };
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => {
+            const err = new Error("rpc fail") as Error & { context: { __code: number } };
+            err.context = { __code: 0 };
+            throw err;
+          },
+        }),
+      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+  });
 });
