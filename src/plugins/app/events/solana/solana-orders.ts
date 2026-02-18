@@ -8,6 +8,7 @@ import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import {
   bytesToHex,
   hexToBytes,
+  nonceBytesToDecimal,
   orderIdFromSignature,
 } from "../../common/solana/index.js";
 import { type SignerService } from "../../signer/signer.service.js";
@@ -254,11 +255,15 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       },
       "Solana override outbound event payload"
     );
-    const sourceNonce = bytesToHex(event.nonce);
-    const existing = await ordersRepository.findBySourceNonce(sourceNonce);
+    const sourceNonceHex = bytesToHex(event.nonce);
+    let existing = await ordersRepository.findBySourceNonce(sourceNonceHex);
+    if (!existing) {
+      const sourceNonceDecimal = nonceBytesToDecimal(event.nonce);
+      existing = await ordersRepository.findBySourceNonce(sourceNonceDecimal);
+    }
     if (!existing) {
       logger.warn(
-        { sourceNonce },
+        { sourceNonce: sourceNonceHex },
         "Solana override event received for unknown order"
       );
       return;
@@ -314,11 +319,15 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       logger.warn("Solana inbound event missing transaction signature");
       return;
     }
-    const sourceNonce = bytesToHex(event.nonce);
-    const existing = await ordersRepository.findBySourceNonce(sourceNonce);
+    const sourceNonceHex = bytesToHex(event.nonce);
+    let existing = await ordersRepository.findBySourceNonce(sourceNonceHex);
+    if (!existing) {
+      const sourceNonceDecimal = nonceBytesToDecimal(event.nonce);
+      existing = await ordersRepository.findBySourceNonce(sourceNonceDecimal);
+    }
     if (!existing) {
       logger.warn(
-        { sourceNonce },
+        { sourceNonce: sourceNonceHex },
         "Solana inbound event received for unknown order"
       );
       return;

@@ -23,6 +23,34 @@ export type RelayerService = {
 
 export const kRelayerService = Symbol("app.relayerService");
 
+/** Solana error codes that usually mean another oracle already relayed (account already initialized, etc.). */
+const ALREADY_RELAYED_CODES = ["7050003", "4615009", "-32002"];
+const ALREADY_RELAYED_MESSAGES = ["already been initialized", "uninitialized account"];
+
+function isLikelyAlreadyRelayed(error: unknown): boolean {
+  const msg =
+    error instanceof Error ? error.message : String(error ?? "");
+  if (ALREADY_RELAYED_MESSAGES.some((m) => msg.includes(m))) {
+    return true;
+  }
+  if (ALREADY_RELAYED_CODES.some((c) => msg.includes(c))) {
+    return true;
+  }
+  return false;
+}
+
+function toRelayErrorPayload(error: unknown): { message: string; code?: string } {
+  if (error instanceof Error) {
+    const code =
+      "context" in error &&
+      typeof (error as { context?: { __code?: number } }).context === "object"
+        ? String((error as { context: { __code?: number } }).context?.__code ?? "")
+        : undefined;
+    return { message: error.message, ...(code && { code }) };
+  }
+  return { message: String(error ?? "Unknown error") };
+}
+
 async function relayOrder(
   order: OracleOrder,
   deps: {
@@ -48,14 +76,30 @@ async function relayOrder(
     });
     logger.info({ orderId: order.id }, "Order relayed successfully");
   } catch (error) {
-    logger.error({ err: error, orderId: order.id }, "Relay failed");
+    const payload = toRelayErrorPayload(error);
+    const alreadyRelayed = isLikelyAlreadyRelayed(error);
+    if (alreadyRelayed) {
+      logger.warn(
+        { orderId: order.id, relayError: payload },
+        "Relay failed (likely already relayed by another oracle)"
+      );
+    } else {
+      logger.error(
+        { orderId: order.id, relayError: payload },
+        "Relay failed"
+      );
+    }
     const shouldFail = nextAttempts >= config.RELAYER_MAX_ATTEMPTS;
-
-    await ordersRepository.update(order.id, {
-      relay_attempts: nextAttempts,
-      status: shouldFail ? "failed" : "ready-for-relay",
-      failure_reason_public: shouldFail ? "Relay failed" : undefined,
-    });
+    try {
+      await ordersRepository.update(order.id, {
+        relay_attempts: nextAttempts,
+        status: shouldFail ? "failed" : "ready-for-relay",
+        failure_reason_public: shouldFail ? "Relay failed" : undefined,
+      });
+    } catch (updateErr) {
+      const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+      logger.error({ orderId: order.id, updateError: msg }, "Failed to update order after relay failure");
+    }
   }
 }
 
@@ -103,7 +147,8 @@ export function startRelayer(
     try {
       await deps.relayer.relayPending();
     } catch (error) {
-      fastify.log.error({ err: error }, "Relayer cycle failed");
+      const message = error instanceof Error ? error.message : String(error ?? "Unknown");
+      fastify.log.error({ relayCycleError: message }, "Relayer cycle failed");
     } finally {
       running = false;
     }

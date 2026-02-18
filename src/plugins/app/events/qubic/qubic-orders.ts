@@ -11,7 +11,8 @@ import { type SignerService } from "../../signer/signer.service.js";
 import { PublicKey } from "@solana/web3.js";
 import { Network } from "../../common/schemas/common.js";
 import {
-  hexToBytes,
+  addressOrIdToBytes,
+  nonceToBytes,
   orderIdFromSignature,
   PROTOCOL_NAME,
   PROTOCOL_VERSION,
@@ -72,11 +73,11 @@ async function signForSolana(
     networkOut: Network.Solana,
     tokenIn: QUBIC_TOKEN_ADDRESS,
     tokenOut: tokenMintBytes,
-    fromAddress: hexToBytes(event.fromAddress),
-    toAddress: hexToBytes(event.toAddress),
+    fromAddress: addressOrIdToBytes(event.fromAddress),
+    toAddress: addressOrIdToBytes(event.toAddress),
     amount: BigInt(event.amount),
     relayerFee: BigInt(event.relayerFee),
-    nonce: hexToBytes(event.nonce),
+    nonce: nonceToBytes(event.nonce),
   });
 }
 

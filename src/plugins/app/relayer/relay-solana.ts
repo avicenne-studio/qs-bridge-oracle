@@ -23,7 +23,7 @@ import type { EnvConfig } from "../../infra/env.js";
 import type { OrdersRepository } from "../indexer/orders.repository.js";
 import type { OracleOrder } from "../indexer/schemas/order.js";
 import { Network } from "../common/schemas/common.js";
-import { hexToBytes, decodeSecretKey } from "../common/solana/index.js";
+import { addressOrIdToBytes, nonceToBytes, decodeSecretKey } from "../common/solana/index.js";
 import { type SignerKeys, SignerKeysSchema } from "../signer/schemas/keys.js";
 import type { FileManager } from "../../infra/@file-manager.js";
 import { kFileManager } from "../../infra/@file-manager.js";
@@ -126,11 +126,11 @@ export async function relayToSolana(
   const tokenMintBytes = new PublicKey(config.TOKEN_MINT).toBytes();
   const networkIn = Network.Qubic;
   const networkOut = Network.Solana;
-  const fromAddress = hexToBytes(order.from);
-  const toAddress = hexToBytes(order.to);
+  const fromAddress = addressOrIdToBytes(order.from);
+  const toAddress = addressOrIdToBytes(order.to);
   const amount = BigInt(order.amount);
   const relayerFee = BigInt(order.relayerFee);
-  const nonce = hexToBytes(order.source_nonce);
+  const nonce = nonceToBytes(order.source_nonce);
 
   const orderPayload = {
     networkIn,

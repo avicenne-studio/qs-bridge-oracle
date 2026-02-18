@@ -1,7 +1,10 @@
 export {
+  addressOrIdToBytes,
   bytesToHex,
   hexToBytes,
   hex32,
+  nonceBytesToDecimal,
+  nonceToBytes,
   toSafeNumber,
   toSafeBigInt,
   toU64BigInt,
