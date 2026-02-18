@@ -127,7 +127,7 @@ function createRepository(fastify: FastifyInstance) {
       return rows.map((row) => normalizeOrderRow(row as StoredOrder));
     },
 
-    async getSignatures(orderId: string): Promise<string[]> {
+    async findSignatures(orderId: string): Promise<string[]> {
       const rows = await knex<PersistedSignature>(ORDER_SIGNATURES_TABLE_NAME)
         .select("signature")
         .where({ order_id: orderId });

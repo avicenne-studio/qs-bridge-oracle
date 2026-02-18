@@ -1,6 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Buffer } from "node:buffer";
 import { build, waitFor } from "../../helpers/build.js";
 import {
   kHubEventsRepository,
@@ -12,9 +11,7 @@ import {
 } from "../../../src/plugins/app/indexer/orders.repository.js";
 import { kSolanaEventValidator } from "../../../src/plugins/app/events/solana/solana-events-validator.js";
 import { kQubicEventValidator } from "../../../src/plugins/app/events/qubic/qubic-events-validator.js";
-
-const hex32 = (value: number) =>
-  Buffer.from(new Uint8Array(32).fill(value)).toString("hex");
+import { hex32 } from "../../../src/plugins/app/common/solana/index.js";
 
 function createOutboundPayload(seed: number) {
   return {

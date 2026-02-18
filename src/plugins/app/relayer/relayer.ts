@@ -10,6 +10,7 @@ import {
   type OrdersRepository,
 } from "../indexer/orders.repository.js";
 import { OracleOrder } from "../indexer/schemas/order.js";
+import { relayToQubic } from "./relay-qubic.js";
 import {
   type SolanaRelayDeps,
   relayToSolana,
@@ -21,41 +22,6 @@ export type RelayerService = {
 };
 
 export const kRelayerService = Symbol("app.relayerService");
-
-type RelayResult = { trxHash: string };
-
-function buildQubicUnlockPath(rpcUrl: string): { origin: string; path: string } {
-  const url = new URL(rpcUrl);
-  const origin = url.origin;
-  const basePath = url.pathname === "/" ? "" : url.pathname;
-  return { origin, path: `${basePath}/unlock` };
-}
-
-function buildQubicUnlockPayload(order: OracleOrder) {
-  return {
-    to: order.to,
-    amount: order.amount,
-    nonce: order.source_nonce,
-  };
-}
-
-async function relayToQubic(
-  order: OracleOrder,
-  deps: { config: EnvConfig; client: ReturnType<UndiciClientService["create"]> }
-): Promise<RelayResult> {
-  const { origin, path } = buildQubicUnlockPath(deps.config.QUBIC_RPC_URL);
-  const payload = buildQubicUnlockPayload(order);
-  const body = await deps.client.postJson<{ trxHash?: string }>(
-    origin,
-    path,
-    payload
-  );
-  if (!body.trxHash) {
-    throw new Error("Relay response missing trxHash");
-  }
-
-  return { trxHash: body.trxHash };
-}
 
 async function relayOrder(
   order: OracleOrder,

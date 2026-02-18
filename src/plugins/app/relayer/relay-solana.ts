@@ -21,8 +21,7 @@ import type { EnvConfig } from "../../infra/env.js";
 import type { OrdersRepository } from "../indexer/orders.repository.js";
 import type { OracleOrder } from "../indexer/schemas/order.js";
 import { Network } from "../common/schemas/common.js";
-import { hexToBytes } from "../events/solana/bytes.js";
-import { decodeSecretKey } from "../signer/signer.service.js";
+import { hexToBytes, decodeSecretKey } from "../common/solana/index.js";
 import { type SignerKeys, SignerKeysSchema } from "../signer/schemas/keys.js";
 import type { FileManager } from "../../infra/@file-manager.js";
 import { kFileManager } from "../../infra/@file-manager.js";
@@ -45,7 +44,7 @@ import {
   applyComputeBudget,
   TOKEN_PROGRAM_ADDRESS,
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
-} from "../common/solana-helpers.js";
+} from "../common/solana/index.js";
 
 export type SolanaRelayDeps = {
   config: EnvConfig;
@@ -59,7 +58,7 @@ export type SolanaRelayDeps = {
 
 const ED25519_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
-function verifyEd25519(
+export function verifyEd25519(
   message: Uint8Array,
   signature: Uint8Array,
   publicKeyRaw: Uint8Array
@@ -72,7 +71,7 @@ function verifyEd25519(
   return cryptoVerify(null, message, keyObject, signature);
 }
 
-async function fetchOracleAddresses(
+export async function fetchOracleAddresses(
   connection: Connection
 ): Promise<Address[]> {
   const accounts = await connection.getProgramAccounts(
@@ -90,7 +89,7 @@ async function fetchOracleAddresses(
   });
 }
 
-function matchSignaturesToOracles(
+export function matchSignaturesToOracles(
   signatures: Uint8Array[],
   oracleAddresses: Address[],
   digest: Uint8Array
@@ -148,7 +147,7 @@ export async function relayToSolana(
   });
   const digest = createHash("sha256").update(serialized).digest();
 
-  const storedSignatures = await ordersRepository.getSignatures(order.id);
+  const storedSignatures = await ordersRepository.findSignatures(order.id);
   if (storedSignatures.length === 0) {
     throw new Error("No oracle signatures found for order");
   }

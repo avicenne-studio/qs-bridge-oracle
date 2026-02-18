@@ -22,12 +22,14 @@ import envPlugin, {
 import fmPlugin from "../../../src/plugins/infra/@file-manager.js";
 import validationPlugin from "../../../src/plugins/app/common/validation.js";
 import signerService, {
-  decodeSecretKey,
-  normalizeSignatureValue,
-  signQubicLockOrderWithSigner,
+  signLockOrderForSolanaWithSigner,
   kSignerService,
   type SignerService,
 } from "../../../src/plugins/app/signer/signer.service.js";
+import {
+  decodeSecretKey,
+  normalizeSignatureValue,
+} from "../../../src/plugins/app/common/solana/index.js";
 
 const fixturesDir = path.join(process.cwd(), "test/fixtures/signer");
 const validSolanaKeys = path.join(fixturesDir, "solana.keys.json");
@@ -162,7 +164,7 @@ describe("signerService", () => {
     t.after(() => app.close());
     const signer: SignerService = app.getDecorator(kSignerService);
 
-    assert.strictEqual(typeof signer.signQubicLockOrder, "function");
+    assert.strictEqual(typeof signer.signLockOrderForSolana, "function");
   });
 
   it("signs a solana order using the fixture keypair", async (t: TestContext) => {
@@ -185,7 +187,7 @@ describe("signerService", () => {
       nonce: bytes32(6),
     };
 
-    const signature = await signer.signQubicLockOrder(order);
+    const signature = await signer.signLockOrderForSolana(order);
 
     const encoded = concatBytes([
       encodeString(order.protocolName),
@@ -221,7 +223,7 @@ describe("signerService", () => {
     t.after(() => app.close());
     const signer: SignerService = app.getDecorator(kSignerService);
 
-    const signature = await signer.signQubicLockOrder({
+    const signature = await signer.signLockOrderForSolana({
       protocolName: "QubicBridge",
       protocolVersion: "1",
       contractAddress: bytes32(10),
@@ -244,7 +246,7 @@ describe("signerService", () => {
     t.after(() => app.close());
     const signer: SignerService = app.getDecorator(kSignerService);
 
-    const signature = await signer.signQubicLockOrder({
+    const signature = await signer.signLockOrderForSolana({
       protocolName: "QubicBridge",
       protocolVersion: "1",
       contractAddress: bytes32(20),
@@ -283,7 +285,7 @@ describe("signerService", () => {
     };
 
     await assert.rejects(
-      signer.signQubicLockOrder({
+      signer.signLockOrderForSolana({
         ...baseOrder,
         networkIn: 4294967296,
       }),
@@ -291,7 +293,7 @@ describe("signerService", () => {
     );
 
     await assert.rejects(
-      signer.signQubicLockOrder({
+      signer.signLockOrderForSolana({
         ...baseOrder,
         amount: -1n,
       }),
@@ -305,7 +307,7 @@ describe("signerService", () => {
     const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signQubicLockOrder({
+      signer.signLockOrderForSolana({
         protocolName: "QubicBridge",
         protocolVersion: "1",
         contractAddress: bytes32(1),
@@ -339,7 +341,7 @@ describe("signerService", () => {
     const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signQubicLockOrder({
+      signer.signLockOrderForSolana({
         protocolName: "QubicBridge",
         protocolVersion: "1",
         contractAddress: bytes32(40),
@@ -373,7 +375,7 @@ describe("signerService", () => {
     const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signQubicLockOrder({
+      signer.signLockOrderForSolana({
         protocolName: "QubicBridge",
         protocolVersion: "1",
         contractAddress: bytes32(50),
@@ -405,7 +407,7 @@ describe("signerService", () => {
     );
 
     await assert.rejects(
-      signQubicLockOrderWithSigner(
+      signLockOrderForSolanaWithSigner(
         {
           protocolName: "QubicBridge",
           protocolVersion: "1",

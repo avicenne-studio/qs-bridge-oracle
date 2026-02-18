@@ -1,7 +1,6 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { createHash } from "node:crypto";
-import { Buffer } from "node:buffer";
 import {
   createKeyPairSignerFromBytes,
   createSignableMessage,
@@ -15,10 +14,13 @@ import { kFileManager, type FileManager } from "../../infra/@file-manager.js";
 import { kValidation, type ValidationService } from "../common/validation.js";
 import {
   serializeBridgeOrder,
+  decodeSecretKey,
+  normalizeSignatureValue,
+  parseU32,
+  parseU64,
+  assertFixedBytes,
   type BridgeOrderFields,
-} from "../common/solana-helpers.js";
-
-const MAX_U64 = (1n << 64n) - 1n;
+} from "../common/solana/index.js";
 
 export type QubicLockOrderToSign = {
   protocolName: string;
@@ -58,7 +60,7 @@ type QubicLockOrderMessage = {
 };
 
 export type SignerService = {
-  signQubicLockOrder: (order: QubicLockOrderToSign) => Promise<string>;
+  signLockOrderForSolana: (order: QubicLockOrderToSign) => Promise<string>;
 };
 
 export const kSignerService = Symbol("app.signerService");
@@ -76,30 +78,6 @@ async function readKeysFromFile(
   return parsed;
 }
 
-function parseU32(value: number | string, field: string): number {
-  const parsed = typeof value === "string" ? Number(value) : value;
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 0xffffffff) {
-    throw new Error(`SignerService(SOLANA_KEYS): ${field} must be uint32`);
-  }
-  return parsed;
-}
-
-function parseU64(value: bigint | number | string, field: string): bigint {
-  const parsed =
-    typeof value === "bigint"
-      ? value
-      : BigInt(typeof value === "string" ? value : Math.trunc(value));
-  if (parsed < 0n || parsed > MAX_U64) {
-    throw new Error(`SignerService(SOLANA_KEYS): ${field} must be uint64`);
-  }
-  return parsed;
-}
-
-function assertFixedBytes(value: Uint8Array, field: string, length: number) {
-  if (value.length !== length) {
-    throw new Error(`SignerService(SOLANA_KEYS): ${field} must be ${length} bytes`);
-  }
-}
 
 function normalizeQubicLockOrder(order: QubicLockOrderToSign): QubicLockOrderMessage {
   return {
@@ -130,24 +108,6 @@ function serializeQubicLockOrder(order: QubicLockOrderToSign): Uint8Array {
   return serializeBridgeOrder(normalized as BridgeOrderFields);
 }
 
-export function normalizeSignatureValue(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
-    return Buffer.from(value).toString("base64");
-  }
-  throw new Error("SignerService(SOLANA_KEYS): unsupported signature format");
-}
-
-export function decodeSecretKey(encoded: string): Uint8Array {
-  const trimmed = encoded.trim();
-  const bytes = new Uint8Array(Buffer.from(trimmed, "base64"));
-  if (bytes.length !== 64) {
-    throw new Error("SignerService(SOLANA_KEYS): secret key must be 64 bytes");
-  }
-  return bytes;
-}
 
 async function createSolanaSignerFromKeys(keys: SignerKeys): Promise<SolanaSigner> {
   const secretKeyBytes = decodeSecretKey(keys.sKey);
@@ -158,7 +118,7 @@ async function createSolanaSignerFromKeys(keys: SignerKeys): Promise<SolanaSigne
   return signer;
 }
 
-export async function signQubicLockOrderWithSigner(
+export async function signLockOrderForSolanaWithSigner(
   order: QubicLockOrderToSign,
   signer: SolanaSigner
 ): Promise<string> {
@@ -187,14 +147,14 @@ export default fp(
     );
 
     let cachedSigner: SolanaSigner | null = null;
-    const signQubicLockOrder = async (order: QubicLockOrderToSign) => {
+    const signLockOrderForSolana = async (order: QubicLockOrderToSign) => {
       if (!cachedSigner) {
         cachedSigner = await createSolanaSignerFromKeys(solana);
       }
-      return signQubicLockOrderWithSigner(order, cachedSigner);
+      return signLockOrderForSolanaWithSigner(order, cachedSigner);
     };
 
-    fastify.decorate(kSignerService, { signQubicLockOrder });
+    fastify.decorate(kSignerService, { signLockOrderForSolana });
   },
   {
     name: "signer-service",

@@ -1,14 +1,15 @@
 import { OracleOrder } from "../../indexer/schemas/order.js";
 import type { FastifyBaseLogger } from "fastify";
+import { createHash } from "node:crypto";
+import { Buffer } from "node:buffer";
 import { type OutboundEvent } from "../../../../clients/js/types/outboundEvent.js";
 import { type OverrideOutboundEvent } from "../../../../clients/js/types/overrideOutboundEvent.js";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import {
   bytesToHex,
   hexToBytes,
-} from "./bytes.js";
-import { createHash } from "node:crypto";
-import { Buffer } from "node:buffer";
+  orderIdFromSignature,
+} from "../../common/solana/index.js";
 import { type SignerService } from "../../signer/signer.service.js";
 import {
   SolanaOrderSourcePayloadSchema,
@@ -39,24 +40,6 @@ type NormalizedOrder = {
   relayerFee: bigint;
   nonce: Uint8Array;
 };
-
-function formatUuidFromBytes(bytes: Uint8Array): string {
-  const hex = Buffer.from(bytes).toString("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20, 32),
-  ].join("-");
-}
-
-function orderIdFromSignature(signature: string): string {
-  const bytes = createHash("sha256").update(signature).digest();
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  return formatUuidFromBytes(bytes.subarray(0, 16));
-}
 
 function serializeSourcePayload(payload: SolanaOrderSourcePayloadV1): string {
   return JSON.stringify(payload);
@@ -166,7 +149,7 @@ function normalizeOutboundEvent(
 // TODO: Implement real signing for the Qubic contract once its message
 // hash format is known. For now return a deterministic placeholder so that
 // the order can be stored and later re-signed.
-function signOutboundOrder(
+function signForQubic(
   _signerService: SignerService,
   normalized: NormalizedOrder
 ): string {
@@ -238,7 +221,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     const originTrxHash = meta?.signature ?? sourceNonce;
     const orderId = orderIdFromSignature(signatureSeed);
     const normalized = normalizeOutboundEvent(event);
-    const signature = signOutboundOrder(signerService, normalized);
+    const signature = signForQubic(signerService, normalized);
     logger.info({ orderId, signature }, "Solana outbound order signed");
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToQubic(
       event.amount,
@@ -301,7 +284,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
 
     const updatedTo = bytesToHex(event.toAddress);
     const updatedRelayerFee = event.relayerFee.toString();
-    const updatedSignature = signOutboundOrder(
+    const updatedSignature = signForQubic(
       signerService,
       buildNormalizedOrderFromOverride(
         existing,

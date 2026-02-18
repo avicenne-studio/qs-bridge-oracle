@@ -1,13 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Buffer } from "node:buffer";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 import { createQubicOrderHandlers } from "../../../../src/plugins/app/events/qubic/qubic-orders.js";
 import type { FastifyBaseLogger } from "fastify";
 import type { SignerService } from "../../../../src/plugins/app/signer/signer.service.js";
-
-const hex32 = (value: number) =>
-  Buffer.from(new Uint8Array(32).fill(value)).toString("hex");
+import { hex32 } from "../../../../src/plugins/app/common/solana/index.js";
 
 function createLogger() {
   const entries: Array<{ level: string; payload: unknown; message?: string }> =
@@ -29,7 +26,7 @@ function createLogger() {
 function createMockSignerService(): SignerService {
   let callCount = 0;
   return {
-    signQubicLockOrder: async () => {
+    signLockOrderForSolana: async () => {
       callCount++;
       return Buffer.from(`mock-sig-${callCount}`).toString("base64");
     },

@@ -1,8 +1,6 @@
 import { OracleOrder } from "../../indexer/schemas/order.js";
 import type { FastifyBaseLogger } from "fastify";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
-import { createHash } from "node:crypto";
-import { Buffer } from "node:buffer";
 import {
   type QubicLockEventPayload,
   type QubicOverrideLockEventPayload,
@@ -11,14 +9,15 @@ import {
 import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.js";
 import { type SignerService } from "../../signer/signer.service.js";
 import { PublicKey } from "@solana/web3.js";
-import { hexToBytes } from "../solana/bytes.js";
 import { Network } from "../../common/schemas/common.js";
 import {
+  hexToBytes,
+  orderIdFromSignature,
   PROTOCOL_NAME,
   PROTOCOL_VERSION,
   QUBIC_TOKEN_ADDRESS,
   CONTRACT_ADDRESS_BYTES,
-} from "../../common/solana-helpers.js";
+} from "../../common/solana/index.js";
 
 type Logger = FastifyBaseLogger;
 
@@ -38,24 +37,6 @@ type QubicOrderSourcePayloadV1 = {
   version: string;
 };
 
-function formatUuidFromBytes(bytes: Uint8Array): string {
-  const hex = Buffer.from(bytes).toString("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20, 32),
-  ].join("-");
-}
-
-function orderIdFromSignature(signature: string): string {
-  const bytes = createHash("sha256").update(signature).digest();
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  return formatUuidFromBytes(bytes.subarray(0, 16));
-}
-
 function serializeSourcePayload(payload: QubicOrderSourcePayloadV1): string {
   return JSON.stringify(payload);
 }
@@ -72,7 +53,7 @@ function buildSourcePayload(
   };
 }
 
-async function signLockOrder(
+async function signForSolana(
   signerService: SignerService,
   tokenMintBytes: Uint8Array,
   event: {
@@ -83,7 +64,7 @@ async function signLockOrder(
     nonce: string;
   },
 ): Promise<string> {
-  return signerService.signQubicLockOrder({
+  return signerService.signLockOrderForSolana({
     protocolName: PROTOCOL_NAME,
     protocolVersion: PROTOCOL_VERSION,
     contractAddress: CONTRACT_ADDRESS_BYTES,
@@ -154,7 +135,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     const signatureSeed = meta?.signature ?? sourceNonce;
     const originTrxHash = meta?.signature ?? sourceNonce;
     const orderId = orderIdFromSignature(signatureSeed);
-    const signature = await signLockOrder(
+    const signature = await signForSolana(
       signerService,
       tokenMintBytes,
       event,
@@ -207,7 +188,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
       return;
     }
 
-    const updatedSignature = await signLockOrder(
+    const updatedSignature = await signForSolana(
       signerService,
       tokenMintBytes,
       {

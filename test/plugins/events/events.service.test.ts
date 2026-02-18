@@ -16,15 +16,13 @@ import {
   kHubEventsRepository,
   type HubEventsRepository,
 } from "../../../src/plugins/app/events/hub-events.repository.js";
+import { hex32 } from "../../../src/plugins/app/common/solana/index.js";
 
 const HUB_PRIMARY_PORT = 6201;
 const HUB_FALLBACK_PORT = 6202;
 const HUB_URLS = `http://127.0.0.1:${HUB_PRIMARY_PORT},http://127.0.0.1:${HUB_FALLBACK_PORT}`;
 type MockMethod = { calls: Array<{ arguments: unknown[] }> };
 type StoredOrder = OracleOrder | null;
-
-const hex32 = (value: number) =>
-  Buffer.from(new Uint8Array(32).fill(value)).toString("hex");
 
 async function startHubServer(
   t: { after: (fn: () => void) => void },
@@ -133,7 +131,7 @@ describe("hub events service", { concurrency: 1 }, () => {
 
   it("processes valid events and creates orders", async (t) => {
     const response = createOutboundEventResponse();
-    response.data[0].slot = undefined;
+    delete (response.data[0] as Record<string, unknown>).slot;
     const logsBySignature = new Map([
       ["sig-evt", [createLogLine(createOutboundEventBytes())]],
     ]);
@@ -182,7 +180,8 @@ describe("hub events service", { concurrency: 1 }, () => {
       return stored !== null
     }, 12_000);
     assert.ok(stored);
-    assert.ok(stored && stored.signature);
+    const order = stored as OracleOrder;
+    assert.ok(order.signature);
     assert.ok(txMock.calls.length > 0);
 
     const storedEvent = await eventsRepo.findBySignature("sig-evt");
@@ -231,7 +230,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       2_000,
     );
     assert.ok(warnMock);
-    assert.ok(warnMock?.calls.length > 0);
+    assert.ok((warnMock as MockMethod).calls.length > 0);
   });
 
   it("logs when persisting hub events fails", async (t) => {
@@ -468,7 +467,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       return Boolean(stored?.relayerFee === "7");
     });
     assert.ok(stored);
-    assert.strictEqual(stored?.relayerFee, "7");
+    assert.strictEqual((stored as OracleOrder).relayerFee, "7");
   });
 
   it("falls back to the secondary hub when primary fails", async (t) => {

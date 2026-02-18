@@ -4,7 +4,7 @@ import {
   createFailedOrderFromOutboundEvent,
   createSolanaOrderHandlers,
 } from "../../../../src/plugins/app/events/solana/solana-orders.js";
-import { bytesToHex } from "../../../../src/plugins/app/events/solana/bytes.js";
+import { bytesToHex, hex32 } from "../../../../src/plugins/app/common/solana/index.js";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 import { FastifyBaseLogger } from "fastify";
 import { Value } from "@sinclair/typebox/value";
@@ -71,14 +71,10 @@ function createOverrideEvent() {
   };
 }
 
-function hex32(value: number) {
-  return bytesToHex(new Uint8Array(32).fill(value));
-}
-
 function createHandlers(repo: Repo) {
   const { logger, entries } = createLogger();
   const signerService = {
-    signQubicLockOrder: async () => "signed-solana-order",
+    signLockOrderForSolana: async () => "signed-solana-order",
   };
   const validation = createValidation();
   const relayerFeeAcceptance = {
@@ -310,7 +306,7 @@ describe("solana order handlers", () => {
     const { handleOutboundEvent, handleOverrideOutboundEvent } =
       createSolanaOrderHandlers({
         ordersRepository: repo as never,
-        signerService: { signQubicLockOrder: async () => "" },
+        signerService: { signLockOrderForSolana: async () => "" },
         logger: createLogger().logger,
         validation: createValidation(),
         relayerFeeAcceptance,
