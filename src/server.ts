@@ -13,8 +13,7 @@ import { kEnvConfig, type EnvConfig } from './plugins/infra/env.js'
  * @see {@link https://www.youtube.com/watch?v=HMM7GJC5E2o}
  */
 function getLoggerOptions () {
-  // Only if the program is running in an interactive terminal
-  if (process.stdout.isTTY) {
+  if (process.env.LOG_PRETTY === 'true' || process.stdout.isTTY) {
     return {
       level: 'info',
       transport: {

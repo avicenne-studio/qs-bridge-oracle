@@ -29,7 +29,7 @@ export const OracleOrderSchema = Type.Object({
   relayerFee: AmountSchema,
   origin_trx_hash: Type.String({ minLength: 1, maxLength: 255 }),
   destination_trx_hash: Type.Optional(
-    Type.String({ minLength: 1, maxLength: 255 })
+    Type.String({ maxLength: 255 })
   ),
   signature: SignatureSchema,
   status: OracleOrderStatus,
@@ -37,7 +37,7 @@ export const OracleOrderSchema = Type.Object({
   relay_attempts: Type.Integer({ minimum: 0 }),
   source_nonce: StringSchema,
   source_payload: StringSchema,
-  failure_reason_public: Type.Optional(StringSchema),
+  failure_reason_public: Type.Optional(Type.String({ maxLength: 255 })),
 });
 
 export type OracleOrder = Static<typeof OracleOrderSchema>;
