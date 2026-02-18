@@ -55,6 +55,8 @@
     "@fastify/type-provider-typebox": "^6.1.0",
     "@fastify/websocket": "^11.2.0",
     "@sinclair/typebox": "^0.34.48",
+    "@solana-program/system": "^0.10.0",
+    "@solana-program/token": "^0.9.0",
     "@solana/kit": "^5.5.1",
     "@solana/web3.js": "^1.98.4",
     "better-sqlite3": "^12.5.0",

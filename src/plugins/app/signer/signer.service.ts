@@ -5,10 +5,6 @@ import { Buffer } from "node:buffer";
 import {
   createKeyPairSignerFromBytes,
   createSignableMessage,
-  getBytesEncoder,
-  getU32Encoder,
-  getU64Encoder,
-  getUtf8Encoder,
 } from "@solana/kit";
 import {
   SignerKeys,
@@ -17,6 +13,10 @@ import {
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import { kFileManager, type FileManager } from "../../infra/@file-manager.js";
 import { kValidation, type ValidationService } from "../common/validation.js";
+import {
+  serializeBridgeOrder,
+  type BridgeOrderFields,
+} from "../common/solana-helpers.js";
 
 const MAX_U64 = (1n << 64n) - 1n;
 
@@ -118,23 +118,6 @@ function normalizeQubicLockOrder(order: QubicLockOrderToSign): QubicLockOrderMes
   };
 }
 
-function encodeString(value: string): Uint8Array {
-  const stringBytes = getUtf8Encoder().encode(value);
-  const lengthBytes = getU32Encoder().encode(stringBytes.length);
-  return concatBytes([new Uint8Array(lengthBytes), new Uint8Array(stringBytes)]);
-}
-
-function concatBytes(chunks: Uint8Array[]): Uint8Array {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return merged;
-}
-
 function serializeQubicLockOrder(order: QubicLockOrderToSign): Uint8Array {
   const normalized = normalizeQubicLockOrder(order);
   assertFixedBytes(normalized.contractAddress, "contractAddress", 32);
@@ -144,20 +127,7 @@ function serializeQubicLockOrder(order: QubicLockOrderToSign): Uint8Array {
   assertFixedBytes(normalized.toAddress, "toAddress", 32);
   assertFixedBytes(normalized.nonce, "nonce", 32);
 
-  return concatBytes([
-    encodeString(normalized.protocolName),
-    encodeString(normalized.protocolVersion),
-    new Uint8Array(getBytesEncoder().encode(normalized.contractAddress)),
-    new Uint8Array(getU32Encoder().encode(normalized.networkIn)),
-    new Uint8Array(getU32Encoder().encode(normalized.networkOut)),
-    new Uint8Array(getBytesEncoder().encode(normalized.tokenIn)),
-    new Uint8Array(getBytesEncoder().encode(normalized.tokenOut)),
-    new Uint8Array(getBytesEncoder().encode(normalized.fromAddress)),
-    new Uint8Array(getBytesEncoder().encode(normalized.toAddress)),
-    new Uint8Array(getU64Encoder().encode(normalized.amount)),
-    new Uint8Array(getU64Encoder().encode(normalized.relayerFee)),
-    new Uint8Array(getBytesEncoder().encode(normalized.nonce)),
-  ]);
+  return serializeBridgeOrder(normalized as BridgeOrderFields);
 }
 
 export function normalizeSignatureValue(value: unknown): string {

@@ -3,7 +3,6 @@ import type { FastifyBaseLogger } from "fastify";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { PublicKey } from "@solana/web3.js";
 import {
   type QubicLockEventPayload,
   type QubicOverrideLockEventPayload,
@@ -11,16 +10,15 @@ import {
 } from "./schemas/qubic-event.js";
 import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.js";
 import { type SignerService } from "../../signer/signer.service.js";
-import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../../../clients/js/programs/qsBridge.js";
+import { PublicKey } from "@solana/web3.js";
 import { hexToBytes } from "../solana/bytes.js";
-
-const PROTOCOL_NAME = "QubicBridge";
-const PROTOCOL_VERSION = "1";
 import { Network } from "../../common/schemas/common.js";
-const QUBIC_TOKEN_ADDRESS = new Uint8Array(32);
-const CONTRACT_ADDRESS_BYTES = new PublicKey(
-  QS_BRIDGE_PROGRAM_ADDRESS
-).toBytes();
+import {
+  PROTOCOL_NAME,
+  PROTOCOL_VERSION,
+  QUBIC_TOKEN_ADDRESS,
+  CONTRACT_ADDRESS_BYTES,
+} from "../../common/solana-helpers.js";
 
 type Logger = FastifyBaseLogger;
 

@@ -1,6 +1,5 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
-import { createHash, randomUUID } from "node:crypto";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import {
   kUndiciClient,
@@ -11,6 +10,11 @@ import {
   type OrdersRepository,
 } from "../indexer/orders.repository.js";
 import { OracleOrder } from "../indexer/schemas/order.js";
+import {
+  type SolanaRelayDeps,
+  relayToSolana,
+  buildSolanaRelayDeps,
+} from "./relay-solana.js";
 
 export type RelayerService = {
   relayPending(): Promise<void>;
@@ -53,16 +57,6 @@ async function relayToQubic(
   return { trxHash: body.trxHash };
 }
 
-function relayToSolana(order: OracleOrder, logger: FastifyInstance["log"]): RelayResult {
-  const trxHash = createHash("sha256").update(randomUUID()).digest("hex");
-  logger.info(
-    { orderId: order.id },
-    "Solana relayer is not implemented; returning placeholder transaction hash"
-  );
-  // TODO: Replace placeholder transaction hash with actual Solana relay.
-  return { trxHash };
-}
-
 async function relayOrder(
   order: OracleOrder,
   deps: {
@@ -70,16 +64,17 @@ async function relayOrder(
     config: EnvConfig;
     client: ReturnType<UndiciClientService["create"]>;
     logger: FastifyInstance["log"];
+    solanaDeps: SolanaRelayDeps;
   }
 ) {
-  const { ordersRepository, config, client, logger } = deps;
+  const { ordersRepository, config, client, logger, solanaDeps } = deps;
   const nextAttempts = order.relay_attempts + 1;
 
   try {
     const result =
       order.dest === "qubic"
         ? await relayToQubic(order, { config, client })
-        : relayToSolana(order, logger);
+        : await relayToSolana(order, solanaDeps);
 
     await ordersRepository.update(order.id, {
       status: "relayed",
@@ -103,8 +98,9 @@ export function createRelayerService(deps: {
   config: EnvConfig;
   undiciClient: UndiciClientService;
   logger: FastifyInstance["log"];
+  solanaDeps: SolanaRelayDeps;
 }): RelayerService {
-  const { ordersRepository, config, undiciClient, logger } = deps;
+  const { ordersRepository, config, undiciClient, logger, solanaDeps } = deps;
   const client = undiciClient.create();
 
   return {
@@ -118,6 +114,7 @@ export function createRelayerService(deps: {
           config,
           client,
           logger,
+          solanaDeps,
         });
       }
     },
@@ -152,7 +149,6 @@ export function startRelayer(
   });
 
   queueMicrotask(() => {
-    // Kick off a first run right after startup without blocking plugin init.
     runOnce().catch(() => undefined);
   });
 }
@@ -169,11 +165,14 @@ export default fp(
     const undiciClient =
       fastify.getDecorator<UndiciClientService>(kUndiciClient);
 
+    const solanaDeps = await buildSolanaRelayDeps(fastify, config, ordersRepository);
+
     const relayer = createRelayerService({
       ordersRepository,
       config,
       undiciClient,
       logger: fastify.log,
+      solanaDeps,
     });
 
     fastify.decorate(kRelayerService, relayer);
@@ -184,6 +183,6 @@ export default fp(
   },
   {
     name: "relayer",
-    dependencies: ["env", "orders-repository", "undici-client"],
+    dependencies: ["env", "orders-repository", "undici-client", "signer-service", "validation"],
   }
 );
