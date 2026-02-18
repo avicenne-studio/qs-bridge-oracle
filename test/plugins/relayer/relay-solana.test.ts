@@ -149,6 +149,7 @@ describe("relay-solana helpers", () => {
         sendAndConfirm: (async () => undefined) as unknown as SolanaRelayDeps["sendAndConfirm"],
         ordersRepository: { findSignatures: async () => [] } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: noopLogger,
+        getLookupTable: async () => ({}),
       };
 
       await assert.rejects(() => relayToSolana(order, deps), { message: "No oracle signatures found for order" });
@@ -165,6 +166,7 @@ describe("relay-solana helpers", () => {
         sendAndConfirm: (async () => undefined) as unknown as SolanaRelayDeps["sendAndConfirm"],
         ordersRepository: { findSignatures: async () => ["AAAA"] } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: noopLogger,
+        getLookupTable: async () => ({}),
       };
 
       await assert.rejects(() => relayToSolana(order, deps), { message: "No registered oracles found on chain" });
@@ -188,6 +190,7 @@ describe("relay-solana helpers", () => {
           findSignatures: async () => [Buffer.from(new Uint8Array(64)).toString("base64")],
         } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: noopLogger,
+        getLookupTable: async () => ({}),
       };
 
       await assert.rejects(() => relayToSolana(order, deps), { message: "No signatures could be matched to registered oracles" });
@@ -236,6 +239,7 @@ describe("relay-solana helpers", () => {
         sendAndConfirm: (async () => { sendCalled = true; }) as unknown as SolanaRelayDeps["sendAndConfirm"],
         ordersRepository: { findSignatures: async () => [sigBase64] } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: noopLogger,
+        getLookupTable: async () => ({}),
       };
 
       const result = await relayToSolana(order, deps);

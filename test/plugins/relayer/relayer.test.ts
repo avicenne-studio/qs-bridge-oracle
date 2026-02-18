@@ -242,6 +242,7 @@ describe("relayer plugin", () => {
         sendAndConfirm: (async () => undefined) as unknown as SolanaRelayDeps["sendAndConfirm"],
         ordersRepository: { findSignatures: async () => [sigBase64] } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: { info() {}, error() {} } as unknown as SolanaRelayDeps["logger"],
+        getLookupTable: async () => ({}),
       },
     });
 

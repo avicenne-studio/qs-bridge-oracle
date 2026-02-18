@@ -29,7 +29,8 @@
     "lint:fix": "npm run lint -- --fix",
     "fake-qubic": "node scripts/fake-qubic-smart-contract.js",
     "lock": "node scripts/lock.js",
-    "override-lock": "node scripts/override-lock.js"
+    "override-lock": "node scripts/override-lock.js",
+    "create-lookup-table": "node --env-file=.env.local scripts/create-lookup-table.js"
   },
   "keywords": [],
   "author": "Michelet Jean <jean.antoine.michelet@gmail.com>",
@@ -55,6 +56,7 @@
     "@fastify/type-provider-typebox": "^6.1.0",
     "@fastify/websocket": "^11.2.0",
     "@sinclair/typebox": "^0.34.48",
+    "@solana-program/address-lookup-table": "^0.10.0",
     "@solana-program/system": "^0.10.0",
     "@solana-program/token": "^0.9.0",
     "@solana/kit": "^5.5.1",

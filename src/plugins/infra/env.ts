@@ -23,6 +23,7 @@ export type EnvConfig = {
   SOLANA_TX_RETRY_BASE_MS?: number;
   SOLANA_TX_RETRY_MAX_MS?: number;
   SOLANA_BPS_FEE: number;
+  SOLANA_LOOKUP_TABLE_ADDRESS: string;
   TOKEN_MINT: string;
   RELAYER_FEE_SOLANA: string;
   RELAYER_FEE_QUBIC: string;
@@ -53,6 +54,7 @@ const schema = {
     "SOLANA_TX_COMMITMENT",
     "RELAYER_FEE_SOLANA",
     "RELAYER_FEE_QUBIC",
+    "SOLANA_LOOKUP_TABLE_ADDRESS",
   ],
   properties: {
     RATE_LIMIT_MAX: {
@@ -137,6 +139,9 @@ const schema = {
       type: "number",
       minimum: 0,
       default: 0,
+    },
+    SOLANA_LOOKUP_TABLE_ADDRESS: {
+      type: "string",
     },
     TOKEN_MINT: {
       type: "string",

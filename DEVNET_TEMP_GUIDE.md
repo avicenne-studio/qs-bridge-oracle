@@ -34,7 +34,23 @@ This is the shortest path to add oracles and submit an inbound order on devnet u
 ```
 
 
-## 4) Create/Override `.temp/order.json`
+## 4) Create the Address Lookup Table
+
+The inbound relay transaction exceeds the legacy 1232-byte limit. An Address Lookup Table (ALT) compresses account addresses into 1-byte indices. The script reads `SOLANA_RPC_URL` and `TOKEN_MINT` from `.env.local`, detects registered oracles on-chain automatically, and creates + extends the LUT in a single transaction.
+
+```bash
+npm run create-lookup-table
+```
+
+Copy the printed address into `.env.local`:
+
+```
+SOLANA_LOOKUP_TABLE_ADDRESS=<address from output>
+```
+
+Note: if you add/remove oracles later, you need to create a new lookup table.
+
+## 5) Create/Override `.temp/order.json`
 
 ```bash
 node <<'NODE'
@@ -58,7 +74,7 @@ fs.writeFileSync('.temp/order.json', JSON.stringify(order, null, 2));
 NODE
 ```
 
-## 5) Send an inbound order
+## 6) Send an inbound order
 
 ```bash
 npm run send-inbound-order -- .temp/order.json .temp/oracle-keys.json .temp/oracle-1.json
@@ -69,7 +85,7 @@ Notes:
 - You can override the signature count: `SIGNATURE_COUNT=4 npm run send-inbound-order -- ...`
 - The script will create missing recipient/relayer ATAs automatically.
 
-## 6) Send an outbound order (unlock/burn)
+## 7) Send an outbound order (unlock/burn)
 
 Create a minimal outbound order payload (Qubic destination uses 32-byte hex):
 
@@ -103,7 +119,7 @@ npm run override-outbound-order -- .temp/outbound-order.json .temp/recipient.jso
   --to-address 0x5555444444444444444444444444444444444444444444444444444444444444
 ```
 
-## 7) Fake Qubic smart contract (local simulation)
+## 8) Fake Qubic smart contract (local simulation)
 
 The fake Qubic contract runs a local Fastify server with:
 - `POST /lock`
@@ -152,7 +168,7 @@ FAKE_QUBIC_URL=http://127.0.0.1:3015 npm run lock -- --from "id(1,2,3,4)" --to "
 FAKE_QUBIC_URL=http://127.0.0.1:3015 npm run override-lock -- --to "0xdef" --relayerFee 5 --nonce 1
 ```
 
-## 8) Claim protocol fee (protocol fee recipient only)
+## 9) Claim protocol fee (protocol fee recipient only)
 
 ```bash
 npm run claim-protocol-fee -- .temp/protocol-fee-recipient.json
@@ -160,7 +176,7 @@ npm run claim-protocol-fee -- .temp/protocol-fee-recipient.json
 
 Note: this claims **protocol fee**, not oracle claimable balances.
 
-## 9) Re-run with a new nonce
+## 10) Re-run with a new nonce
 
 Inbound orders are one-time per nonce. To submit a new one, update the nonce:
 

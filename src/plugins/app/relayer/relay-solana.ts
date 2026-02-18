@@ -12,9 +12,11 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
   getSignatureFromTransaction,
+  compressTransactionMessageUsingAddressLookupTables,
   type Address,
   type KeyPairSigner,
 } from "@solana/kit";
+import { fetchAddressLookupTable } from "@solana-program/address-lookup-table";
 import { PublicKey, Connection } from "@solana/web3.js";
 import type { FastifyInstance } from "fastify";
 import type { EnvConfig } from "../../infra/env.js";
@@ -46,6 +48,8 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
 } from "../common/solana/index.js";
 
+export type AddressLookupTable = Record<Address, Address[]>;
+
 export type SolanaRelayDeps = {
   config: EnvConfig;
   relayerSigner: KeyPairSigner;
@@ -54,6 +58,7 @@ export type SolanaRelayDeps = {
   sendAndConfirm: ReturnType<typeof sendAndConfirmTransactionFactory>;
   ordersRepository: OrdersRepository;
   logger: FastifyInstance["log"];
+  getLookupTable: () => Promise<AddressLookupTable>;
 };
 
 const ED25519_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
@@ -116,7 +121,7 @@ export async function relayToSolana(
   order: OracleOrder,
   deps: SolanaRelayDeps
 ): Promise<{ trxHash: string }> {
-  const { config, relayerSigner, connection, rpc, sendAndConfirm, ordersRepository, logger } = deps;
+  const { config, relayerSigner, connection, rpc, sendAndConfirm, ordersRepository, logger, getLookupTable } = deps;
 
   const tokenMintBytes = new PublicKey(config.TOKEN_MINT).toBytes();
   const networkIn = Network.Qubic;
@@ -228,11 +233,13 @@ export async function relayToSolana(
     latestBlockhash,
     setTransactionMessageFeePayer(
       relayerSigner.address,
-      createTransactionMessage({ version: "legacy" })
+      createTransactionMessage({ version: 0 })
     )
   );
   const withInstruction = appendTransactionMessageInstruction(instruction, baseMessage);
-  const finalMessage = applyComputeBudget(withInstruction);
+  const withBudget = applyComputeBudget(withInstruction);
+  const lookupTable = await getLookupTable();
+  const finalMessage = compressTransactionMessageUsingAddressLookupTables(withBudget, lookupTable);
 
   const signedTransaction = await signTransactionMessageWithSigners(finalMessage);
   const trxHash = getSignatureFromTransaction(signedTransaction);
@@ -271,6 +278,16 @@ export async function buildSolanaRelayDeps(
   );
   const sendAndConfirm = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
 
+  const lutAddr = address(config.SOLANA_LOOKUP_TABLE_ADDRESS);
+  let cachedLut: AddressLookupTable | undefined;
+  /* c8 ignore next 6 */
+  const getLookupTable = async (): Promise<AddressLookupTable> => {
+    if (cachedLut) return cachedLut;
+    const lutAccount = await fetchAddressLookupTable(rpc, lutAddr);
+    cachedLut = { [lutAddr]: lutAccount.data.addresses };
+    return cachedLut;
+  };
+
   return {
     config,
     relayerSigner,
@@ -279,5 +296,6 @@ export async function buildSolanaRelayDeps(
     sendAndConfirm,
     ordersRepository,
     logger: fastify.log,
+    getLookupTable,
   };
 }

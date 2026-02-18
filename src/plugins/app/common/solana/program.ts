@@ -98,15 +98,16 @@ export async function findAssociatedTokenAddress(
 }
 
 export function applyComputeBudget<T extends Parameters<typeof prependTransactionMessageInstructions>[1]>(
-  message: T
+  message: T,
+  { computeUnitLimit = 300_000, computeUnitPrice = 0n } = {}
 ) {
   const COMPUTE_BUDGET_PROGRAM = address("ComputeBudget111111111111111111111111111111");
   const limitData = new Uint8Array(5);
   limitData[0] = 2;
-  new DataView(limitData.buffer).setUint32(1, 200_000, true);
+  new DataView(limitData.buffer).setUint32(1, computeUnitLimit, true);
   const priceData = new Uint8Array(9);
   priceData[0] = 3;
-  new DataView(priceData.buffer).setBigUint64(1, 0n, true);
+  new DataView(priceData.buffer).setBigUint64(1, computeUnitPrice, true);
 
   return prependTransactionMessageInstructions(
     [

@@ -30,7 +30,10 @@ export function resolveRpcUrl() {
 }
 
 export function resolveWsUrl() {
-  return process.env.SOLANA_WS_URL || DEFAULT_WS_URL;
+  if (process.env.SOLANA_WS_URL) return process.env.SOLANA_WS_URL;
+  const rpcUrl = resolveRpcUrl();
+  if (rpcUrl !== DEFAULT_RPC_URL) return rpcUrl.replace(/^http/, "ws");
+  return DEFAULT_WS_URL;
 }
 
 export function createRpcClients(rpcUrl = resolveRpcUrl(), wsUrl = resolveWsUrl()) {
