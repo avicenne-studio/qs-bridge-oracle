@@ -47,6 +47,7 @@ const baseEnv = {
   NODE_ENV: "production",
   FASTIFY_CLOSE_GRACE_DELAY: "1000",
   LOG_LEVEL: "info",
+  LOG_PRETTY: "true",
   RATE_LIMIT_MAX: 100,
   HOST: "127.0.0.1",
     SOLANA_RPC_URL: process.env.SOLANA_RPC_URL ?? DEFAULT_RPC_URL,
