@@ -209,6 +209,12 @@ fastify.get("/transactions/:trxHash", async (request, reply) => {
   });
 });
 
+fastify.get("/transactions", async (_request, reply) => {
+  return reply.send({
+    data: Array.from(transactions.values()),
+  });
+});
+
 fastify.get("/unlocks", async (_request, reply) => {
   return reply.send({ data: unlocks });
 });
