@@ -80,14 +80,23 @@ async function relayOrder(
     if (alreadyRelayed) {
       logger.warn(
         { orderId: order.id, relayError: payload },
-        "Relay failed (likely already relayed by another oracle)"
+        "Relay already completed by another oracle"
       );
-    } else {
-      logger.error(
-        { orderId: order.id, relayError: payload },
-        "Relay failed"
-      );
+      try {
+        await ordersRepository.update(order.id, {
+          status: "relayed",
+        });
+      } catch (updateErr) {
+        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+        logger.error({ orderId: order.id, updateError: msg }, "Failed to update order after already-relayed detection");
+      }
+      return;
     }
+
+    logger.error(
+      { orderId: order.id, relayError: payload },
+      "Relay failed"
+    );
     const shouldFail = nextAttempts >= config.RELAYER_MAX_ATTEMPTS;
     try {
       await ordersRepository.update(order.id, {

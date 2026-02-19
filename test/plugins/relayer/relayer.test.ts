@@ -284,7 +284,7 @@ describe("relayer plugin", () => {
     assert.ok(logMock.calls.length >= 1);
   });
 
-  it("logs warning when relay fails with already-relayed message", async () => {
+  it("marks order relayed without retry when already-relayed message is detected", async () => {
     const orderData: OracleOrder = {
       id: makeId(10), source: "solana", dest: "qubic", from: "A", to: "B",
       amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
@@ -320,11 +320,12 @@ describe("relayer plugin", () => {
     await relayer.relayPending();
 
     assert.ok(updatedWith);
-    assert.strictEqual(updatedWith.relay_attempts, 1);
+    assert.strictEqual(updatedWith.status, "relayed");
+    assert.strictEqual(updatedWith.relay_attempts, undefined);
     assert.ok(warnLogs.length >= 1, "expected warn log for already-relayed message");
   });
 
-  it("logs warning when relay fails with already-relayed code", async () => {
+  it("marks order relayed without retry when already-relayed code is detected", async () => {
     const orderData: OracleOrder = {
       id: makeId(11), source: "solana", dest: "qubic", from: "A", to: "B",
       amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
@@ -360,7 +361,8 @@ describe("relayer plugin", () => {
     await relayer.relayPending();
 
     assert.ok(updatedWith);
-    assert.strictEqual(updatedWith.relay_attempts, 1);
+    assert.strictEqual(updatedWith.status, "relayed");
+    assert.strictEqual(updatedWith.relay_attempts, undefined);
     assert.ok(warnLogs.length >= 1, "expected warn log for already-relayed code");
   });
 
@@ -657,7 +659,7 @@ describe("relayer plugin", () => {
     assert.strictEqual(updatedWith.relay_attempts, 1);
   });
 
-  it("logs warning when solana relay fails with already-relayed message", async () => {
+  it("marks solana order relayed without retry when already-relayed message is detected", async () => {
     const fromHex = "00".repeat(32);
     const toHex = "01".repeat(32);
     const nonceHex = "02".repeat(32);
@@ -668,12 +670,16 @@ describe("relayer plugin", () => {
       source_nonce: nonceHex, source_payload: "{}",
     };
 
+    let updatedWith: Record<string, unknown> | undefined;
     const warnLogs: unknown[][] = [];
 
     const relayer = createRelayerService({
       ordersRepository: {
         findReadyForRelay: async () => [solanaOrder],
-        update: async (_id: string, data: Record<string, unknown>) => ({ ...solanaOrder, ...data }),
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updatedWith = data;
+          return { ...solanaOrder, ...data };
+        },
       } as unknown as OrdersRepository,
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
       undiciClient: { create: () => ({}) } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
@@ -692,7 +698,88 @@ describe("relayer plugin", () => {
 
     await relayer.relayPending();
 
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "relayed");
+    assert.strictEqual(updatedWith.relay_attempts, undefined);
     assert.ok(warnLogs.length >= 1, "expected warn log for already-relayed solana order");
+  });
+
+  it("logs error when order update fails after already-relayed detection", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(18), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-18", source_payload: "{}",
+    };
+
+    const errorLogs: unknown[][] = [];
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async () => { throw new Error("db write failed"); },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => { throw new Error("already been initialized"); },
+        }),
+      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn() {},
+        error(...args: unknown[]) { errorLogs.push(args); },
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    const updateFailLog = errorLogs.find(
+      (args) =>
+        typeof args[1] === "string" &&
+        args[1].includes("Failed to update order after already-relayed detection")
+    );
+    assert.ok(updateFailLog, "expected a log about update failure after already-relayed");
+  });
+
+  it("stringifies non-Error update failures after already-relayed detection", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(19), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-19", source_payload: "{}",
+    };
+
+    const errorLogs: unknown[][] = [];
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async () => { throw "raw string db failure"; },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => { throw new Error("uninitialized account"); },
+        }),
+      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn() {},
+        error(...args: unknown[]) { errorLogs.push(args); },
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    const updateFailLog = errorLogs.find(
+      (args) =>
+        typeof args[1] === "string" &&
+        args[1].includes("Failed to update order after already-relayed detection")
+    );
+    assert.ok(updateFailLog, "expected a log about update failure after already-relayed");
   });
 
   it("handles relay error with context.__code of zero", async () => {
