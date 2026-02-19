@@ -17,12 +17,15 @@ export type EnvConfig = {
   HUB_URLS: string;
   HUB_KEYS_FILE: string;
   SOLANA_RPC_URL: string;
+  SOLANA_WS_URL: string;
   QUBIC_RPC_URL: string;
   SOLANA_TX_COMMITMENT: "processed" | "confirmed" | "finalized";
   SOLANA_TX_RETRY_MAX_ATTEMPTS?: number;
   SOLANA_TX_RETRY_BASE_MS?: number;
   SOLANA_TX_RETRY_MAX_MS?: number;
-  SOLANA_BPS_FEE: number;
+  SOLANA_MAX_PRIORITY_FEE: number;
+  SOLANA_LOOKUP_TABLE_ADDRESS: string;
+  TOKEN_MINT: string;
   RELAYER_FEE_SOLANA: string;
   RELAYER_FEE_QUBIC: string;
   RELAYER_ENABLED: boolean;
@@ -46,11 +49,13 @@ const schema = {
     "HUB_URLS",
     "HUB_KEYS_FILE",
     "SOLANA_RPC_URL",
+    "SOLANA_WS_URL",
     "QUBIC_RPC_URL",
-    "SOLANA_BPS_FEE",
+    "TOKEN_MINT",
     "SOLANA_TX_COMMITMENT",
     "RELAYER_FEE_SOLANA",
     "RELAYER_FEE_QUBIC",
+    "SOLANA_LOOKUP_TABLE_ADDRESS",
   ],
   properties: {
     RATE_LIMIT_MAX: {
@@ -108,6 +113,9 @@ const schema = {
     SOLANA_RPC_URL: {
       type: "string",
     },
+    SOLANA_WS_URL: {
+      type: "string",
+    },
     QUBIC_RPC_URL: {
       type: "string",
     },
@@ -131,10 +139,16 @@ const schema = {
       minimum: 1,
       default: 4000,
     },
-    SOLANA_BPS_FEE: {
+    SOLANA_MAX_PRIORITY_FEE: {
       type: "number",
       minimum: 0,
-      default: 0,
+      default: 100_000,
+    },
+    SOLANA_LOOKUP_TABLE_ADDRESS: {
+      type: "string",
+    },
+    TOKEN_MINT: {
+      type: "string",
     },
     RELAYER_FEE_SOLANA: {
       type: "string",

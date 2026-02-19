@@ -1,6 +1,5 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
-import { createHash, randomUUID } from "node:crypto";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import {
   kUndiciClient,
@@ -11,6 +10,12 @@ import {
   type OrdersRepository,
 } from "../indexer/orders.repository.js";
 import { OracleOrder } from "../indexer/schemas/order.js";
+import { relayToQubic } from "./relay-qubic.js";
+import {
+  type SolanaRelayDeps,
+  relayToSolana,
+  buildSolanaRelayDeps,
+} from "./relay-solana.js";
 
 export type RelayerService = {
   relayPending(): Promise<void>;
@@ -18,49 +23,31 @@ export type RelayerService = {
 
 export const kRelayerService = Symbol("app.relayerService");
 
-type RelayResult = { trxHash: string };
+/** Solana error codes that usually mean another oracle already relayed (account already initialized, etc.). */
+const ALREADY_RELAYED_CODES = ["7050003", "4615009", "-32002"];
+const ALREADY_RELAYED_MESSAGES = ["already been initialized", "uninitialized account"];
 
-function buildQubicUnlockPath(rpcUrl: string): { origin: string; path: string } {
-  const url = new URL(rpcUrl);
-  const origin = url.origin;
-  const basePath = url.pathname === "/" ? "" : url.pathname;
-  return { origin, path: `${basePath}/unlock` };
-}
-
-function buildQubicUnlockPayload(order: OracleOrder) {
-  return {
-    to: order.to,
-    amount: order.amount,
-    nonce: order.source_nonce,
-  };
-}
-
-async function relayToQubic(
-  order: OracleOrder,
-  deps: { config: EnvConfig; client: ReturnType<UndiciClientService["create"]> }
-): Promise<RelayResult> {
-  const { origin, path } = buildQubicUnlockPath(deps.config.QUBIC_RPC_URL);
-  const payload = buildQubicUnlockPayload(order);
-  const body = await deps.client.postJson<{ trxHash?: string }>(
-    origin,
-    path,
-    payload
-  );
-  if (!body.trxHash) {
-    throw new Error("Relay response missing trxHash");
+function isLikelyAlreadyRelayed(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (ALREADY_RELAYED_MESSAGES.some((m) => msg.includes(m))) {
+    return true;
   }
-
-  return { trxHash: body.trxHash };
+  if (ALREADY_RELAYED_CODES.some((c) => msg.includes(c))) {
+    return true;
+  }
+  return false;
 }
 
-function relayToSolana(order: OracleOrder, logger: FastifyInstance["log"]): RelayResult {
-  const trxHash = createHash("sha256").update(randomUUID()).digest("hex");
-  logger.info(
-    { orderId: order.id },
-    "Solana relayer is not implemented; returning placeholder transaction hash"
-  );
-  // TODO: Replace placeholder transaction hash with actual Solana relay.
-  return { trxHash };
+function toRelayErrorPayload(error: unknown): { message: string; code?: string } {
+  if (error instanceof Error) {
+    const ctx = (error as { context?: { __code?: number } }).context;
+    const code =
+      typeof ctx === "object" && ctx !== null && ctx.__code !== undefined
+        ? String(ctx.__code)
+        : undefined;
+    return { message: error.message, ...(code && { code }) };
+  }
+  return { message: String(error) };
 }
 
 async function relayOrder(
@@ -70,16 +57,17 @@ async function relayOrder(
     config: EnvConfig;
     client: ReturnType<UndiciClientService["create"]>;
     logger: FastifyInstance["log"];
+    solanaDeps: SolanaRelayDeps;
   }
 ) {
-  const { ordersRepository, config, client, logger } = deps;
+  const { ordersRepository, config, client, logger, solanaDeps } = deps;
   const nextAttempts = order.relay_attempts + 1;
 
   try {
     const result =
       order.dest === "qubic"
         ? await relayToQubic(order, { config, client })
-        : relayToSolana(order, logger);
+        : await relayToSolana(order, solanaDeps);
 
     await ordersRepository.update(order.id, {
       status: "relayed",
@@ -87,14 +75,39 @@ async function relayOrder(
     });
     logger.info({ orderId: order.id }, "Order relayed successfully");
   } catch (error) {
-    logger.error({ err: error, orderId: order.id }, "Relay failed");
-    const shouldFail = nextAttempts >= config.RELAYER_MAX_ATTEMPTS;
+    const payload = toRelayErrorPayload(error);
+    const alreadyRelayed = isLikelyAlreadyRelayed(error);
+    if (alreadyRelayed) {
+      logger.warn(
+        { orderId: order.id, relayError: payload },
+        "Relay already completed by another oracle"
+      );
+      try {
+        await ordersRepository.update(order.id, {
+          status: "relayed",
+        });
+      } catch (updateErr) {
+        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+        logger.error({ orderId: order.id, updateError: msg }, "Failed to update order after already-relayed detection");
+      }
+      return;
+    }
 
-    await ordersRepository.update(order.id, {
-      relay_attempts: nextAttempts,
-      status: shouldFail ? "failed" : "ready-for-relay",
-      failure_reason_public: shouldFail ? "Relay failed" : undefined,
-    });
+    logger.error(
+      { orderId: order.id, relayError: payload },
+      "Relay failed"
+    );
+    const shouldFail = nextAttempts >= config.RELAYER_MAX_ATTEMPTS;
+    try {
+      await ordersRepository.update(order.id, {
+        relay_attempts: nextAttempts,
+        status: shouldFail ? "failed" : "ready-for-relay",
+        failure_reason_public: shouldFail ? "Relay failed" : undefined,
+      });
+    } catch (updateErr) {
+      const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+      logger.error({ orderId: order.id, updateError: msg }, "Failed to update order after relay failure");
+    }
   }
 }
 
@@ -103,8 +116,9 @@ export function createRelayerService(deps: {
   config: EnvConfig;
   undiciClient: UndiciClientService;
   logger: FastifyInstance["log"];
+  solanaDeps: SolanaRelayDeps;
 }): RelayerService {
-  const { ordersRepository, config, undiciClient, logger } = deps;
+  const { ordersRepository, config, undiciClient, logger, solanaDeps } = deps;
   const client = undiciClient.create();
 
   return {
@@ -118,6 +132,7 @@ export function createRelayerService(deps: {
           config,
           client,
           logger,
+          solanaDeps,
         });
       }
     },
@@ -140,7 +155,8 @@ export function startRelayer(
     try {
       await deps.relayer.relayPending();
     } catch (error) {
-      fastify.log.error({ err: error }, "Relayer cycle failed");
+      const message = error instanceof Error ? error.message : String(error);
+      fastify.log.error({ relayCycleError: message }, "Relayer cycle failed");
     } finally {
       running = false;
     }
@@ -152,7 +168,6 @@ export function startRelayer(
   });
 
   queueMicrotask(() => {
-    // Kick off a first run right after startup without blocking plugin init.
     runOnce().catch(() => undefined);
   });
 }
@@ -169,11 +184,14 @@ export default fp(
     const undiciClient =
       fastify.getDecorator<UndiciClientService>(kUndiciClient);
 
+    const solanaDeps = await buildSolanaRelayDeps(fastify, config, ordersRepository);
+
     const relayer = createRelayerService({
       ordersRepository,
       config,
       undiciClient,
       logger: fastify.log,
+      solanaDeps,
     });
 
     fastify.decorate(kRelayerService, relayer);
@@ -184,6 +202,6 @@ export default fp(
   },
   {
     name: "relayer",
-    dependencies: ["env", "orders-repository", "undici-client"],
+    dependencies: ["env", "orders-repository", "undici-client", "signer-service", "validation"],
   }
 );

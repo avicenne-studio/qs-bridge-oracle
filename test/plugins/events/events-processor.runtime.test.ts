@@ -1,6 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Buffer } from "node:buffer";
 import { build, waitFor } from "../../helpers/build.js";
 import {
   kHubEventsRepository,
@@ -12,9 +11,7 @@ import {
 } from "../../../src/plugins/app/indexer/orders.repository.js";
 import { kSolanaEventValidator } from "../../../src/plugins/app/events/solana/solana-events-validator.js";
 import { kQubicEventValidator } from "../../../src/plugins/app/events/qubic/qubic-events-validator.js";
-
-const hex32 = (value: number) =>
-  Buffer.from(new Uint8Array(32).fill(value)).toString("hex");
+import { hex32 } from "../../../src/plugins/app/common/bytes.js";
 
 function createOutboundPayload(seed: number) {
   return {
@@ -170,6 +167,7 @@ test("processor creates failed orders for outbound events", async (t) => {
 
 test("processor handles qubic lock events", async (t) => {
   const intervalMs = 50;
+  const lockNonce = hex32(70);
 
   const app = await build(t, {
     config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
@@ -189,23 +187,23 @@ test("processor handles qubic lock events", async (t) => {
     slot: null,
     chain: "qubic",
     type: "lock",
-    nonce: "123",
+    nonce: lockNonce,
     payload: {
-      fromAddress: "id(1,2,3,4)",
-      toAddress: "0xabc",
+      fromAddress: hex32(71),
+      toAddress: hex32(72),
       amount: "10",
       relayerFee: "12",
-      nonce: "123",
+      nonce: lockNonce,
     },
     createdAt: "2024-01-01 00:00:00",
   });
 
   await waitFor(async () => {
-    const order = await ordersRepo.findBySourceNonce("123");
+    const order = await ordersRepo.findBySourceNonce(lockNonce);
     return Boolean(order);
   }, 2_000);
 
-  const order = await ordersRepo.findBySourceNonce("123");
+  const order = await ordersRepo.findBySourceNonce(lockNonce);
   assert.ok(order);
   assert.strictEqual(order?.source, "qubic");
   assert.strictEqual(order?.dest, "solana");
@@ -213,6 +211,7 @@ test("processor handles qubic lock events", async (t) => {
 
 test("processor handles qubic override events", async (t) => {
   const intervalMs = 50;
+  const overrideNonce = hex32(80);
 
   const app = await build(t, {
     config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
@@ -231,13 +230,13 @@ test("processor handles qubic override events", async (t) => {
     slot: null,
     chain: "qubic",
     type: "override-lock",
-    nonce: "777",
+    nonce: overrideNonce,
     payload: {
-      fromAddress: "id(1,2,3,4)",
-      toAddress: "0xdef",
+      fromAddress: hex32(81),
+      toAddress: hex32(82),
       amount: "10",
       relayerFee: "9",
-      nonce: "777",
+      nonce: overrideNonce,
     },
     createdAt: "2024-01-01 00:00:00",
   });
@@ -250,6 +249,7 @@ test("processor handles qubic override events", async (t) => {
 
 test("processor stores destination transaction hash for qubic unlock events", async (t) => {
   const intervalMs = 50;
+  const unlockNonce = hex32(90);
 
   const app = await build(t, {
     config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
@@ -267,8 +267,8 @@ test("processor stores destination transaction hash for qubic unlock events", as
     id: "00000000-0000-4000-8000-000000000999",
     source: "qubic",
     dest: "solana",
-    from: "id(1,2,3,4)",
-    to: "0xabc",
+    from: hex32(91),
+    to: hex32(92),
     amount: "10",
     relayerFee: "1",
     origin_trx_hash: "trx-lock",
@@ -276,7 +276,7 @@ test("processor stores destination transaction hash for qubic unlock events", as
     status: "pending",
     oracle_accept_to_relay: true,
     relay_attempts: 0,
-    source_nonce: "999",
+    source_nonce: unlockNonce,
     source_payload: JSON.stringify({ v: 1 }),
   });
 
@@ -286,17 +286,17 @@ test("processor stores destination transaction hash for qubic unlock events", as
     slot: null,
     chain: "qubic",
     type: "unlock",
-    nonce: "999",
+    nonce: unlockNonce,
     payload: {
-      toAddress: "0xabc",
+      toAddress: hex32(92),
       amount: "10",
-      nonce: "999",
+      nonce: unlockNonce,
     },
     createdAt: "2024-01-01 00:00:00",
   });
 
   await waitFor(async () => {
-    const order = await ordersRepo.findBySourceNonce("999");
+    const order = await ordersRepo.findBySourceNonce(unlockNonce);
     return order?.destination_trx_hash === "trx-unlock";
   }, 2_000);
 });
@@ -329,6 +329,7 @@ test("processor finalizes order for solana inbound events", async (t) => {
     signature: "sig",
     status: "pending",
     oracle_accept_to_relay: true,
+    relay_attempts: 0,
     source_nonce: inboundNonce,
     source_payload: JSON.stringify({ v: 1 }),
   });

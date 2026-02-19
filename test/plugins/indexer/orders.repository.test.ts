@@ -442,6 +442,36 @@ describe("ordersRepository", () => {
     assert.deepStrictEqual(results[0].signatures.sort(), ["sig-a", "sig-b"]);
   });
 
+  it("should find signatures for an order", async (t) => {
+    const app = await build(t);
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
+
+    const created = await repo.create({
+      id: makeId(901),
+      source: "qubic",
+      dest: "solana",
+      from: "SigA",
+      to: "SigB",
+      amount: "10",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      source_nonce: "nonce-901",
+      source_payload: "{}",
+    });
+
+    await repo.addSignatures(created!.id, ["sig-x", "sig-y"]);
+
+    const signatures = await repo.findSignatures(created!.id);
+    assert.deepStrictEqual(signatures.sort(), ["sig-x", "sig-y"]);
+
+    const empty = await repo.findSignatures(makeId(9999));
+    assert.deepStrictEqual(empty, []);
+  });
+
   it("should find orders by source nonce", async (t) => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);

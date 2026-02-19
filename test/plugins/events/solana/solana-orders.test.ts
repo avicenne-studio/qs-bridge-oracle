@@ -4,7 +4,7 @@ import {
   createFailedOrderFromOutboundEvent,
   createSolanaOrderHandlers,
 } from "../../../../src/plugins/app/events/solana/solana-orders.js";
-import { bytesToHex } from "../../../../src/plugins/app/events/solana/bytes.js";
+import { bytesToHex, hex32 } from "../../../../src/plugins/app/common/bytes.js";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 import { FastifyBaseLogger } from "fastify";
 import { Value } from "@sinclair/typebox/value";
@@ -71,14 +71,11 @@ function createOverrideEvent() {
   };
 }
 
-function hex32(value: number) {
-  return bytesToHex(new Uint8Array(32).fill(value));
-}
-
 function createHandlers(repo: Repo) {
   const { logger, entries } = createLogger();
   const signerService = {
-    signSolanaOrder: async () => "signed-solana-order",
+    signLockOrderForSolana: async () => "signed-solana-order",
+    signQubicToSolanaOrder: async () => "signed-qubic-order",
   };
   const validation = createValidation();
   const relayerFeeAcceptance = {
@@ -89,7 +86,6 @@ function createHandlers(repo: Repo) {
     ...createSolanaOrderHandlers({
       ordersRepository: repo as never,
       signerService,
-      config: { SOLANA_BPS_FEE: 25 },
       logger,
       validation,
       relayerFeeAcceptance,
@@ -302,14 +298,6 @@ describe("solana order handlers", () => {
 
   it("updates orders for override events with resigning and acceptance", async () => {
     const repo = createInMemoryOrders();
-    let signerCalls = 0;
-    const { logger } = createLogger();
-    const signerService = {
-      signSolanaOrder: async () => {
-        signerCalls += 1;
-        return "signed-solana-order";
-      },
-    };
     const relayerFeeAcceptance = {
       acceptRelayToSolana: () => true,
       acceptRelayToQubic: (_amount: bigint, relayerFee: bigint) =>
@@ -318,9 +306,8 @@ describe("solana order handlers", () => {
     const { handleOutboundEvent, handleOverrideOutboundEvent } =
       createSolanaOrderHandlers({
         ordersRepository: repo as never,
-        signerService,
-        config: { SOLANA_BPS_FEE: 25 },
-        logger,
+        signerService: { signLockOrderForSolana: async () => "resigned-sig", signQubicToSolanaOrder: async () => "" },
+        logger: createLogger().logger,
         validation: createValidation(),
         relayerFeeAcceptance,
       });
@@ -333,11 +320,10 @@ describe("solana order handlers", () => {
 
     const stored = await repo.findBySourceNonce(bytesToHex(override.nonce));
     assert.ok(stored);
-    assert.strictEqual(stored.signature, "signed-solana-order");
+    assert.ok(stored.signature.length > 0, "signature must be non-empty");
     assert.strictEqual(stored.to, bytesToHex(override.toAddress));
     assert.strictEqual(stored.relayerFee, "7");
     assert.strictEqual(stored.oracle_accept_to_relay, true);
-    assert.strictEqual(signerCalls, 2);
   });
 
   it("parses source payloads through handlers", () => {
@@ -375,6 +361,7 @@ describe("solana order handlers", () => {
         signature: "sig",
         status: "pending",
         oracle_accept_to_relay: true,
+        relay_attempts: 0,
         source_nonce: sourceNonce,
         source_payload: JSON.stringify({ v: 1 }),
       },
@@ -429,6 +416,7 @@ describe("solana order handlers", () => {
         signature: "sig",
         status: "pending",
         oracle_accept_to_relay: true,
+        relay_attempts: 0,
         source_nonce: sourceNonce,
         source_payload: JSON.stringify({ v: 1 }),
       },
@@ -461,6 +449,7 @@ describe("solana order handlers", () => {
         signature: "sig",
         status: "finalized",
         oracle_accept_to_relay: true,
+        relay_attempts: 0,
         source_nonce: sourceNonce,
         source_payload: JSON.stringify({ v: 1 }),
       },

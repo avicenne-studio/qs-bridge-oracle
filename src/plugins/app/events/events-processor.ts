@@ -309,13 +309,14 @@ export default fp(
     const solanaHandlers = createSolanaOrderHandlers({
       ordersRepository,
       signerService,
-      config: { SOLANA_BPS_FEE: config.SOLANA_BPS_FEE },
       logger: fastify.log,
       validation,
       relayerFeeAcceptance,
     });
     const qubicHandlers = createQubicOrderHandlers({
       ordersRepository,
+      signerService,
+      config: { TOKEN_MINT: config.TOKEN_MINT },
       logger: fastify.log,
       relayerFeeAcceptance,
     });

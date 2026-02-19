@@ -1,6 +1,5 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Buffer } from "node:buffer";
 import { build } from "../../helpers/build.js";
 import {
   kHubEventsRepository,
@@ -8,9 +7,7 @@ import {
   type HubEventsRepository,
   type HubEventCursorsRepository,
 } from "../../../src/plugins/app/events/hub-events.repository.js";
-
-const hex32 = (value: number) =>
-  Buffer.from(new Uint8Array(32).fill(value)).toString("hex");
+import { hex32 } from "../../../src/plugins/app/common/bytes.js";
 
 describe("hub events repository", () => {
   it("creates events, ignores duplicates, and finds latest cursor", async (t) => {

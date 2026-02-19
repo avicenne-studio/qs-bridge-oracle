@@ -57,8 +57,9 @@ const baseEnv = {
   SOLANA_TX_RETRY_MAX_MS: "4000",
   RELAYER_FEE_SOLANA: "1000",
   RELAYER_FEE_QUBIC: "500",
-  SOLANA_KEYS: "./test/fixtures/signer/solana.keys.json",
+  SOLANA_KEYS: "./.temp/oracle-1.keys.json",
   QUBIC_KEYS: "./test/fixtures/signer/qubic.keys.json",
+  TOKEN_MINT: process.env.TOKEN_MINT ?? "4bbjhGLSYwku6Y44dqwcroRfj2vHCdiHJ9SUmndc4FVg",
   HUB_URLS: "http://127.0.0.1:3010,http://127.0.0.1:3011",
   HUB_KEYS_FILE: hubKeysFile,
 };
@@ -75,7 +76,7 @@ const children = [];
 
 function startOracle(oracle) {
   const dbFile = join(tmpRoot, `${oracle.id}.sqlite3`);
-  const solanaKeysFile = `./test/fixtures/signer/solana-${oracle.id.split("-")[1]}.keys.json`;
+  const solanaKeysFile = `./.temp/${oracle.id}.keys.json`;
   const child = spawn("npm", ["run", "simulated"], {
     cwd: ROOT_DIR,
     stdio: ["ignore", "pipe", "pipe"],
