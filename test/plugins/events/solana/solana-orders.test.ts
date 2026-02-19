@@ -75,6 +75,7 @@ function createHandlers(repo: Repo) {
   const { logger, entries } = createLogger();
   const signerService = {
     signLockOrderForSolana: async () => "signed-solana-order",
+    signQubicToSolanaOrder: async () => "signed-qubic-order",
   };
   const validation = createValidation();
   const relayerFeeAcceptance = {
@@ -121,8 +122,7 @@ describe("solana order handlers", () => {
     assert.strictEqual(stored.relayerFee, "2");
     assert.strictEqual(stored.from, bytesToHex(event.fromAddress));
     assert.strictEqual(stored.to, bytesToHex(event.toAddress));
-    assert.ok(stored.signature.length > 0, "signature must be non-empty");
-    assert.notStrictEqual(stored.signature, "signed-solana-order");
+    assert.strictEqual(stored.signature, "signed-solana-order");
     assert.strictEqual(stored.origin_trx_hash, "sig-create-order");
     assert.strictEqual(stored.oracle_accept_to_relay, true);
 
@@ -306,7 +306,7 @@ describe("solana order handlers", () => {
     const { handleOutboundEvent, handleOverrideOutboundEvent } =
       createSolanaOrderHandlers({
         ordersRepository: repo as never,
-        signerService: { signLockOrderForSolana: async () => "" },
+        signerService: { signLockOrderForSolana: async () => "resigned-sig", signQubicToSolanaOrder: async () => "" },
         logger: createLogger().logger,
         validation: createValidation(),
         relayerFeeAcceptance,
