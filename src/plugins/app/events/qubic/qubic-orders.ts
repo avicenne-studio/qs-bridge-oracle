@@ -12,6 +12,7 @@ import { PublicKey } from "@solana/web3.js";
 import { Network } from "../../common/schemas/common.js";
 import {
   addressOrIdToBytes,
+  bytesToHex,
   nonceToBytes,
   orderIdFromSignature,
   PROTOCOL_NAME,
@@ -38,6 +39,10 @@ type QubicOrderSourcePayloadV1 = {
   version: string;
 };
 
+function normalizeNonce(nonce: string): string {
+  return bytesToHex(nonceToBytes(nonce));
+}
+
 function serializeSourcePayload(payload: QubicOrderSourcePayloadV1): string {
   return JSON.stringify(payload);
 }
@@ -47,7 +52,7 @@ function buildSourcePayload(
 ): QubicOrderSourcePayloadV1 {
   return {
     v: 1,
-    nonce: event.nonce,
+    nonce: normalizeNonce(event.nonce),
     fromAddress: event.fromAddress,
     protocol: PROTOCOL_NAME,
     version: PROTOCOL_VERSION,
@@ -126,7 +131,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
       "Qubic lock event payload",
     );
 
-    const sourceNonce = event.nonce;
+    const sourceNonce = normalizeNonce(event.nonce);
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (existing) {
       logger.info({ orderId: existing.id }, "Qubic lock order already exists");
@@ -172,7 +177,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
       "Qubic override lock event payload",
     );
 
-    const sourceNonce = event.nonce;
+    const sourceNonce = normalizeNonce(event.nonce);
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (!existing) {
       logger.warn(
@@ -228,7 +233,7 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
       "Qubic unlock event payload",
     );
 
-    const sourceNonce = event.nonce;
+    const sourceNonce = normalizeNonce(event.nonce);
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (!existing) {
       logger.warn(

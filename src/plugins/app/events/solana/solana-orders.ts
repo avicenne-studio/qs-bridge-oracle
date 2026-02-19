@@ -8,7 +8,6 @@ import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import {
   bytesToHex,
   hexToBytes,
-  nonceBytesToDecimal,
   orderIdFromSignature,
 } from "../../common/solana/index.js";
 import { type SignerService } from "../../signer/signer.service.js";
@@ -256,11 +255,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       "Solana override outbound event payload"
     );
     const sourceNonceHex = bytesToHex(event.nonce);
-    let existing = await ordersRepository.findBySourceNonce(sourceNonceHex);
-    if (!existing) {
-      const sourceNonceDecimal = nonceBytesToDecimal(event.nonce);
-      existing = await ordersRepository.findBySourceNonce(sourceNonceDecimal);
-    }
+    const existing = await ordersRepository.findBySourceNonce(sourceNonceHex);
     if (!existing) {
       logger.warn(
         { sourceNonce: sourceNonceHex },
@@ -320,11 +315,7 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       return;
     }
     const sourceNonceHex = bytesToHex(event.nonce);
-    let existing = await ordersRepository.findBySourceNonce(sourceNonceHex);
-    if (!existing) {
-      const sourceNonceDecimal = nonceBytesToDecimal(event.nonce);
-      existing = await ordersRepository.findBySourceNonce(sourceNonceDecimal);
-    }
+    const existing = await ordersRepository.findBySourceNonce(sourceNonceHex);
     if (!existing) {
       logger.warn(
         { sourceNonce: sourceNonceHex },

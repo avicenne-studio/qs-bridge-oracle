@@ -4,7 +4,11 @@ import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 import { createQubicOrderHandlers } from "../../../../src/plugins/app/events/qubic/qubic-orders.js";
 import type { FastifyBaseLogger } from "fastify";
 import type { SignerService } from "../../../../src/plugins/app/signer/signer.service.js";
-import { hex32 } from "../../../../src/plugins/app/common/solana/index.js";
+import { hex32, bytesToHex, nonceToBytes } from "../../../../src/plugins/app/common/solana/index.js";
+
+function normalizeNonce(nonce: string): string {
+  return bytesToHex(nonceToBytes(nonce));
+}
 
 function createLogger() {
   const entries: Array<{ level: string; payload: unknown; message?: string }> =
@@ -97,7 +101,7 @@ describe("qubic order handlers", () => {
     const sourcePayload = JSON.parse(stored?.source_payload ?? "{}");
     assert.deepStrictEqual(sourcePayload, {
       v: 1,
-      nonce: payload.nonce,
+      nonce: normalizeNonce(payload.nonce),
       fromAddress: payload.fromAddress,
       protocol: "QubicBridge",
       version: "1",
