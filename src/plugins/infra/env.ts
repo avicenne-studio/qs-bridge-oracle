@@ -23,7 +23,7 @@ export type EnvConfig = {
   SOLANA_TX_RETRY_MAX_ATTEMPTS?: number;
   SOLANA_TX_RETRY_BASE_MS?: number;
   SOLANA_TX_RETRY_MAX_MS?: number;
-  SOLANA_BPS_FEE: number;
+  SOLANA_MAX_PRIORITY_FEE: number;
   SOLANA_LOOKUP_TABLE_ADDRESS: string;
   TOKEN_MINT: string;
   RELAYER_FEE_SOLANA: string;
@@ -51,7 +51,6 @@ const schema = {
     "SOLANA_RPC_URL",
     "SOLANA_WS_URL",
     "QUBIC_RPC_URL",
-    "SOLANA_BPS_FEE",
     "TOKEN_MINT",
     "SOLANA_TX_COMMITMENT",
     "RELAYER_FEE_SOLANA",
@@ -140,10 +139,10 @@ const schema = {
       minimum: 1,
       default: 4000,
     },
-    SOLANA_BPS_FEE: {
+    SOLANA_MAX_PRIORITY_FEE: {
       type: "number",
       minimum: 0,
-      default: 0,
+      default: 100_000,
     },
     SOLANA_LOOKUP_TABLE_ADDRESS: {
       type: "string",

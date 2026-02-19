@@ -1,4 +1,4 @@
-import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
+import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
 import {
   address,
@@ -66,22 +66,35 @@ export type SolanaRelayDeps = {
 /** Key.Oracle = 1 -> base58(0x01) = "2" */
 const ORACLE_DISCRIMINATOR_B58 = "2" as Base58EncodedBytes;
 
-const ED25519_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
-
 const addressEncoder = getAddressEncoder();
 const addressDecoder = getAddressDecoder();
 
-export function verifyEd25519(
+const cryptoKeyCache = new Map<string, CryptoKey>();
+
+async function importEd25519PublicKey(publicKeyRaw: Uint8Array): Promise<CryptoKey> {
+  const hex = Buffer.from(publicKeyRaw).toString("hex");
+  let key = cryptoKeyCache.get(hex);
+  if (!key) {
+    key = await crypto.subtle.importKey(
+      "raw", new Uint8Array(publicKeyRaw) as Uint8Array<ArrayBuffer>,
+      "Ed25519", true, ["verify"],
+    );
+    cryptoKeyCache.set(hex, key);
+  }
+  return key;
+}
+
+export async function verifyEd25519(
   message: Uint8Array,
   signature: Uint8Array,
   publicKeyRaw: Uint8Array
-): boolean {
-  const keyObject = createPublicKey({
-    key: Buffer.concat([ED25519_DER_PREFIX, publicKeyRaw]),
-    format: "der",
-    type: "spki",
-  });
-  return cryptoVerify(null, message, keyObject, signature);
+): Promise<boolean> {
+  const key = await importEd25519PublicKey(publicKeyRaw);
+  return crypto.subtle.verify(
+    "Ed25519", key,
+    new Uint8Array(signature) as Uint8Array<ArrayBuffer>,
+    new Uint8Array(message) as Uint8Array<ArrayBuffer>,
+  );
 }
 
 export async function fetchOracleAddresses(
@@ -104,11 +117,30 @@ export async function fetchOracleAddresses(
   });
 }
 
-export function matchSignaturesToOracles(
+export async function estimatePriorityFee(
+  rpc: ReturnType<typeof createSolanaRpc>,
+  accounts: Address[],
+  maxFee: number,
+): Promise<bigint> {
+  const result = await rpc.getRecentPrioritizationFees(accounts).send();
+  if (result.length === 0) return 0n;
+
+  const fees = result
+    .map((entry) => Number(entry.prioritizationFee))
+    .filter((f) => f > 0)
+    .sort((a, b) => a - b);
+
+  if (fees.length === 0) return 0n;
+
+  const median = fees[Math.floor(fees.length / 2)];
+  return BigInt(Math.min(median, maxFee));
+}
+
+export async function matchSignaturesToOracles(
   signatures: Uint8Array[],
   oracleAddresses: Address[],
   digest: Uint8Array
-): { matched: Array<{ oracle: Address; signature: Uint8Array }> } {
+): Promise<{ matched: Array<{ oracle: Address; signature: Uint8Array }> }> {
   const matched: Array<{ oracle: Address; signature: Uint8Array }> = [];
   const usedOracles = new Set<string>();
 
@@ -120,7 +152,7 @@ export function matchSignaturesToOracles(
   for (const sig of signatures) {
     for (const { addr, bytes } of oracleKeys) {
       if (usedOracles.has(addr)) continue;
-      if (verifyEd25519(digest, sig, bytes)) {
+      if (await verifyEd25519(digest, sig, bytes)) {
         matched.push({ oracle: addr, signature: sig });
         usedOracles.add(addr);
         break;
@@ -182,7 +214,7 @@ export async function relayToSolana(
     (s) => new Uint8Array(Buffer.from(s, "base64"))
   );
 
-  const { matched } = matchSignaturesToOracles(
+  const { matched } = await matchSignaturesToOracles(
     rawSignatures,
     oracleAddresses,
     new Uint8Array(digest)
@@ -244,7 +276,12 @@ export async function relayToSolana(
     signatures: orderedSignatures,
   });
 
-  const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
+  const writable = [globalStatePda, tokenMint, recipientAta, relayerAta, inboundOrderPda];
+  const [{ value: latestBlockhash }, computeUnitPrice, lookupTable] = await Promise.all([
+    rpc.getLatestBlockhash().send(),
+    estimatePriorityFee(rpc, writable, config.SOLANA_MAX_PRIORITY_FEE),
+    getLookupTable(),
+  ]);
 
   const baseMessage = setTransactionMessageLifetimeUsingBlockhash(
     latestBlockhash,
@@ -254,8 +291,7 @@ export async function relayToSolana(
     )
   );
   const withInstruction = appendTransactionMessageInstruction(instruction, baseMessage);
-  const withBudget = applyComputeBudget(withInstruction);
-  const lookupTable = await getLookupTable();
+  const withBudget = applyComputeBudget(withInstruction, { computeUnitPrice });
   const finalMessage = compressTransactionMessageUsingAddressLookupTables(withBudget, lookupTable);
 
   const signedTransaction = await signTransactionMessageWithSigners(finalMessage);

@@ -240,6 +240,7 @@ describe("relayer plugin", () => {
         config: DEFAULT_TEST_CONFIG, relayerSigner,
         rpc: {
           getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "11111111111111111111111111111111", lastValidBlockHeight: 999n } }) }),
+          getRecentPrioritizationFees: () => ({ send: async () => [] }),
         } as unknown as SolanaRelayDeps["rpc"],
         sendAndConfirm: (async () => undefined) as unknown as SolanaRelayDeps["sendAndConfirm"],
         ordersRepository: { findSignatures: async () => [sigBase64] } as unknown as SolanaRelayDeps["ordersRepository"],

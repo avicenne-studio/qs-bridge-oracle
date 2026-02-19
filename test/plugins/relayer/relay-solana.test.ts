@@ -12,6 +12,7 @@ import {
   verifyEd25519,
   matchSignaturesToOracles,
   fetchOracleAddresses,
+  estimatePriorityFee,
   relayToSolana,
   type SolanaRelayDeps,
 } from "../../../src/plugins/app/relayer/relay-solana.js";
@@ -101,39 +102,39 @@ function makeSolanaOrder(overrides: Partial<OracleOrder> = {}): OracleOrder {
 
 describe("relay-solana helpers", () => {
   describe("verifyEd25519", () => {
-    it("returns true for a valid signature", () => {
+    it("returns true for a valid signature", async () => {
       const { pubRaw, privateKey } = makeEd25519Keypair();
       const message = createHash("sha256").update("test-message").digest();
       const sig = ed25519Sign(message, privateKey);
-      assert.strictEqual(verifyEd25519(message, sig, pubRaw), true);
+      assert.strictEqual(await verifyEd25519(message, sig, pubRaw), true);
     });
 
-    it("returns false for an invalid signature", () => {
+    it("returns false for an invalid signature", async () => {
       const { pubRaw } = makeEd25519Keypair();
       const message = createHash("sha256").update("test-message").digest();
-      assert.strictEqual(verifyEd25519(message, new Uint8Array(64), pubRaw), false);
+      assert.strictEqual(await verifyEd25519(message, new Uint8Array(64), pubRaw), false);
     });
   });
 
   describe("matchSignaturesToOracles", () => {
-    it("matches a valid signature to its oracle", () => {
+    it("matches a valid signature to its oracle", async () => {
       const kp = makeEd25519Keypair();
       const digest = createHash("sha256").update("order-data").digest();
       const sig = ed25519Sign(digest, kp.privateKey);
       const oracle = oracleAddress(kp.pubRaw);
 
-      const { matched } = matchSignaturesToOracles([sig], [oracle], new Uint8Array(digest));
+      const { matched } = await matchSignaturesToOracles([sig], [oracle], new Uint8Array(digest));
       assert.strictEqual(matched.length, 1);
       assert.strictEqual(matched[0].oracle, oracle);
     });
 
-    it("does not reuse an oracle for duplicate signatures", () => {
+    it("does not reuse an oracle for duplicate signatures", async () => {
       const kp = makeEd25519Keypair();
       const digest = createHash("sha256").update("order-data").digest();
       const sig = ed25519Sign(digest, kp.privateKey);
       const oracle = oracleAddress(kp.pubRaw);
 
-      const { matched } = matchSignaturesToOracles([sig, sig], [oracle], new Uint8Array(digest));
+      const { matched } = await matchSignaturesToOracles([sig, sig], [oracle], new Uint8Array(digest));
       assert.strictEqual(matched.length, 1);
     });
   });
@@ -155,6 +156,45 @@ describe("relay-solana helpers", () => {
         getProgramAccounts: () => rpcOracleAccounts([]),
       } as unknown as SolanaRelayDeps["rpc"];
       assert.deepStrictEqual(await fetchOracleAddresses(rpc), []);
+    });
+  });
+
+  describe("estimatePriorityFee", () => {
+    function mockRpc(fees: { slot: bigint; prioritizationFee: bigint }[]) {
+      return {
+        getRecentPrioritizationFees: () => ({ send: async () => fees }),
+      } as unknown as SolanaRelayDeps["rpc"];
+    }
+
+    it("returns 0 when no recent fees exist", async () => {
+      const fee = await estimatePriorityFee(mockRpc([]), [], 1_000_000);
+      assert.strictEqual(fee, 0n);
+    });
+
+    it("returns 0 when all fees are zero", async () => {
+      const fee = await estimatePriorityFee(mockRpc([
+        { slot: 1n, prioritizationFee: 0n },
+        { slot: 2n, prioritizationFee: 0n },
+      ]), [], 1_000_000);
+      assert.strictEqual(fee, 0n);
+    });
+
+    it("returns the median of non-zero fees", async () => {
+      const fee = await estimatePriorityFee(mockRpc([
+        { slot: 1n, prioritizationFee: 100n },
+        { slot: 2n, prioritizationFee: 200n },
+        { slot: 3n, prioritizationFee: 500n },
+        { slot: 4n, prioritizationFee: 0n },
+      ]), [], 1_000_000);
+      assert.strictEqual(fee, 200n);
+    });
+
+    it("caps at maxFee", async () => {
+      const fee = await estimatePriorityFee(mockRpc([
+        { slot: 1n, prioritizationFee: 5_000_000n },
+        { slot: 2n, prioritizationFee: 10_000_000n },
+      ]), [], 1_000_000);
+      assert.strictEqual(fee, 1_000_000n);
     });
   });
 
@@ -247,6 +287,7 @@ describe("relay-solana helpers", () => {
           getLatestBlockhash: () => ({
             send: async () => ({ value: { blockhash: "11111111111111111111111111111111", lastValidBlockHeight: 999n } }),
           }),
+          getRecentPrioritizationFees: () => ({ send: async () => [] }),
         } as unknown as SolanaRelayDeps["rpc"],
         sendAndConfirm: (async () => { sendCalled = true; }) as unknown as SolanaRelayDeps["sendAndConfirm"],
         ordersRepository: { findSignatures: async () => [sigBase64] } as unknown as SolanaRelayDeps["ordersRepository"],
