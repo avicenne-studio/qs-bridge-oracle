@@ -5,8 +5,9 @@ import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import {
   type Address,
   createKeyPairSignerFromBytes,
+  getAddressEncoder,
+  getAddressDecoder,
 } from "@solana/kit";
-import { PublicKey, Connection } from "@solana/web3.js";
 import {
   verifyEd25519,
   matchSignaturesToOracles,
@@ -15,16 +16,13 @@ import {
   type SolanaRelayDeps,
 } from "../../../src/plugins/app/relayer/relay-solana.js";
 import { getOracleSize } from "../../../src/clients/js/accounts/oracle.js";
+import { hexToBytes, bytesToHex, decodeSecretKey } from "../../../src/plugins/app/common/bytes.js";
+import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../../src/plugins/app/common/protocol.js";
+import { QUBIC_TOKEN_ADDRESS } from "../../../src/plugins/app/common/qubic/encoding.js";
 import {
-  PROTOCOL_NAME,
-  PROTOCOL_VERSION,
-  QUBIC_TOKEN_ADDRESS,
   CONTRACT_ADDRESS_BYTES,
   serializeBridgeOrder,
-  hexToBytes,
-  bytesToHex,
-  decodeSecretKey,
-} from "../../../src/plugins/app/common/solana/index.js";
+} from "../../../src/plugins/app/common/solana/program.js";
 import { Network } from "../../../src/plugins/app/common/schemas/common.js";
 import type { OracleOrder } from "../../../src/plugins/app/indexer/schemas/order.js";
 import { DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
@@ -39,11 +37,34 @@ function ed25519Sign(message: Uint8Array, privateKey: ReturnType<typeof generate
   return new Uint8Array(sign(null, message, privateKey as import("node:crypto").KeyObject));
 }
 
+const addressEnc = getAddressEncoder();
+const addressDec = getAddressDecoder();
+
 function makeOracleAccountData(pubRaw: Uint8Array) {
   const data = Buffer.alloc(getOracleSize());
-  data[0] = 2;
+  data[0] = 1; // Key.Oracle
   data.set(pubRaw, 1);
   return data;
+}
+
+function oracleAddress(pubRaw: Uint8Array): Address {
+  return addressDec.decode(pubRaw);
+}
+
+function rpcOracleAccounts(entries: { pubRaw: Uint8Array }[]) {
+  return {
+    send: async () =>
+      entries.map(({ pubRaw }) => ({
+        pubkey: oracleAddress(pubRaw),
+        account: {
+          data: [Buffer.from(makeOracleAccountData(pubRaw)).toString("base64"), "base64"] as [string, string],
+          executable: false,
+          lamports: 0n,
+          owner: "" as Address,
+          space: BigInt(getOracleSize()),
+        },
+      })),
+  };
 }
 
 const noopLogger = { info() {}, error() {} } as unknown as SolanaRelayDeps["logger"];
@@ -57,7 +78,7 @@ async function loadRelayerSigner() {
 function makeSolanaOrder(overrides: Partial<OracleOrder> = {}): OracleOrder {
   const fromHex = bytesToHex(new Uint8Array(32).fill(1));
   const kp = makeEd25519Keypair();
-  const toHex = bytesToHex(new PublicKey(kp.pubRaw).toBytes());
+  const toHex = bytesToHex(kp.pubRaw);
   const nonceHex = bytesToHex(new Uint8Array(32).fill(9));
   return {
     id: "00000000-0000-4000-8000-000000000099",
@@ -99,7 +120,7 @@ describe("relay-solana helpers", () => {
       const kp = makeEd25519Keypair();
       const digest = createHash("sha256").update("order-data").digest();
       const sig = ed25519Sign(digest, kp.privateKey);
-      const oracle = new PublicKey(kp.pubRaw).toBase58() as Address;
+      const oracle = oracleAddress(kp.pubRaw);
 
       const { matched } = matchSignaturesToOracles([sig], [oracle], new Uint8Array(digest));
       assert.strictEqual(matched.length, 1);
@@ -110,7 +131,7 @@ describe("relay-solana helpers", () => {
       const kp = makeEd25519Keypair();
       const digest = createHash("sha256").update("order-data").digest();
       const sig = ed25519Sign(digest, kp.privateKey);
-      const oracle = new PublicKey(kp.pubRaw).toBase58() as Address;
+      const oracle = oracleAddress(kp.pubRaw);
 
       const { matched } = matchSignaturesToOracles([sig, sig], [oracle], new Uint8Array(digest));
       assert.strictEqual(matched.length, 1);
@@ -120,20 +141,20 @@ describe("relay-solana helpers", () => {
   describe("fetchOracleAddresses", () => {
     it("parses oracle pubkeys from account data", async () => {
       const kp = makeEd25519Keypair();
-      const conn = {
-        getProgramAccounts: async () => [
-          { pubkey: new PublicKey(kp.pubRaw), account: { data: makeOracleAccountData(kp.pubRaw) } },
-        ],
-      } as unknown as Connection;
+      const rpc = {
+        getProgramAccounts: () => rpcOracleAccounts([{ pubRaw: kp.pubRaw }]),
+      } as unknown as SolanaRelayDeps["rpc"];
 
-      const addresses = await fetchOracleAddresses(conn);
+      const addresses = await fetchOracleAddresses(rpc);
       assert.strictEqual(addresses.length, 1);
-      assert.strictEqual(addresses[0], new PublicKey(kp.pubRaw).toBase58());
+      assert.strictEqual(addresses[0], oracleAddress(kp.pubRaw));
     });
 
     it("returns empty when no accounts found", async () => {
-      const conn = { getProgramAccounts: async () => [] } as unknown as Connection;
-      assert.deepStrictEqual(await fetchOracleAddresses(conn), []);
+      const rpc = {
+        getProgramAccounts: () => rpcOracleAccounts([]),
+      } as unknown as SolanaRelayDeps["rpc"];
+      assert.deepStrictEqual(await fetchOracleAddresses(rpc), []);
     });
   });
 
@@ -144,12 +165,12 @@ describe("relay-solana helpers", () => {
       const deps = {
         config: DEFAULT_TEST_CONFIG,
         relayerSigner,
-        connection: {} as Connection,
         rpc: {} as SolanaRelayDeps["rpc"],
         sendAndConfirm: (async () => undefined) as unknown as SolanaRelayDeps["sendAndConfirm"],
         ordersRepository: { findSignatures: async () => [] } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: noopLogger,
         getLookupTable: async () => ({}),
+        getOracleAddresses: async () => [],
       };
 
       await assert.rejects(() => relayToSolana(order, deps), { message: "No oracle signatures found for order" });
@@ -161,12 +182,12 @@ describe("relay-solana helpers", () => {
       const deps = {
         config: DEFAULT_TEST_CONFIG,
         relayerSigner,
-        connection: { getProgramAccounts: async () => [] } as unknown as Connection,
         rpc: {} as SolanaRelayDeps["rpc"],
         sendAndConfirm: (async () => undefined) as unknown as SolanaRelayDeps["sendAndConfirm"],
         ordersRepository: { findSignatures: async () => ["AAAA"] } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: noopLogger,
         getLookupTable: async () => ({}),
+        getOracleAddresses: async () => [],
       };
 
       await assert.rejects(() => relayToSolana(order, deps), { message: "No registered oracles found on chain" });
@@ -179,11 +200,6 @@ describe("relay-solana helpers", () => {
       const deps = {
         config: DEFAULT_TEST_CONFIG,
         relayerSigner,
-        connection: {
-          getProgramAccounts: async () => [
-            { pubkey: new PublicKey(unrelated.pubRaw), account: { data: makeOracleAccountData(unrelated.pubRaw) } },
-          ],
-        } as unknown as Connection,
         rpc: {} as SolanaRelayDeps["rpc"],
         sendAndConfirm: (async () => undefined) as unknown as SolanaRelayDeps["sendAndConfirm"],
         ordersRepository: {
@@ -191,6 +207,7 @@ describe("relay-solana helpers", () => {
         } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: noopLogger,
         getLookupTable: async () => ({}),
+        getOracleAddresses: async () => [oracleAddress(unrelated.pubRaw)],
       };
 
       await assert.rejects(() => relayToSolana(order, deps), { message: "No signatures could be matched to registered oracles" });
@@ -200,12 +217,12 @@ describe("relay-solana helpers", () => {
       const oracle = makeEd25519Keypair();
       const relayerSigner = await loadRelayerSigner();
 
-      const toHex = bytesToHex(new PublicKey(oracle.pubRaw).toBytes());
+      const toHex = bytesToHex(oracle.pubRaw);
       const fromHex = bytesToHex(new Uint8Array(32).fill(1));
       const nonceHex = bytesToHex(new Uint8Array(32).fill(9));
       const order = makeSolanaOrder({ from: fromHex, to: toHex, source_nonce: nonceHex });
 
-      const tokenMintBytes = new PublicKey(DEFAULT_TEST_CONFIG.TOKEN_MINT).toBytes();
+      const tokenMintBytes = new Uint8Array(addressEnc.encode(DEFAULT_TEST_CONFIG.TOKEN_MINT as Address));
       const digest = createHash("sha256").update(serializeBridgeOrder({
         protocolName: PROTOCOL_NAME,
         protocolVersion: PROTOCOL_VERSION,
@@ -226,11 +243,6 @@ describe("relay-solana helpers", () => {
       const deps: SolanaRelayDeps = {
         config: DEFAULT_TEST_CONFIG,
         relayerSigner,
-        connection: {
-          getProgramAccounts: async () => [
-            { pubkey: new PublicKey(oracle.pubRaw), account: { data: makeOracleAccountData(oracle.pubRaw) } },
-          ],
-        } as unknown as Connection,
         rpc: {
           getLatestBlockhash: () => ({
             send: async () => ({ value: { blockhash: "11111111111111111111111111111111", lastValidBlockHeight: 999n } }),
@@ -240,6 +252,7 @@ describe("relay-solana helpers", () => {
         ordersRepository: { findSignatures: async () => [sigBase64] } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: noopLogger,
         getLookupTable: async () => ({}),
+        getOracleAddresses: async () => [oracleAddress(oracle.pubRaw)],
       };
 
       const result = await relayToSolana(order, deps);

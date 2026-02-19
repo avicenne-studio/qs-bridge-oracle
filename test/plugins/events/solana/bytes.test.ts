@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import {
-  addressOrIdToBytes,
+  solanaAddressToBytes,
   bytesToHex,
   hexToBytes,
   nonceToBytes,
@@ -15,7 +15,8 @@ import {
   toSafeBigInt,
   toSafeNumber,
   toU64BigInt,
-} from "../../../../src/plugins/app/common/solana/bytes.js";
+} from "../../../../src/plugins/app/common/bytes.js";
+import { qubicAddressToBytes } from "../../../../src/plugins/app/common/qubic/encoding.js";
 
 describe("solana listener bytes helpers", () => {
   it("round-trips hex and bytes", () => {
@@ -61,59 +62,73 @@ describe("solana listener bytes helpers", () => {
     );
   });
 
-  describe("addressOrIdToBytes", () => {
+  describe("solanaAddressToBytes", () => {
     it("converts 64-char hex address to 32 bytes", () => {
       const hex = "aa".repeat(32);
-      const result = addressOrIdToBytes(hex);
+      const result = solanaAddressToBytes(hex);
       assert.strictEqual(result.length, 32);
       assert.deepStrictEqual(result, new Uint8Array(32).fill(0xaa));
     });
 
     it("converts 0x-prefixed hex address to 32 bytes", () => {
       const hex = "0x" + "bb".repeat(32);
-      const result = addressOrIdToBytes(hex);
+      const result = solanaAddressToBytes(hex);
+      assert.strictEqual(result.length, 32);
+      assert.deepStrictEqual(result, new Uint8Array(32).fill(0xbb));
+    });
+
+    it("converts Solana base58 to 32 bytes", () => {
+      const result = solanaAddressToBytes("11111111111111111111111111111111");
+      assert.strictEqual(result.length, 32);
+    });
+
+    it("throws for invalid base58", () => {
+      assert.throws(() => solanaAddressToBytes("!!!"), /error/i);
+    });
+
+    it("trims whitespace from input", () => {
+      const hex = "  " + "cc".repeat(32) + "  ";
+      const result = solanaAddressToBytes(hex);
+      assert.deepStrictEqual(result, new Uint8Array(32).fill(0xcc));
+    });
+  });
+
+  describe("qubicAddressToBytes", () => {
+    it("converts 64-char hex address to 32 bytes", () => {
+      const hex = "aa".repeat(32);
+      const result = qubicAddressToBytes(hex);
+      assert.strictEqual(result.length, 32);
+      assert.deepStrictEqual(result, new Uint8Array(32).fill(0xaa));
+    });
+
+    it("converts 0x-prefixed hex address to 32 bytes", () => {
+      const result = qubicAddressToBytes("0x" + "bb".repeat(32));
       assert.strictEqual(result.length, 32);
       assert.deepStrictEqual(result, new Uint8Array(32).fill(0xbb));
     });
 
     it("converts a 60-char Qubic ID to 32 bytes", () => {
-      const qubicId = "A".repeat(60);
-      const result = addressOrIdToBytes(qubicId);
+      const result = qubicAddressToBytes("A".repeat(60));
       assert.strictEqual(result.length, 32);
     });
 
     it("converts a 48-char Qubic ID to 32 bytes", () => {
-      const qubicId = "A".repeat(48);
-      const result = addressOrIdToBytes(qubicId);
+      const result = qubicAddressToBytes("A".repeat(48));
       assert.strictEqual(result.length, 32);
     });
 
     it("converts a 52-char Qubic ID to 32 bytes", () => {
-      const qubicId = "B".repeat(52);
-      const result = addressOrIdToBytes(qubicId);
+      const result = qubicAddressToBytes("B".repeat(52));
       assert.strictEqual(result.length, 32);
     });
 
     it("converts a 56-char Qubic ID to 32 bytes", () => {
-      const qubicId = "C".repeat(56);
-      const result = addressOrIdToBytes(qubicId);
+      const result = qubicAddressToBytes("C".repeat(56));
       assert.strictEqual(result.length, 32);
     });
 
-    it("falls through to Solana base58 for invalid Qubic-looking input", () => {
-      // 11111111111111111111111111111111 is the Solana system program (all 1s in base58 = 32 zero bytes)
-      const result = addressOrIdToBytes("11111111111111111111111111111111");
-      assert.strictEqual(result.length, 32);
-    });
-
-    it("throws for base58 that does not decode to 32 bytes", () => {
-      assert.throws(() => addressOrIdToBytes("!!!"), /error/i);
-    });
-
-    it("trims whitespace from input", () => {
-      const hex = "  " + "cc".repeat(32) + "  ";
-      const result = addressOrIdToBytes(hex);
-      assert.deepStrictEqual(result, new Uint8Array(32).fill(0xcc));
+    it("throws for invalid Qubic address", () => {
+      assert.throws(() => qubicAddressToBytes("!!!"), /invalid Qubic address/i);
     });
   });
 

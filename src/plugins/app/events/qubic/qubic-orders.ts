@@ -8,18 +8,9 @@ import {
 } from "./schemas/qubic-event.js";
 import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.js";
 import { type SignerService } from "../../signer/signer.service.js";
-import { PublicKey } from "@solana/web3.js";
-import { Network } from "../../common/schemas/common.js";
-import {
-  addressOrIdToBytes,
-  bytesToHex,
-  nonceToBytes,
-  orderIdFromSignature,
-  PROTOCOL_NAME,
-  PROTOCOL_VERSION,
-  QUBIC_TOKEN_ADDRESS,
-  CONTRACT_ADDRESS_BYTES,
-} from "../../common/solana/index.js";
+import { bytesToHex, nonceToBytes } from "../../common/bytes.js";
+import { orderIdFromSignature } from "../../common/order-id.js";
+import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../common/protocol.js";
 
 type Logger = FastifyBaseLogger;
 
@@ -59,33 +50,6 @@ function buildSourcePayload(
   };
 }
 
-async function signForSolana(
-  signerService: SignerService,
-  tokenMintBytes: Uint8Array,
-  event: {
-    fromAddress: string;
-    toAddress: string;
-    amount: string;
-    relayerFee: string;
-    nonce: string;
-  },
-): Promise<string> {
-  return signerService.signLockOrderForSolana({
-    protocolName: PROTOCOL_NAME,
-    protocolVersion: PROTOCOL_VERSION,
-    contractAddress: CONTRACT_ADDRESS_BYTES,
-    networkIn: Network.Qubic,
-    networkOut: Network.Solana,
-    tokenIn: QUBIC_TOKEN_ADDRESS,
-    tokenOut: tokenMintBytes,
-    fromAddress: addressOrIdToBytes(event.fromAddress),
-    toAddress: addressOrIdToBytes(event.toAddress),
-    amount: BigInt(event.amount),
-    relayerFee: BigInt(event.relayerFee),
-    nonce: nonceToBytes(event.nonce),
-  });
-}
-
 function createOrderFromLockEvent(
   event: QubicLockEventPayload,
   signature: string,
@@ -114,7 +78,6 @@ function createOrderFromLockEvent(
 
 export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
   const { ordersRepository, signerService, config, logger, relayerFeeAcceptance } = deps;
-  const tokenMintBytes = new PublicKey(config.TOKEN_MINT).toBytes();
 
   const handleLockEvent = async (
     event: QubicLockEventPayload,
@@ -141,11 +104,10 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     const signatureSeed = meta?.signature ?? sourceNonce;
     const originTrxHash = meta?.signature ?? sourceNonce;
     const orderId = orderIdFromSignature(signatureSeed);
-    const signature = await signForSolana(
-      signerService,
-      tokenMintBytes,
-      event,
-    );
+    const signature = await signerService.signQubicToSolanaOrder({
+      tokenMint: config.TOKEN_MINT,
+      ...event,
+    });
     logger.info({ orderId, signature }, "Qubic lock order signed");
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToSolana(
       BigInt(event.amount),
@@ -194,17 +156,14 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
       return;
     }
 
-    const updatedSignature = await signForSolana(
-      signerService,
-      tokenMintBytes,
-      {
-        fromAddress: existing.from,
-        toAddress: event.toAddress,
-        amount: existing.amount,
-        relayerFee: event.relayerFee,
-        nonce: event.nonce,
-      },
-    );
+    const updatedSignature = await signerService.signQubicToSolanaOrder({
+      tokenMint: config.TOKEN_MINT,
+      fromAddress: existing.from,
+      toAddress: event.toAddress,
+      amount: existing.amount,
+      relayerFee: event.relayerFee,
+      nonce: event.nonce,
+    });
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToSolana(
       BigInt(existing.amount),
       BigInt(event.relayerFee),

@@ -25,8 +25,14 @@ const HEX_PATTERN = /^[0-9a-fA-F]+$/;
 const UINT32_MAX = 0xffff_ffff;
 const UINT64_MAX = (1n << 64n) - 1n;
 
+export const DEFAULT_TOKEN_MINT = "4bbjhGLSYwku6Y44dqwcroRfj2vHCdiHJ9SUmndc4FVg";
+
 export function resolveRpcUrl() {
   return process.env.SOLANA_RPC_URL || DEFAULT_RPC_URL;
+}
+
+export function resolveTokenMint() {
+  return process.env.TOKEN_MINT || DEFAULT_TOKEN_MINT;
 }
 
 export function resolveWsUrl() {

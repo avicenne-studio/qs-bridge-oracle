@@ -18,9 +18,6 @@ import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../../../clients/js/programs/qsBri
 
 export { TOKEN_PROGRAM_ADDRESS, ASSOCIATED_TOKEN_PROGRAM_ADDRESS, SYSTEM_PROGRAM_ADDRESS };
 
-export const PROTOCOL_NAME = "QubicBridge";
-export const PROTOCOL_VERSION = "1";
-export const QUBIC_TOKEN_ADDRESS = new Uint8Array(32);
 export const CONTRACT_ADDRESS_BYTES = new Uint8Array(
   getAddressEncoder().encode(address(QS_BRIDGE_PROGRAM_ADDRESS))
 );

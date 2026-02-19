@@ -11,7 +11,7 @@ import {
 } from "../../../src/plugins/app/indexer/orders.repository.js";
 import { kSolanaEventValidator } from "../../../src/plugins/app/events/solana/solana-events-validator.js";
 import { kQubicEventValidator } from "../../../src/plugins/app/events/qubic/qubic-events-validator.js";
-import { hex32 } from "../../../src/plugins/app/common/solana/index.js";
+import { hex32 } from "../../../src/plugins/app/common/bytes.js";
 
 function createOutboundPayload(seed: number) {
   return {

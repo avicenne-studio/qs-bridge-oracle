@@ -9,7 +9,7 @@ import {
   decodeEventBytes,
   logLinesToEvents,
 } from "./solana-program-logs.js";
-import { bytesToHex } from "../../common/solana/index.js";
+import { bytesToHex } from "../../common/bytes.js";
 import {
   type SolanaEventPayload,
   type SolanaStoredEvent,

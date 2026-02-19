@@ -5,11 +5,8 @@ import { Buffer } from "node:buffer";
 import { type OutboundEvent } from "../../../../clients/js/types/outboundEvent.js";
 import { type OverrideOutboundEvent } from "../../../../clients/js/types/overrideOutboundEvent.js";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
-import {
-  bytesToHex,
-  hexToBytes,
-  orderIdFromSignature,
-} from "../../common/solana/index.js";
+import { bytesToHex, hexToBytes } from "../../common/bytes.js";
+import { orderIdFromSignature } from "../../common/order-id.js";
 import { type SignerService } from "../../signer/signer.service.js";
 import {
   SolanaOrderSourcePayloadSchema,

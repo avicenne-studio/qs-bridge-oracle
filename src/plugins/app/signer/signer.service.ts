@@ -12,15 +12,24 @@ import {
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import { kFileManager, type FileManager } from "../../infra/@file-manager.js";
 import { kValidation, type ValidationService } from "../common/validation.js";
+import { address, getAddressEncoder } from "@solana/kit";
 import {
-  serializeBridgeOrder,
   decodeSecretKey,
+  solanaAddressToBytes,
   normalizeSignatureValue,
+  nonceToBytes,
   parseU32,
   parseU64,
   assertFixedBytes,
+} from "../common/bytes.js";
+import { qubicAddressToBytes, QUBIC_TOKEN_ADDRESS } from "../common/qubic/encoding.js";
+import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../common/protocol.js";
+import { Network } from "../common/schemas/common.js";
+import {
+  CONTRACT_ADDRESS_BYTES,
+  serializeBridgeOrder,
   type BridgeOrderFields,
-} from "../common/solana/index.js";
+} from "../common/solana/program.js";
 
 export type QubicLockOrderToSign = {
   protocolName: string;
@@ -59,8 +68,18 @@ type QubicLockOrderMessage = {
   nonce: Uint8Array;
 };
 
+export type QubicToSolanaSignInput = {
+  tokenMint: string;
+  fromAddress: string;
+  toAddress: string;
+  amount: string;
+  relayerFee: string;
+  nonce: string;
+};
+
 export type SignerService = {
   signLockOrderForSolana: (order: QubicLockOrderToSign) => Promise<string>;
+  signQubicToSolanaOrder: (input: QubicToSolanaSignInput) => Promise<string>;
 };
 
 export const kSignerService = Symbol("app.signerService");
@@ -147,14 +166,36 @@ export default fp(
     );
 
     let cachedSigner: SolanaSigner | null = null;
-    const signLockOrderForSolana = async (order: QubicLockOrderToSign) => {
+    const ensureSigner = async () => {
       if (!cachedSigner) {
         cachedSigner = await createSolanaSignerFromKeys(solana);
       }
-      return signLockOrderForSolanaWithSigner(order, cachedSigner);
+      return cachedSigner;
     };
 
-    fastify.decorate(kSignerService, { signLockOrderForSolana });
+    const signLockOrderForSolana = async (order: QubicLockOrderToSign) => {
+      return signLockOrderForSolanaWithSigner(order, await ensureSigner());
+    };
+
+    const addressEncoder = getAddressEncoder();
+    const signQubicToSolanaOrder = async (input: QubicToSolanaSignInput) => {
+      return signLockOrderForSolana({
+        protocolName: PROTOCOL_NAME,
+        protocolVersion: PROTOCOL_VERSION,
+        contractAddress: CONTRACT_ADDRESS_BYTES,
+        networkIn: Network.Qubic,
+        networkOut: Network.Solana,
+        tokenIn: QUBIC_TOKEN_ADDRESS,
+        tokenOut: new Uint8Array(addressEncoder.encode(address(input.tokenMint))),
+        fromAddress: qubicAddressToBytes(input.fromAddress),
+        toAddress: solanaAddressToBytes(input.toAddress),
+        amount: BigInt(input.amount),
+        relayerFee: BigInt(input.relayerFee),
+        nonce: nonceToBytes(input.nonce),
+      });
+    };
+
+    fastify.decorate(kSignerService, { signLockOrderForSolana, signQubicToSolanaOrder });
   },
   {
     name: "signer-service",

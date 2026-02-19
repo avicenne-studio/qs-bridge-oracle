@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
-import { type ReadonlyUint8Array } from "@solana/kit";
-import { PublicKey } from "@solana/web3.js";
+import { address, getAddressEncoder, type ReadonlyUint8Array } from "@solana/kit";
 
 const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 const MAX_U64 = (1n << 64n) - 1n;
@@ -8,8 +7,6 @@ const HEX_PATTERN = /^[0-9a-fA-F]*$/;
 const DECIMAL_PATTERN = /^[0-9]+$/;
 const ADDRESS_HEX_LENGTH = 64;
 const NONCE_BYTE_LENGTH = 32;
-const QUBIC_ID_ALPHABET = /^[A-Za-z]+$/;
-const CHAR_A = "A".charCodeAt(0);
 
 function normalizeHex(value: string): string {
   return value.startsWith("0x") ? value.slice(2) : value;
@@ -27,39 +24,16 @@ function leftPadToLength(bytes: Uint8Array, length: number): Uint8Array {
   return out;
 }
 
-function qubicIdToBytes(s: string): Uint8Array {
-  const str = s.toUpperCase();
-  const len = str.length;
-  const segmentLength =
-    len === 60 ? 15 : len === 56 ? 14 : len === 52 ? 13 : 12;
-  const publicKeyBytes = new Uint8Array(32);
-  const view = new DataView(publicKeyBytes.buffer, 0);
-  for (let i = 0; i < 4; i++) {
-    view.setBigUint64(i * 8, 0n, true);
-    for (let j = segmentLength - 1; j >= 0; j--) {
-      const idx = i * segmentLength + j;
-      const code = str.charCodeAt(idx) - CHAR_A;
-      view.setBigUint64(
-        i * 8,
-        view.getBigUint64(i * 8, true) * 26n + BigInt(code),
-        true,
-      );
-    }
-  }
-  return publicKeyBytes;
-}
+const addressEncoder = getAddressEncoder();
 
-/** Hex (64), Qubic ID (48-60), or Solana base58 -> 32 bytes. */
-export function addressOrIdToBytes(value: string): Uint8Array {
+/** Hex (64 chars) or Solana base58 -> 32 bytes. */
+export function solanaAddressToBytes(value: string): Uint8Array {
   const s = value.trim();
   const hexCandidate = normalizeHex(s.replace(/\s/g, ""));
   if (hexCandidate.length === ADDRESS_HEX_LENGTH && HEX_PATTERN.test(hexCandidate)) {
     return hexToBytes(s.replace(/\s/g, ""));
   }
-  if (s.length >= 48 && s.length <= 60 && s.length % 4 === 0 && QUBIC_ID_ALPHABET.test(s)) {
-    return qubicIdToBytes(s);
-  }
-  return new Uint8Array(new PublicKey(s).toBytes());
+  return new Uint8Array(addressEncoder.encode(address(s)));
 }
 
 /** Hex nonce (with optional 0x prefix) -> 32 bytes left-padded. */

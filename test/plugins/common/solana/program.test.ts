@@ -7,7 +7,7 @@ import {
   applyComputeBudget,
   TOKEN_PROGRAM_ADDRESS,
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
-} from "../../../../src/plugins/app/common/solana/index.js";
+} from "../../../../src/plugins/app/common/solana/program.js";
 
 describe("program helpers", () => {
   describe("padToLength", () => {

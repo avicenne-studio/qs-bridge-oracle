@@ -1,5 +1,5 @@
 import { type SolanaStoredEvent } from "./schemas/solana-event.js";
-import { hexToBytes, toU64BigInt } from "../../common/solana/index.js";
+import { hexToBytes, toU64BigInt } from "../../common/bytes.js";
 
 export function mapStoredEventToSolanaPayload(event: SolanaStoredEvent) {
   if (event.type === "outbound") {

@@ -4,7 +4,7 @@ import {
   createFailedOrderFromOutboundEvent,
   createSolanaOrderHandlers,
 } from "../../../../src/plugins/app/events/solana/solana-orders.js";
-import { bytesToHex, hex32 } from "../../../../src/plugins/app/common/solana/index.js";
+import { bytesToHex, hex32 } from "../../../../src/plugins/app/common/bytes.js";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 import { FastifyBaseLogger } from "fastify";
 import { Value } from "@sinclair/typebox/value";

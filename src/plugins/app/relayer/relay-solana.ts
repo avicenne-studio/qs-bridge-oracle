@@ -13,17 +13,20 @@ import {
   signTransactionMessageWithSigners,
   getSignatureFromTransaction,
   compressTransactionMessageUsingAddressLookupTables,
+  getAddressEncoder,
+  getAddressDecoder,
   type Address,
   type KeyPairSigner,
 } from "@solana/kit";
+import type { Base58EncodedBytes } from "@solana/rpc-types";
 import { fetchAddressLookupTable } from "@solana-program/address-lookup-table";
-import { PublicKey, Connection } from "@solana/web3.js";
 import type { FastifyInstance } from "fastify";
 import type { EnvConfig } from "../../infra/env.js";
 import type { OrdersRepository } from "../indexer/orders.repository.js";
 import type { OracleOrder } from "../indexer/schemas/order.js";
 import { Network } from "../common/schemas/common.js";
-import { addressOrIdToBytes, nonceToBytes, decodeSecretKey } from "../common/solana/index.js";
+import { solanaAddressToBytes, nonceToBytes, decodeSecretKey } from "../common/bytes.js";
+import { qubicAddressToBytes } from "../common/qubic/encoding.js";
 import { type SignerKeys, SignerKeysSchema } from "../signer/schemas/keys.js";
 import type { FileManager } from "../../infra/@file-manager.js";
 import { kFileManager } from "../../infra/@file-manager.js";
@@ -34,11 +37,10 @@ import { findOraclePda } from "../../../clients/js/pdas/oracle.js";
 import { findInboundOrderPda } from "../../../clients/js/pdas/inboundOrder.js";
 import { getInboundInstruction } from "../../../clients/js/instructions/inbound.js";
 import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../../clients/js/programs/qsBridge.js";
-import { getOracleSize } from "../../../clients/js/accounts/oracle.js";
+import { getOracleSize, getOracleDecoder } from "../../../clients/js/accounts/oracle.js";
+import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../common/protocol.js";
+import { QUBIC_TOKEN_ADDRESS } from "../common/qubic/encoding.js";
 import {
-  PROTOCOL_NAME,
-  PROTOCOL_VERSION,
-  QUBIC_TOKEN_ADDRESS,
   CONTRACT_ADDRESS_BYTES,
   serializeBridgeOrder,
   padToLength,
@@ -46,22 +48,28 @@ import {
   applyComputeBudget,
   TOKEN_PROGRAM_ADDRESS,
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
-} from "../common/solana/index.js";
+} from "../common/solana/program.js";
 
 export type AddressLookupTable = Record<Address, Address[]>;
 
 export type SolanaRelayDeps = {
   config: EnvConfig;
   relayerSigner: KeyPairSigner;
-  connection: Connection;
   rpc: ReturnType<typeof createSolanaRpc>;
   sendAndConfirm: ReturnType<typeof sendAndConfirmTransactionFactory>;
   ordersRepository: OrdersRepository;
   logger: FastifyInstance["log"];
   getLookupTable: () => Promise<AddressLookupTable>;
+  getOracleAddresses: () => Promise<Address[]>;
 };
 
+/** Key.Oracle = 1 -> base58(0x01) = "2" */
+const ORACLE_DISCRIMINATOR_B58 = "2" as Base58EncodedBytes;
+
 const ED25519_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+
+const addressEncoder = getAddressEncoder();
+const addressDecoder = getAddressDecoder();
 
 export function verifyEd25519(
   message: Uint8Array,
@@ -77,20 +85,22 @@ export function verifyEd25519(
 }
 
 export async function fetchOracleAddresses(
-  connection: Connection
+  rpc: ReturnType<typeof createSolanaRpc>
 ): Promise<Address[]> {
-  const accounts = await connection.getProgramAccounts(
-    new PublicKey(QS_BRIDGE_PROGRAM_ADDRESS),
-    {
+  const accounts = await rpc
+    .getProgramAccounts(QS_BRIDGE_PROGRAM_ADDRESS, {
+      encoding: "base64",
       filters: [
-        { dataSize: getOracleSize() },
-        { memcmp: { offset: 0, bytes: "2" } },
+        { dataSize: BigInt(getOracleSize()) },
+        { memcmp: { offset: 0n, bytes: ORACLE_DISCRIMINATOR_B58, encoding: "base58" } },
       ],
-    }
-  );
-  return accounts.map(({ account }) => {
-    const pubkeyBytes = account.data.slice(1, 33);
-    return new PublicKey(pubkeyBytes).toBase58() as Address;
+    })
+    .send();
+
+  const decoder = getOracleDecoder();
+  return accounts.map((entry) => {
+    const data = new Uint8Array(Buffer.from(entry.account.data[0], "base64"));
+    return decoder.decode(data).oraclePubkey;
   });
 }
 
@@ -102,13 +112,17 @@ export function matchSignaturesToOracles(
   const matched: Array<{ oracle: Address; signature: Uint8Array }> = [];
   const usedOracles = new Set<string>();
 
+  const oracleKeys = oracleAddresses.map((addr) => ({
+    addr,
+    bytes: new Uint8Array(addressEncoder.encode(addr)),
+  }));
+
   for (const sig of signatures) {
-    for (const oracle of oracleAddresses) {
-      if (usedOracles.has(oracle)) continue;
-      const pubkeyBytes = new PublicKey(oracle).toBytes();
-      if (verifyEd25519(digest, sig, pubkeyBytes)) {
-        matched.push({ oracle, signature: sig });
-        usedOracles.add(oracle);
+    for (const { addr, bytes } of oracleKeys) {
+      if (usedOracles.has(addr)) continue;
+      if (verifyEd25519(digest, sig, bytes)) {
+        matched.push({ oracle: addr, signature: sig });
+        usedOracles.add(addr);
         break;
       }
     }
@@ -121,13 +135,13 @@ export async function relayToSolana(
   order: OracleOrder,
   deps: SolanaRelayDeps
 ): Promise<{ trxHash: string }> {
-  const { config, relayerSigner, connection, rpc, sendAndConfirm, ordersRepository, logger, getLookupTable } = deps;
+  const { config, relayerSigner, rpc, sendAndConfirm, ordersRepository, logger, getLookupTable, getOracleAddresses } = deps;
 
-  const tokenMintBytes = new PublicKey(config.TOKEN_MINT).toBytes();
+  const tokenMintBytes = new Uint8Array(addressEncoder.encode(address(config.TOKEN_MINT)));
   const networkIn = Network.Qubic;
   const networkOut = Network.Solana;
-  const fromAddress = addressOrIdToBytes(order.from);
-  const toAddress = addressOrIdToBytes(order.to);
+  const fromAddress = qubicAddressToBytes(order.from);
+  const toAddress = solanaAddressToBytes(order.to);
   const amount = BigInt(order.amount);
   const relayerFee = BigInt(order.relayerFee);
   const nonce = nonceToBytes(order.source_nonce);
@@ -152,19 +166,21 @@ export async function relayToSolana(
   });
   const digest = createHash("sha256").update(serialized).digest();
 
-  const storedSignatures = await ordersRepository.findSignatures(order.id);
+  const [storedSignatures, oracleAddresses] = await Promise.all([
+    ordersRepository.findSignatures(order.id),
+    getOracleAddresses(),
+  ]);
+
   if (storedSignatures.length === 0) {
     throw new Error("No oracle signatures found for order");
+  }
+  if (oracleAddresses.length === 0) {
+    throw new Error("No registered oracles found on chain");
   }
 
   const rawSignatures = storedSignatures.map(
     (s) => new Uint8Array(Buffer.from(s, "base64"))
   );
-
-  const oracleAddresses = await fetchOracleAddresses(connection);
-  if (oracleAddresses.length === 0) {
-    throw new Error("No registered oracles found on chain");
-  }
 
   const { matched } = matchSignaturesToOracles(
     rawSignatures,
@@ -180,22 +196,23 @@ export async function relayToSolana(
     "Matched oracle signatures for Solana relay"
   );
 
-  const oraclePdas = await Promise.all(
-    matched.map(async ({ oracle }) => {
-      const [pda] = await findOraclePda({ oracle });
-      return pda;
-    })
-  );
-  const paddedOraclePdas = padToLength(oraclePdas, 6, oraclePdas[0]);
   const orderedSignatures = matched.map(({ signature }) => signature);
-
-  const recipient = new PublicKey(Buffer.from(toAddress)).toBase58() as Address;
+  const recipient = addressDecoder.decode(toAddress);
   const tokenMint = address(config.TOKEN_MINT);
-  const [globalStatePda] = await findGlobalStatePda();
-  const [inboundOrderPda] = await findInboundOrderPda({ networkIn, nonce });
 
-  const recipientAta = await findAssociatedTokenAddress(recipient, tokenMint, TOKEN_PROGRAM_ADDRESS, ASSOCIATED_TOKEN_PROGRAM_ADDRESS);
-  const relayerAta = await findAssociatedTokenAddress(relayerSigner.address, tokenMint, TOKEN_PROGRAM_ADDRESS, ASSOCIATED_TOKEN_PROGRAM_ADDRESS);
+  const [oraclePdas, [globalStatePda], [inboundOrderPda], recipientAta, relayerAta] =
+    await Promise.all([
+      Promise.all(matched.map(async ({ oracle }) => {
+        const [pda] = await findOraclePda({ oracle });
+        return pda;
+      })),
+      findGlobalStatePda(),
+      findInboundOrderPda({ networkIn, nonce }),
+      findAssociatedTokenAddress(recipient, tokenMint, TOKEN_PROGRAM_ADDRESS, ASSOCIATED_TOKEN_PROGRAM_ADDRESS),
+      findAssociatedTokenAddress(relayerSigner.address, tokenMint, TOKEN_PROGRAM_ADDRESS, ASSOCIATED_TOKEN_PROGRAM_ADDRESS),
+    ]);
+
+  const paddedOraclePdas = padToLength(oraclePdas, 6, oraclePdas[0]);
 
   const instruction = getInboundInstruction({
     relayer: relayerSigner,
@@ -271,11 +288,8 @@ export async function buildSolanaRelayDeps(
   const secretKeyBytes = decodeSecretKey(keys.sKey);
   const relayerSigner = await createKeyPairSignerFromBytes(secretKeyBytes);
 
-  const connection = new Connection(config.SOLANA_RPC_URL, config.SOLANA_TX_COMMITMENT);
   const rpc = createSolanaRpc(config.SOLANA_RPC_URL);
-  const rpcSubscriptions = createSolanaRpcSubscriptions(
-    config.SOLANA_RPC_URL.replace(/^http/, "ws")
-  );
+  const rpcSubscriptions = createSolanaRpcSubscriptions(config.SOLANA_WS_URL);
   const sendAndConfirm = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
 
   const lutAddr = address(config.SOLANA_LOOKUP_TABLE_ADDRESS);
@@ -288,14 +302,22 @@ export async function buildSolanaRelayDeps(
     return cachedLut;
   };
 
+  let cachedOracles: Address[] | undefined;
+  /* c8 ignore next 5 */
+  const getOracleAddresses = async (): Promise<Address[]> => {
+    if (cachedOracles) return cachedOracles;
+    cachedOracles = await fetchOracleAddresses(rpc);
+    return cachedOracles;
+  };
+
   return {
     config,
     relayerSigner,
-    connection,
     rpc,
     sendAndConfirm,
     ordersRepository,
     logger: fastify.log,
     getLookupTable,
+    getOracleAddresses,
   };
 }

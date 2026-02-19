@@ -16,7 +16,7 @@ import {
   kHubEventsRepository,
   type HubEventsRepository,
 } from "../../../src/plugins/app/events/hub-events.repository.js";
-import { hex32 } from "../../../src/plugins/app/common/solana/index.js";
+import { hex32 } from "../../../src/plugins/app/common/bytes.js";
 
 const HUB_PRIMARY_PORT = 6201;
 const HUB_FALLBACK_PORT = 6202;

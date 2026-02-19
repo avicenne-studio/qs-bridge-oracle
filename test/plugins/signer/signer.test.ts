@@ -29,7 +29,7 @@ import signerService, {
 import {
   decodeSecretKey,
   normalizeSignatureValue,
-} from "../../../src/plugins/app/common/solana/index.js";
+} from "../../../src/plugins/app/common/bytes.js";
 
 const fixturesDir = path.join(process.cwd(), "test/fixtures/signer");
 const validSolanaKeys = path.join(fixturesDir, "solana.keys.json");

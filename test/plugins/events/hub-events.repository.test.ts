@@ -7,7 +7,7 @@ import {
   type HubEventsRepository,
   type HubEventCursorsRepository,
 } from "../../../src/plugins/app/events/hub-events.repository.js";
-import { hex32 } from "../../../src/plugins/app/common/solana/index.js";
+import { hex32 } from "../../../src/plugins/app/common/bytes.js";
 
 describe("hub events repository", () => {
   it("creates events, ignores duplicates, and finds latest cursor", async (t) => {

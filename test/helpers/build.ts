@@ -54,6 +54,7 @@ export const DEFAULT_TEST_CONFIG: EnvConfig = {
   HUB_URLS: "http://localhost:3001",
   HUB_KEYS_FILE: "./test/fixtures/hub-keys.json",
   SOLANA_RPC_URL: "http://localhost:8899",
+  SOLANA_WS_URL: "ws://localhost:8900",
   QUBIC_RPC_URL: "http://127.0.0.1:3015",
   SOLANA_TX_COMMITMENT: "confirmed",
   SOLANA_BPS_FEE: 0,

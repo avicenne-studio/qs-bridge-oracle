@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
 import { createQubicOrderHandlers } from "../../../../src/plugins/app/events/qubic/qubic-orders.js";
 import type { FastifyBaseLogger } from "fastify";
-import type { SignerService } from "../../../../src/plugins/app/signer/signer.service.js";
-import { hex32, bytesToHex, nonceToBytes } from "../../../../src/plugins/app/common/solana/index.js";
+import { hex32, bytesToHex, nonceToBytes } from "../../../../src/plugins/app/common/bytes.js";
+import { createMockSignerService } from "../../../helpers/signer-mock.js";
 
 function normalizeNonce(nonce: string): string {
   return bytesToHex(nonceToBytes(nonce));
@@ -24,16 +24,6 @@ function createLogger() {
       debug: log("debug"),
       error: log("error"),
     } as FastifyBaseLogger,
-  };
-}
-
-function createMockSignerService(): SignerService {
-  let callCount = 0;
-  return {
-    signLockOrderForSolana: async () => {
-      callCount++;
-      return Buffer.from(`mock-sig-${callCount}`).toString("base64");
-    },
   };
 }
 

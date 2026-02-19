@@ -3,8 +3,12 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import Fastify from "fastify";
-import { createKeyPairSignerFromBytes } from "@solana/kit";
-import { PublicKey, Connection } from "@solana/web3.js";
+import {
+  createKeyPairSignerFromBytes,
+  getAddressEncoder,
+  getAddressDecoder,
+  type Address,
+} from "@solana/kit";
 import { build, DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
 import {
   kOrdersRepository,
@@ -18,19 +22,16 @@ import {
 } from "../../../src/plugins/app/relayer/relayer.js";
 import type { SolanaRelayDeps } from "../../../src/plugins/app/relayer/relay-solana.js";
 import type { EnvConfig } from "../../../src/plugins/infra/env.js";
+import { hexToBytes, bytesToHex, decodeSecretKey } from "../../../src/plugins/app/common/bytes.js";
+import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../../src/plugins/app/common/protocol.js";
+import { QUBIC_TOKEN_ADDRESS } from "../../../src/plugins/app/common/qubic/encoding.js";
 import {
-  PROTOCOL_NAME,
-  PROTOCOL_VERSION,
-  QUBIC_TOKEN_ADDRESS,
   CONTRACT_ADDRESS_BYTES,
   serializeBridgeOrder,
-  hexToBytes,
-  bytesToHex,
-  decodeSecretKey,
-} from "../../../src/plugins/app/common/solana/index.js";
+} from "../../../src/plugins/app/common/solana/program.js";
 import { Network } from "../../../src/plugins/app/common/schemas/common.js";
 import type { OracleOrder } from "../../../src/plugins/app/indexer/schemas/order.js";
-import { getOracleSize } from "../../../src/clients/js/accounts/oracle.js";
+
 
 function makeId(value: number) {
   return `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
@@ -199,15 +200,19 @@ describe("relayer plugin", () => {
       decodeSecretKey(JSON.parse(fs.readFileSync(DEFAULT_TEST_CONFIG.SOLANA_KEYS, "utf-8")).sKey)
     );
 
+    const addressEnc = getAddressEncoder();
+    const addressDec = getAddressDecoder();
+
     const fromHex = bytesToHex(new Uint8Array(32).fill(1));
-    const toHex = bytesToHex(new PublicKey(oraclePub).toBytes());
+    const toHex = bytesToHex(oraclePub);
     const nonceHex = bytesToHex(new Uint8Array(32).fill(9));
 
+    const tokenMintBytes = new Uint8Array(addressEnc.encode(DEFAULT_TEST_CONFIG.TOKEN_MINT as Address));
     const digest = createHash("sha256").update(serializeBridgeOrder({
       protocolName: PROTOCOL_NAME, protocolVersion: PROTOCOL_VERSION,
       contractAddress: CONTRACT_ADDRESS_BYTES,
       networkIn: Network.Qubic, networkOut: Network.Solana,
-      tokenIn: QUBIC_TOKEN_ADDRESS, tokenOut: new PublicKey(DEFAULT_TEST_CONFIG.TOKEN_MINT).toBytes(),
+      tokenIn: QUBIC_TOKEN_ADDRESS, tokenOut: tokenMintBytes,
       fromAddress: hexToBytes(fromHex), toAddress: hexToBytes(toHex),
       amount: 1000n, relayerFee: 10n, nonce: hexToBytes(nonceHex),
     })).digest();
@@ -221,9 +226,7 @@ describe("relayer plugin", () => {
     };
 
     let updatedWith: Record<string, unknown> | undefined;
-    const oracleData = Buffer.alloc(getOracleSize());
-    oracleData[0] = 2;
-    oracleData.set(oraclePub, 1);
+    const oracleAddr = addressDec.decode(oraclePub);
 
     const relayer = createRelayerService({
       ordersRepository: {
@@ -235,14 +238,14 @@ describe("relayer plugin", () => {
       logger: { info() {}, error() {} } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
       solanaDeps: {
         config: DEFAULT_TEST_CONFIG, relayerSigner,
-        connection: {
-          getProgramAccounts: async () => [{ pubkey: new PublicKey(oraclePub), account: { data: oracleData } }],
-        } as unknown as Connection,
-        rpc: { getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "11111111111111111111111111111111", lastValidBlockHeight: 999n } }) }) } as unknown as SolanaRelayDeps["rpc"],
+        rpc: {
+          getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "11111111111111111111111111111111", lastValidBlockHeight: 999n } }) }),
+        } as unknown as SolanaRelayDeps["rpc"],
         sendAndConfirm: (async () => undefined) as unknown as SolanaRelayDeps["sendAndConfirm"],
         ordersRepository: { findSignatures: async () => [sigBase64] } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: { info() {}, error() {} } as unknown as SolanaRelayDeps["logger"],
         getLookupTable: async () => ({}),
+        getOracleAddresses: async () => [oracleAddr],
       },
     });
 
@@ -582,6 +585,113 @@ describe("relayer plugin", () => {
 
     assert.ok(updatedWith);
     assert.strictEqual(updatedWith.relay_attempts, 1);
+  });
+
+  it("marks solana orders failed after exceeding max relay attempts", async () => {
+    const solanaOrder: OracleOrder = {
+      id: makeId(60), source: "qubic", dest: "solana", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 1,
+      source_nonce: "nonce-60", source_payload: "{}",
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [solanaOrder],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updatedWith = data;
+          return { ...solanaOrder, ...data };
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 2 },
+      undiciClient: { create: () => ({}) } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: { info() {}, error() {} } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {
+        ordersRepository: { findSignatures: async () => [] } as unknown as SolanaRelayDeps["ordersRepository"],
+        logger: { info() {}, error() {} } as unknown as SolanaRelayDeps["logger"],
+      } as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "failed");
+    assert.strictEqual(updatedWith.relay_attempts, 2);
+    assert.strictEqual(updatedWith.failure_reason_public, "Relay failed");
+  });
+
+  it("keeps solana orders ready when relay attempts remain", async () => {
+    const solanaOrder: OracleOrder = {
+      id: makeId(61), source: "qubic", dest: "solana", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-61", source_payload: "{}",
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [solanaOrder],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updatedWith = data;
+          return { ...solanaOrder, ...data };
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: { create: () => ({}) } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: { info() {}, error() {} } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {
+        ordersRepository: { findSignatures: async () => [] } as unknown as SolanaRelayDeps["ordersRepository"],
+        logger: { info() {}, error() {} } as unknown as SolanaRelayDeps["logger"],
+      } as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "ready-for-relay");
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+  });
+
+  it("logs warning when solana relay fails with already-relayed message", async () => {
+    const fromHex = "00".repeat(32);
+    const toHex = "01".repeat(32);
+    const nonceHex = "02".repeat(32);
+    const solanaOrder: OracleOrder = {
+      id: makeId(62), source: "qubic", dest: "solana", from: fromHex, to: toHex,
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: nonceHex, source_payload: "{}",
+    };
+
+    const warnLogs: unknown[][] = [];
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [solanaOrder],
+        update: async (_id: string, data: Record<string, unknown>) => ({ ...solanaOrder, ...data }),
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: { create: () => ({}) } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      logger: {
+        info() {},
+        warn(...args: unknown[]) { warnLogs.push(args); },
+        error() {},
+      } as unknown as Parameters<typeof createRelayerService>[0]["logger"],
+      solanaDeps: {
+        config: DEFAULT_TEST_CONFIG,
+        ordersRepository: { findSignatures: async () => { throw new Error("already been initialized"); } } as unknown as SolanaRelayDeps["ordersRepository"],
+        logger: { info() {}, error() {} } as unknown as SolanaRelayDeps["logger"],
+        getOracleAddresses: async () => [],
+      } as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(warnLogs.length >= 1, "expected warn log for already-relayed solana order");
   });
 
   it("handles relay error with context.__code of zero", async () => {
