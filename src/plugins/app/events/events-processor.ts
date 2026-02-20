@@ -27,18 +27,14 @@ import {
   kQubicEventValidator,
   type QubicEventValidator,
 } from "./qubic/qubic-events-validator.js";
-import {
-  type QubicStoredEvent,
-  type QubicLockEventPayload,
-  type QubicOverrideLockEventPayload,
-  type QubicUnlockEventPayload,
-} from "./qubic/schemas/qubic-event.js";
+import { type QubicStoredEvent } from "./qubic/schemas/qubic-event.js";
 import { kValidation, type ValidationService } from "../common/validation.js";
 import {
   createFailedOrderFromOutboundEvent,
   createSolanaOrderHandlers,
 } from "./solana/solana-orders.js";
 import { mapStoredEventToSolanaPayload } from "./solana/solana-event-mapper.js";
+import { mapStoredEventToQubicPayload } from "./qubic/qubic-event-mapper.js";
 import { createQubicOrderHandlers } from "./qubic/qubic-orders.js";
 
 const DEFAULT_PROCESS_LIMIT = 50;
@@ -118,24 +114,17 @@ async function processEvent(
       { signature: event.signature, type: event.type, slot: event.slot },
       "Qubic event validated"
     );
-    if (qubicEvent.type === "lock") {
-      await qubicHandlers.handleLockEvent(
-        qubicEvent.payload as QubicLockEventPayload,
-        {
-          signature: qubicEvent.signature,
-        }
-      );
-    } else if (qubicEvent.type === "override-lock") {
-      await qubicHandlers.handleOverrideLockEvent(
-        qubicEvent.payload as QubicOverrideLockEventPayload
-      );
+    const mapped = mapStoredEventToQubicPayload(qubicEvent);
+    if (mapped.type === "lock") {
+      await qubicHandlers.handleLockEvent(mapped.event, {
+        signature: qubicEvent.signature,
+      });
+    } else if (mapped.type === "override-lock") {
+      await qubicHandlers.handleOverrideLockEvent(mapped.event);
     } else {
-      await qubicHandlers.handleUnlockEvent(
-        qubicEvent.payload as QubicUnlockEventPayload,
-        {
-          signature: qubicEvent.signature,
-        }
-      );
+      await qubicHandlers.handleUnlockEvent(mapped.event, {
+        signature: qubicEvent.signature,
+      });
     }
     return;
   }

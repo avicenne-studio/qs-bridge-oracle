@@ -1,16 +1,15 @@
 import { OracleOrder } from "../../indexer/schemas/order.js";
 import type { FastifyBaseLogger } from "fastify";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
-import {
-  type QubicLockEventPayload,
-  type QubicOverrideLockEventPayload,
-  type QubicUnlockEventPayload,
-} from "./schemas/qubic-event.js";
 import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.js";
-import { type SignerService } from "../../signer/signer.service.js";
-import { bytesToHex, nonceToBytes } from "../../common/bytes.js";
+import { type SignerService, type OutboundOrderInput } from "../../signer/signer.service.js";
+import { bytesToHex } from "../../common/bytes.js";
 import { orderIdFromSignature } from "../../common/order-id.js";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../common/protocol.js";
+import { Network } from "../../common/schemas/common.js";
+import { QUBIC_TOKEN_ADDRESS } from "../../common/qubic/encoding.js";
+import { address, getAddressEncoder } from "@solana/kit";
+import { type QubicLockEvent, type QubicOverrideLockEvent, type QubicUnlockEvent } from "./qubic-event-mapper.js";
 
 type Logger = FastifyBaseLogger;
 
@@ -30,28 +29,41 @@ type QubicOrderSourcePayloadV1 = {
   version: string;
 };
 
-function normalizeNonce(nonce: string): string {
-  return bytesToHex(nonceToBytes(nonce));
+const addressEncoder = getAddressEncoder();
+
+function buildOrderToSign(
+  tokenMint: string,
+  event: { fromAddress: Uint8Array; toAddress: Uint8Array; amount: bigint; relayerFee: bigint; nonce: Uint8Array },
+): OutboundOrderInput {
+  return {
+    networkIn: Network.Qubic,
+    networkOut: Network.Solana,
+    tokenIn: QUBIC_TOKEN_ADDRESS,
+    tokenOut: new Uint8Array(addressEncoder.encode(address(tokenMint))),
+    fromAddress: event.fromAddress,
+    toAddress: event.toAddress,
+    amount: event.amount,
+    relayerFee: event.relayerFee,
+    nonce: event.nonce,
+  };
 }
 
 function serializeSourcePayload(payload: QubicOrderSourcePayloadV1): string {
   return JSON.stringify(payload);
 }
 
-function buildSourcePayload(
-  event: QubicLockEventPayload,
-): QubicOrderSourcePayloadV1 {
+function buildSourcePayload(event: QubicLockEvent): QubicOrderSourcePayloadV1 {
   return {
     v: 1,
-    nonce: normalizeNonce(event.nonce),
-    fromAddress: event.fromAddress,
+    nonce: bytesToHex(event.nonce),
+    fromAddress: bytesToHex(event.fromAddress),
     protocol: PROTOCOL_NAME,
     version: PROTOCOL_VERSION,
   };
 }
 
 function createOrderFromLockEvent(
-  event: QubicLockEventPayload,
+  event: QubicLockEvent,
   signature: string,
   orderId: string,
   sourceNonce: string,
@@ -62,10 +74,10 @@ function createOrderFromLockEvent(
     id: orderId,
     source: "qubic",
     dest: "solana",
-    from: event.fromAddress,
-    to: event.toAddress,
-    amount: event.amount,
-    relayerFee: event.relayerFee,
+    from: bytesToHex(event.fromAddress),
+    to: bytesToHex(event.toAddress),
+    amount: event.amount.toString(),
+    relayerFee: event.relayerFee.toString(),
     origin_trx_hash: originTrxHash,
     signature,
     status: "pending",
@@ -77,24 +89,30 @@ function createOrderFromLockEvent(
 }
 
 export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
-  const { ordersRepository, signerService, config, logger, relayerFeeAcceptance } = deps;
+  const {
+    ordersRepository,
+    signerService,
+    config,
+    logger,
+    relayerFeeAcceptance,
+  } = deps;
 
   const handleLockEvent = async (
-    event: QubicLockEventPayload,
+    event: QubicLockEvent,
     meta?: { signature?: string },
   ) => {
     logger.debug(
       {
         amount: event.amount,
         relayerFee: event.relayerFee,
-        nonce: event.nonce,
-        from: event.fromAddress,
-        to: event.toAddress,
+        nonce: bytesToHex(event.nonce),
+        from: bytesToHex(event.fromAddress),
+        to: bytesToHex(event.toAddress),
       },
       "Qubic lock event payload",
     );
 
-    const sourceNonce = normalizeNonce(event.nonce);
+    const sourceNonce = bytesToHex(event.nonce);
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (existing) {
       logger.info({ orderId: existing.id }, "Qubic lock order already exists");
@@ -104,14 +122,12 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     const signatureSeed = meta?.signature ?? sourceNonce;
     const originTrxHash = meta?.signature ?? sourceNonce;
     const orderId = orderIdFromSignature(signatureSeed);
-    const signature = await signerService.signQubicToSolanaOrder({
-      tokenMint: config.TOKEN_MINT,
-      ...event,
-    });
+    const orderToSign = buildOrderToSign(config.TOKEN_MINT, event);
+    const signature = await signerService.signLockOrderForSolana(orderToSign);
     logger.info({ orderId, signature }, "Qubic lock order signed");
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToSolana(
-      BigInt(event.amount),
-      BigInt(event.relayerFee),
+      event.amount,
+      event.relayerFee,
     );
 
     const order = createOrderFromLockEvent(
@@ -128,18 +144,18 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
   };
 
   const handleOverrideLockEvent = async (
-    event: QubicOverrideLockEventPayload,
+    event: QubicOverrideLockEvent,
   ) => {
     logger.debug(
       {
         relayerFee: event.relayerFee,
-        nonce: event.nonce,
-        to: event.toAddress,
+        nonce: bytesToHex(event.nonce),
+        to: bytesToHex(event.toAddress),
       },
       "Qubic override lock event payload",
     );
 
-    const sourceNonce = normalizeNonce(event.nonce);
+    const sourceNonce = bytesToHex(event.nonce);
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (!existing) {
       logger.warn(
@@ -156,22 +172,16 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
       return;
     }
 
-    const updatedSignature = await signerService.signQubicToSolanaOrder({
-      tokenMint: config.TOKEN_MINT,
-      fromAddress: existing.from,
-      toAddress: event.toAddress,
-      amount: existing.amount,
-      relayerFee: event.relayerFee,
-      nonce: event.nonce,
-    });
+    const orderToSign = buildOrderToSign(config.TOKEN_MINT, event);
+    const updatedSignature = await signerService.signLockOrderForSolana(orderToSign);
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToSolana(
-      BigInt(existing.amount),
-      BigInt(event.relayerFee),
+      event.amount,
+      event.relayerFee,
     );
 
     await ordersRepository.update(existing.id, {
-      to: event.toAddress,
-      relayerFee: event.relayerFee,
+      to: bytesToHex(event.toAddress),
+      relayerFee: event.relayerFee.toString(),
       signature: updatedSignature,
       oracle_accept_to_relay: oracleAcceptToRelay,
     });
@@ -180,19 +190,19 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
   };
 
   const handleUnlockEvent = async (
-    event: QubicUnlockEventPayload,
+    event: QubicUnlockEvent,
     meta?: { signature?: string },
   ) => {
     logger.debug(
       {
         amount: event.amount,
-        nonce: event.nonce,
-        to: event.toAddress,
+        nonce: bytesToHex(event.nonce),
+        to: bytesToHex(event.toAddress),
       },
       "Qubic unlock event payload",
     );
 
-    const sourceNonce = normalizeNonce(event.nonce);
+    const sourceNonce = bytesToHex(event.nonce);
     const existing = await ordersRepository.findBySourceNonce(sourceNonce);
     if (!existing) {
       logger.warn(
