@@ -145,8 +145,8 @@ FAKE_QUBIC_HOST=0.0.0.0 FAKE_QUBIC_PORT=3015 npm run fake-qubic
 
 ```bash
 npm run lock -- \
-  --from "id(1,2,3,4)" \
-  --to "0xabc" \
+  --from "ABCDEFGHIJKLMNOPQRSTUVWXABCDEFGHIJKLMNOPQRSTUVWX" \
+  --to "46F9i1Bzv8kwShyG8xbtdkA7nEoYmzyueKwjXyDgtAQV" \
   --amount 1000000 \
   --relayerFee 1000 \
   --nonce 42
