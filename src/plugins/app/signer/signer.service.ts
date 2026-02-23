@@ -24,7 +24,7 @@ import {
   type BridgeOrderFields,
 } from "../common/solana/program.js";
 
-export type OutboundOrderInput = {
+export type OrderInput = {
   networkIn: number;
   networkOut: number;
   tokenIn: Uint8Array;
@@ -37,13 +37,13 @@ export type OutboundOrderInput = {
 };
 
 export type SignerService = {
-  signLockOrderForSolana: (order: OutboundOrderInput) => Promise<string>;
-  signOutboundOrderForQubic: (order: OutboundOrderInput) => Promise<string>;
+  signLockOrderForSolana: (order: OrderInput) => Promise<string>;
+  signUnlockOrderForQubic: (order: OrderInput) => Promise<string>;
 };
 
 export const kSignerService = Symbol("app.signerService");
 
-function serializeOrder(order: OutboundOrderInput): Uint8Array {
+function serializeOrder(order: OrderInput): Uint8Array {
   assertFixedBytes(order.tokenIn, "tokenIn", 32);
   assertFixedBytes(order.tokenOut, "tokenOut", 32);
   assertFixedBytes(order.fromAddress, "fromAddress", 32);
@@ -86,6 +86,8 @@ type QubicCrypto = {
   K12: (input: Uint8Array, output: Uint8Array, outputLength: number) => void;
 };
 
+// The WASM module exposes the crypto API behind a nested `.default` Promise.
+// The ESM interop wraps the CJS export, so we must unwrap it manually.
 const resolvedQubicCrypto = (
   qubicCrypto as unknown as { default: Promise<QubicCrypto> }
 ).default;
@@ -134,7 +136,7 @@ async function createQubicSignerFromKeys(
 }
 
 export async function signLockOrderForSolanaWithSigner(
-  order: OutboundOrderInput,
+  order: OrderInput,
   signer: SolanaSigner,
 ): Promise<string> {
   const digest = createHash("sha256").update(serializeOrder(order)).digest();
@@ -154,9 +156,9 @@ async function readKeysFromFile(
   fastify: FastifyInstance,
 ): Promise<SignerKeys> {
   const prefix = `SignerService(${variableName})`;
-  const fileManager: FileManager = fastify.getDecorator(kFileManager);
+  const fileManager = fastify.getDecorator<FileManager>(kFileManager);
   const validation: ValidationService = fastify.getDecorator(kValidation);
-  const parsed = await fileManager.readJsonFile(prefix, filePath);
+  const parsed: unknown = await fileManager.readJsonFile(prefix, filePath);
   validation.assertValid<SignerKeys>(SignerKeysSchema, parsed, prefix);
   return parsed;
 }
@@ -170,31 +172,20 @@ export default fp(
       readKeysFromFile("QUBIC_KEYS", config.QUBIC_KEYS, fastify),
     ]);
 
-    let cachedSolanaSigner: SolanaSigner | null = null;
-    const ensureSolanaSigner = async () => {
-      if (!cachedSolanaSigner) {
-        cachedSolanaSigner = await createSolanaSignerFromKeys(solanaKeys);
-      }
-      return cachedSolanaSigner;
-    };
+    const [solanaSigner, qubicSigner] = await Promise.all([
+      createSolanaSignerFromKeys(solanaKeys),
+      createQubicSignerFromKeys(qubicKeys),
+    ]);
 
-    let cachedQubicSigner: QubicSigner | null = null;
-    const ensureQubicSigner = async () => {
-      if (!cachedQubicSigner) {
-        cachedQubicSigner = await createQubicSignerFromKeys(qubicKeys);
-      }
-      return cachedQubicSigner;
-    };
+    const signLockOrderForSolana = (order: OrderInput) =>
+      signLockOrderForSolanaWithSigner(order, solanaSigner);
 
-    const signLockOrderForSolana = async (order: OutboundOrderInput) =>
-      signLockOrderForSolanaWithSigner(order, await ensureSolanaSigner());
-
-    const signOutboundOrderForQubic = async (order: OutboundOrderInput) =>
-      (await ensureQubicSigner()).sign(serializeOrder(order));
+    const signUnlockOrderForQubic = (order: OrderInput) =>
+      Promise.resolve(qubicSigner.sign(serializeOrder(order)));
 
     fastify.decorate(kSignerService, {
       signLockOrderForSolana,
-      signOutboundOrderForQubic,
+      signUnlockOrderForQubic,
     });
   },
   {

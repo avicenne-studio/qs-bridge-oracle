@@ -2,7 +2,7 @@ import { OracleOrder } from "../../indexer/schemas/order.js";
 import type { FastifyBaseLogger } from "fastify";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.js";
-import { type SignerService, type OutboundOrderInput } from "../../signer/signer.service.js";
+import { type SignerService, type OrderInput } from "../../signer/signer.service.js";
 import { bytesToHex } from "../../common/bytes.js";
 import { orderIdFromSignature } from "../../common/order-id.js";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../common/protocol.js";
@@ -31,10 +31,12 @@ type QubicOrderSourcePayloadV1 = {
 
 const addressEncoder = getAddressEncoder();
 
+type QubicOrderFields = Pick<QubicLockEvent, "fromAddress" | "toAddress" | "amount" | "relayerFee" | "nonce">;
+
 function buildOrderToSign(
   tokenMint: string,
-  event: { fromAddress: Uint8Array; toAddress: Uint8Array; amount: bigint; relayerFee: bigint; nonce: Uint8Array },
-): OutboundOrderInput {
+  event: QubicOrderFields,
+): OrderInput {
   return {
     networkIn: Network.Qubic,
     networkOut: Network.Solana,

@@ -8,6 +8,6 @@ export function createMockSignerService(): SignerService {
   };
   return {
     signLockOrderForSolana: sign,
-    signOutboundOrderForQubic: sign,
+    signUnlockOrderForQubic: sign,
   };
 }

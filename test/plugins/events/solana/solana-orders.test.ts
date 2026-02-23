@@ -75,7 +75,7 @@ function createHandlers(repo: Repo) {
   const { logger, entries } = createLogger();
   const signerService = {
     signLockOrderForSolana: async () => "signed-solana-order",
-    signOutboundOrderForQubic: async () => "signed-qubic-order",
+    signUnlockOrderForQubic: async () => "signed-qubic-order",
   };
   const validation = createValidation();
   const relayerFeeAcceptance = {
@@ -306,7 +306,7 @@ describe("solana order handlers", () => {
     const { handleOutboundEvent, handleOverrideOutboundEvent } =
       createSolanaOrderHandlers({
         ordersRepository: repo as never,
-        signerService: { signLockOrderForSolana: async () => "resigned-sig", signOutboundOrderForQubic: async () => "resigned-qubic-sig" },
+        signerService: { signLockOrderForSolana: async () => "resigned-sig", signUnlockOrderForQubic: async () => "resigned-qubic-sig" },
         logger: createLogger().logger,
         validation: createValidation(),
         relayerFeeAcceptance,

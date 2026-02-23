@@ -191,7 +191,7 @@ describe("signerService", () => {
     const signer: SignerService = app.getDecorator(kSignerService);
 
     assert.strictEqual(typeof signer.signLockOrderForSolana, "function");
-    assert.strictEqual(typeof signer.signOutboundOrderForQubic, "function");
+    assert.strictEqual(typeof signer.signUnlockOrderForQubic, "function");
   });
 
   it("signs a solana order using the fixture keypair", async (t: TestContext) => {
@@ -247,18 +247,12 @@ describe("signerService", () => {
       pKey: solanaFixtureKeys.pKey,
       sKey: Buffer.from("short").toString("base64"),
     });
-    const app = await buildSignerApp({ SOLANA_KEYS: solanaKeysFile });
     t.after(async () => {
-      await app.close();
-      await fs.rm(path.dirname(solanaKeysFile), {
-        recursive: true,
-        force: true,
-      });
+      await fs.rm(path.dirname(solanaKeysFile), { recursive: true, force: true });
     });
-    const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signLockOrderForSolana(makeOrder()),
+      buildSignerApp({ SOLANA_KEYS: solanaKeysFile }),
       /secret key must be 64 bytes/
     );
   });
@@ -268,18 +262,12 @@ describe("signerService", () => {
       pKey: "Mismatch",
       sKey: solanaFixtureKeys.sKey,
     });
-    const app = await buildSignerApp({ SOLANA_KEYS: solanaKeysFile });
     t.after(async () => {
-      await app.close();
-      await fs.rm(path.dirname(solanaKeysFile), {
-        recursive: true,
-        force: true,
-      });
+      await fs.rm(path.dirname(solanaKeysFile), { recursive: true, force: true });
     });
-    const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signLockOrderForSolana(makeOrder()),
+      buildSignerApp({ SOLANA_KEYS: solanaKeysFile }),
       /public key does not match secret key/
     );
   });
@@ -291,15 +279,12 @@ describe("signerService", () => {
       pKey: "MISMATCHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       sKey: "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl",
     }));
-    const app = await buildSignerApp({ QUBIC_KEYS: qubicKeysFile });
     t.after(async () => {
-      await app.close();
       await fs.rm(tempDir, { recursive: true, force: true });
     });
-    const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signOutboundOrderForQubic(makeOrder()),
+      buildSignerApp({ QUBIC_KEYS: qubicKeysFile }),
       /public key does not match seed/
     );
   });
