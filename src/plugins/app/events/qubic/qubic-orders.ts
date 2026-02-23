@@ -76,6 +76,34 @@ function createOrderFromLockEvent(
   };
 }
 
+export function createFailedOrderFromLockEvent(
+  event: QubicLockEventPayload,
+  meta: { signature?: string },
+  failureReasonPublic: string,
+): OracleOrder {
+  const sourceNonce = normalizeNonce(event.nonce);
+  const signatureSeed = meta.signature ?? sourceNonce;
+  const orderId = orderIdFromSignature(signatureSeed);
+
+  return {
+    id: orderId,
+    source: "qubic",
+    dest: "solana",
+    from: event.fromAddress,
+    to: event.toAddress,
+    amount: event.amount,
+    relayerFee: event.relayerFee,
+    origin_trx_hash: signatureSeed,
+    signature: signatureSeed,
+    status: "failed",
+    oracle_accept_to_relay: false,
+    relay_attempts: 0,
+    source_nonce: sourceNonce,
+    source_payload: serializeSourcePayload(buildSourcePayload(event)),
+    failure_reason_public: failureReasonPublic,
+  };
+}
+
 export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
   const { ordersRepository, signerService, config, logger, relayerFeeAcceptance } = deps;
 

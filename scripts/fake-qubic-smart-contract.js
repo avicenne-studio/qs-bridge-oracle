@@ -18,27 +18,32 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function toQubicIdString(value) {
-  if (typeof value === "string" && value.startsWith("id(")) {
-    return value;
+const qubicIdPattern = /^[A-Z]+$/;
+const hex32Pattern = /^(0x)?[0-9a-f]{64}$/i;
+
+function isQubicId(value) {
+  if (typeof value !== "string") {
+    return false;
   }
-  if (Array.isArray(value) && value.length === 4) {
-    return `id(${value.join(",")})`;
+  const trimmed = value.trim();
+  if (!qubicIdPattern.test(trimmed)) {
+    return false;
   }
-  if (value && typeof value === "object") {
-    const { a = 0, b = 0, c = 0, d = 0 } = value;
-    return `id(${a},${b},${c},${d})`;
+  return trimmed.length >= 48 && trimmed.length <= 60 && trimmed.length % 4 === 0;
+}
+
+function isHex32(value) {
+  if (typeof value !== "string") {
+    return false;
   }
-  if (typeof value === "string" && value.length > 0) {
-    return value;
+  return hex32Pattern.test(value.trim());
+}
+
+function assertValidQubicAddress(value, label) {
+  if (isQubicId(value) || isHex32(value)) {
+    return;
   }
-  const fallback = [
-    Math.floor(Math.random() * 10_000),
-    Math.floor(Math.random() * 10_000),
-    Math.floor(Math.random() * 10_000),
-    Math.floor(Math.random() * 10_000),
-  ];
-  return `id(${fallback.join(",")})`;
+  throw new Error(`${label} is invalid`);
 }
 
 function toHexHash(input) {
@@ -96,8 +101,14 @@ function matchesExpected(event, expected) {
 fastify.post("/lock", async (request, reply) => {
   const body = request.body ?? {};
   const nonce = String(body.nonce ?? Date.now());
+  const fromAddress = String(body.from ?? "");
+  try {
+    assertValidQubicAddress(fromAddress, "from");
+  } catch (err) {
+    return reply.code(400).send({ message: err.message });
+  }
   const payload = {
-    fromAddress: toQubicIdString(body.from),
+    fromAddress,
     toAddress: String(body.to ?? ""),
     amount: String(body.amount ?? "0"),
     relayerFee: String(body.relayerFee ?? "0"),
@@ -159,8 +170,14 @@ fastify.post("/override-lock", async (request, reply) => {
 
 fastify.post("/unlock", async (request, reply) => {
   const body = request.body ?? {};
+  const toAddress = String(body.to ?? "");
+  try {
+    assertValidQubicAddress(toAddress, "to");
+  } catch (err) {
+    return reply.code(400).send({ message: err.message });
+  }
   const payload = {
-    toAddress: String(body.to ?? ""),
+    toAddress,
     amount: String(body.amount ?? "0"),
     nonce: String(body.nonce ?? Date.now()),
   };
