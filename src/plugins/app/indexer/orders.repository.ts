@@ -18,7 +18,12 @@ type PersistedSignature = {
 };
 type StoredOrder = OracleOrder;
 type CreateOrder = OracleOrder;
-type UpdateOrder = Partial<OracleOrder>;
+type UpdateOrder = Partial<Omit<OracleOrder, "destination_trx_hash" | "failure_reason_public" | "next_relay_at" | "last_relay_error">> & {
+  destination_trx_hash?: string | null;
+  failure_reason_public?: string | null;
+  next_relay_at?: string | null;
+  last_relay_error?: string | null;
+};
 type StoredOrderWithSignatures = StoredOrder & { signatures: string[] };
 
 const MAX_BY_IDS = 100;
@@ -31,6 +36,8 @@ function normalizeOrderRow(row: StoredOrder): StoredOrder {
     oracle_accept_to_relay: Boolean(row.oracle_accept_to_relay),
     relay_attempts: Number(row.relay_attempts),
     failure_reason_public: row.failure_reason_public ?? undefined,
+    next_relay_at: row.next_relay_at ?? undefined,
+    last_relay_error: row.last_relay_error ?? undefined,
   };
 }
 
@@ -52,9 +59,10 @@ function createRepository(fastify: FastifyInstance) {
     },
 
     async update(id: string, changes: UpdateOrder) {
+      const payload = { ...changes } as Record<string, unknown>;
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("id", id)
-        .update(changes);
+        .update(payload);
 
       if (affectedRows === 0) {
         return null;
@@ -127,6 +135,13 @@ function createRepository(fastify: FastifyInstance) {
         })
         .andWhere("oracle_accept_to_relay", 1)
         .andWhere("relay_attempts", "<", maxRelayAttempts)
+        .andWhere((builder) => {
+          builder.whereNull("next_relay_at").orWhere(
+            "next_relay_at",
+            "<=",
+            knex.fn.now()
+          );
+        })
         .orderBy("id", "asc")
         .limit(limit);
 

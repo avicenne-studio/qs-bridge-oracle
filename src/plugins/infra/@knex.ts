@@ -73,6 +73,8 @@ export default fp(
             .timestamp("created_at", { useTz: false })
             .notNullable()
             .defaultTo(knexInstance.fn.now());
+          table.timestamp("next_relay_at", { useTz: false }).nullable();
+          table.string("last_relay_error").nullable();
         });
       }
       const hasSignaturesTable = await knexInstance.schema.hasTable(

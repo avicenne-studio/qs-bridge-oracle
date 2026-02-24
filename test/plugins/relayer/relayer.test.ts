@@ -82,6 +82,78 @@ describe("relayer plugin", () => {
     assert.ok(updated?.destination_trx_hash);
   });
 
+  it("waits between relay attempts when delay is configured", async (t) => {
+    const { url } = await startQubicServer(t, "/rpc");
+    const delayMs = 25;
+    const app = await build(t, {
+      useMocks: false,
+      config: {
+        QUBIC_RPC_URL: `${url}/rpc`,
+        RELAYER_ENABLED: true,
+        RELAYER_PROCESS_INTERVAL_MS: 5_000,
+        RELAYER_PER_ORDER_DELAY_MS: delayMs,
+      },
+    });
+    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
+    const relayer = app.getDecorator<RelayerService>(kRelayerService);
+
+    await repo.create({
+      id: makeId(11), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash-11", signature: "sig-11",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-11", source_payload: "{}",
+    });
+    await repo.create({
+      id: makeId(12), source: "solana", dest: "qubic", from: "C", to: "D",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash-12", signature: "sig-12",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-12", source_payload: "{}",
+    });
+
+    const startedAt = Date.now();
+    await relayer.relayPending();
+    const elapsedMs = Date.now() - startedAt;
+    assert.ok(elapsedMs >= delayMs - 5);
+  });
+
+  it("backs off when rate limited", async (t) => {
+    const server = Fastify({ logger: false });
+    server.post("/unlock", async (_req, reply) => reply.code(429).send({ message: "Too Many Requests" }));
+    await server.listen({ port: 0, host: "127.0.0.1" });
+    const addr = server.server.address();
+    if (!addr || typeof addr === "string") throw new Error("Unable to determine server address");
+    t.after(() => server.close());
+
+    const app = await build(t, {
+      useMocks: false,
+      config: {
+        QUBIC_RPC_URL: `http://127.0.0.1:${addr.port}`,
+        RELAYER_ENABLED: true,
+        RELAYER_PROCESS_INTERVAL_MS: 5_000,
+        RELAYER_MAX_ATTEMPTS: 4,
+        RELAYER_BACKOFF_BASE_MS: 10,
+        RELAYER_BACKOFF_MAX_MS: 10_000,
+      },
+    });
+    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
+    const relayer = app.getDecorator<RelayerService>(kRelayerService);
+
+    const order = await repo.create({
+      id: makeId(20), source: "solana", dest: "qubic", from: "A", to: "B",
+      amount: "10", relayerFee: "0", origin_trx_hash: "trx-hash", signature: "sig",
+      status: "ready-for-relay", oracle_accept_to_relay: true, relay_attempts: 0,
+      source_nonce: "nonce-20", source_payload: "{}",
+    });
+
+    await relayer.relayPending();
+
+    const updated = await repo.findById(order!.id);
+    assert.strictEqual(updated?.status, "ready-for-relay");
+    assert.strictEqual(updated?.relay_attempts, 1);
+    assert.ok(updated?.next_relay_at);
+    assert.ok(updated?.last_relay_error);
+  });
+
   it("marks orders failed after exceeding max relay attempts", async (t) => {
     const server = Fastify({ logger: false });
     server.post("/unlock", async (_req, reply) => reply.code(500).send({ message: "boom" }));

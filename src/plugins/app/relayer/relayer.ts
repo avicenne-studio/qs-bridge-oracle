@@ -16,6 +16,7 @@ import {
   relayToSolana,
   buildSolanaRelayDeps,
 } from "./relay-solana.js";
+import { HttpError } from "../../infra/undici-client.js";
 
 export type RelayerService = {
   relayPending(): Promise<void>;
@@ -26,6 +27,37 @@ export const kRelayerService = Symbol("app.relayerService");
 /** Solana error codes that usually mean another oracle already relayed (account already initialized, etc.). */
 const ALREADY_RELAYED_CODES = ["7050003", "4615009", "-32002"];
 const ALREADY_RELAYED_MESSAGES = ["already been initialized", "uninitialized account"];
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function isRateLimited(error: unknown): boolean {
+  if (error instanceof HttpError) {
+    return error.statusCode === 429;
+  }
+  if (error instanceof Error) {
+    const ctx = (error as { context?: { __code?: number | string; statusCode?: number } }).context;
+    if (ctx && String(ctx.__code) === "8100002") {
+      return true;
+    }
+    if (ctx && String(ctx.statusCode) === "429") {
+      return true;
+    }
+    const msg = error.message.toLowerCase();
+    return msg.includes("too many requests") || msg.includes("429");
+  }
+  return false;
+}
+
+function computeBackoffMs(config: EnvConfig, nextAttempts: number): number {
+  const maxExponent = Math.max(0, config.RELAYER_MAX_ATTEMPTS - 1);
+  const exponent = Math.min(Math.max(0, nextAttempts - 1), maxExponent);
+  const raw = config.RELAYER_BACKOFF_BASE_MS * Math.pow(2, exponent);
+  return Math.min(config.RELAYER_BACKOFF_MAX_MS, Math.max(0, raw));
+}
 
 function isLikelyAlreadyRelayed(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
@@ -77,6 +109,26 @@ async function relayOrder(
     logger.info({ orderId: order.id }, "Order relayed successfully");
   } catch (error) {
     const payload = toRelayErrorPayload(error);
+    const rateLimited = isRateLimited(error);
+    if (rateLimited) {
+      const backoffMs = computeBackoffMs(config, nextAttempts);
+      logger.warn(
+        { orderId: order.id, relayError: payload, backoffMs },
+        "Relay rate-limited; backing off"
+      );
+      try {
+        await ordersRepository.update(order.id, {
+          relay_attempts: nextAttempts,
+          status: "ready-for-relay",
+          next_relay_at: new Date(Date.now() + backoffMs).toISOString(),
+          last_relay_error: payload.message,
+        });
+      } catch (updateErr) {
+        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+        logger.error({ orderId: order.id, updateError: msg }, "Failed to update order after rate limit");
+      }
+      return;
+    }
     const alreadyRelayed = isLikelyAlreadyRelayed(error);
     if (alreadyRelayed) {
       logger.warn(
@@ -104,6 +156,8 @@ async function relayOrder(
         relay_attempts: nextAttempts,
         status: shouldFail ? "failed" : "ready-for-relay",
         failure_reason_public: shouldFail ? "Relay failed" : undefined,
+        last_relay_error: payload.message,
+        next_relay_at: null,
       });
     } catch (updateErr) {
       const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
@@ -127,7 +181,8 @@ export function createRelayerService(deps: {
       const candidates = await ordersRepository.findReadyForRelay(
         config.RELAYER_MAX_ATTEMPTS
       );
-      for (const order of candidates) {
+      const delayMs = config.RELAYER_PER_ORDER_DELAY_MS;
+      for (const [index, order] of candidates.entries()) {
         await relayOrder(order, {
           ordersRepository,
           config,
@@ -135,6 +190,9 @@ export function createRelayerService(deps: {
           logger,
           solanaDeps,
         });
+        if (delayMs > 0 && index < candidates.length - 1) {
+          await sleep(delayMs);
+        }
       }
     },
   };
