@@ -66,6 +66,7 @@ function createRepository(fastify: FastifyInstance) {
     async markReadyForRelay(id: string) {
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("id", id)
+        .whereIn("status", ["pending", "ready-for-relay"])
         .update({ status: "ready-for-relay", oracle_accept_to_relay: true });
 
       if (affectedRows === 0) {

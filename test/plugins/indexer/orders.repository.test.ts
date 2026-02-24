@@ -286,6 +286,36 @@ describe("ordersRepository", () => {
     assert.strictEqual(updated?.oracle_accept_to_relay, true);
   });
 
+  it("should not mark relayed orders ready for relay", async (t) => {
+    const app = await build(t);
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
+
+    const created = await repo.create({
+      id: makeId(312),
+      source: "solana",
+      dest: "qubic",
+      from: "RelayedA",
+      to: "RelayedB",
+      amount: "33",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig-ready",
+      status: "relayed",
+      oracle_accept_to_relay: true,
+      relay_attempts: 1,
+      source_nonce: "nonce-312",
+      source_payload: "{}",
+    });
+
+    const updated = await repo.markReadyForRelay(created!.id);
+    assert.strictEqual(updated, null);
+
+    const stored = await repo.findById(created!.id);
+    assert.ok(stored);
+    assert.strictEqual(stored?.status, "relayed");
+    assert.strictEqual(stored?.oracle_accept_to_relay, true);
+  });
+
   it("should return null when marking a non-existent order ready", async (t) => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
