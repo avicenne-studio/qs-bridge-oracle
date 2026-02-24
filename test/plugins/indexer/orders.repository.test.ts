@@ -123,7 +123,7 @@ describe("ordersRepository", () => {
     await assert.rejects(() => repo.byIds(ids), /Cannot request more than 100/);
   });
 
-  it("should return pending orders ordered and limited", async (t) => {
+  it("should return consensus orders ordered and limited", async (t) => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
@@ -163,10 +163,10 @@ describe("ordersRepository", () => {
       source_payload: "{}",
     });
 
-    const pending = await repo.findPendingOrders();
-    assert.strictEqual(pending.length, 50);
-    assert.strictEqual(pending[0].id, makeId(1));
-    assert.strictEqual(pending[49].id, makeId(50));
+    const consensus = await repo.findConsensusOrders();
+    assert.strictEqual(consensus.length, 50);
+    assert.strictEqual(consensus[0].id, makeId(1));
+    assert.strictEqual(consensus[49].id, makeId(50));
   });
 
   it("should return ready-to-relay orders within retry limits", async (t) => {

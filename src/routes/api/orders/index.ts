@@ -22,7 +22,7 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
       },
     },
     async function handler() {
-        const result = await ordersRepository.findPendingOrders();
+        const result = await ordersRepository.findConsensusOrders();
 
         return {
           data: result,

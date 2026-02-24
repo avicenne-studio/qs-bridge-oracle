@@ -22,7 +22,7 @@ type UpdateOrder = Partial<OracleOrder>;
 type StoredOrderWithSignatures = StoredOrder & { signatures: string[] };
 
 const MAX_BY_IDS = 100;
-const MAX_PENDING = 50;
+const MAX_CONSENSUS = 50;
 const MAX_READY_FOR_RELAY = 50;
 
 function normalizeOrderRow(row: StoredOrder): StoredOrder {
@@ -102,14 +102,19 @@ function createRepository(fastify: FastifyInstance) {
       return rows.map((row) => normalizeOrderRow(row as StoredOrder));
     },
 
-    async findPendingOrders() {
+    async findConsensusOrders() {
       const rows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .select("*")
-        .where((builder) => {
-          builder.where("oracle_accept_to_relay", 1).orWhere("status", "failed");
-        })
+        .whereRaw("created_at >= datetime('now', '-1 day')")
+        .whereIn("status", [
+          "pending",
+          "ready-for-relay",
+          "relayed",
+          "finalized",
+          "failed",
+        ])
         .orderBy("id", "asc")
-        .limit(MAX_PENDING);
+        .limit(MAX_CONSENSUS);
 
       return rows.map((row) => normalizeOrderRow(row as StoredOrder));
     },

@@ -73,6 +73,7 @@ async function relayOrder(
       status: "relayed",
       destination_trx_hash: result.trxHash,
     });
+
     logger.info({ orderId: order.id }, "Order relayed successfully");
   } catch (error) {
     const payload = toRelayErrorPayload(error);
