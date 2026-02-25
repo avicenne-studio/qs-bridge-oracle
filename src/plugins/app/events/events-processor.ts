@@ -27,7 +27,7 @@ import {
   kQubicEventValidator,
   type QubicEventValidator,
 } from "./qubic/qubic-events-validator.js";
-import { type QubicStoredEvent } from "./qubic/schemas/qubic-event.js";
+import { type QubicStoredEvent, type QubicLockEventPayload } from "./qubic/schemas/qubic-event.js";
 import { kValidation, type ValidationService } from "../common/validation.js";
 import {
   createFailedOrderFromOutboundEvent,
@@ -35,7 +35,10 @@ import {
 } from "./solana/solana-orders.js";
 import { mapStoredEventToSolanaPayload } from "./solana/solana-event-mapper.js";
 import { mapStoredEventToQubicPayload } from "./qubic/qubic-event-mapper.js";
-import { createQubicOrderHandlers } from "./qubic/qubic-orders.js";
+import {
+  createFailedOrderFromLockEvent,
+  createQubicOrderHandlers,
+} from "./qubic/qubic-orders.js";
 
 const DEFAULT_PROCESS_LIMIT = 50;
 
@@ -179,6 +182,30 @@ async function handleFailure(opts: {
     logger.info(
       { orderId: failedOrder.id, eventId: event.id },
       "Stored failed order from outbound event"
+    );
+  }
+
+  if (status === "failed" && event.type === "lock" && event.chain === "qubic") {
+    const publicReason = toPublicFailureReason(error);
+    const qubicEvent = event as QubicStoredEvent;
+    const failedOrder = createFailedOrderFromLockEvent(
+      qubicEvent.payload as QubicLockEventPayload,
+      { signature: qubicEvent.signature },
+      publicReason
+    );
+    const sourceNonce = failedOrder.source_nonce;
+    const existing = await ordersRepository.findBySourceNonce(sourceNonce);
+    if (existing) {
+      logger.warn(
+        { orderId: existing.id, eventId: event.id },
+        "Failed event order already exists"
+      );
+      return;
+    }
+    await ordersRepository.create(failedOrder);
+    logger.info(
+      { orderId: failedOrder.id, eventId: event.id },
+      "Stored failed order from qubic lock event"
     );
   }
 }

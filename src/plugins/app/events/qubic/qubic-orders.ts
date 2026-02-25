@@ -3,13 +3,14 @@ import type { FastifyBaseLogger } from "fastify";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.js";
 import { type SignerService, type OrderInput } from "../../signer/signer.service.js";
-import { bytesToHex } from "../../common/bytes.js";
+import { bytesToHex, nonceToBytes } from "../../common/bytes.js";
 import { orderIdFromSignature } from "../../common/order-id.js";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../common/protocol.js";
 import { Network } from "../../common/schemas/common.js";
 import { QUBIC_TOKEN_ADDRESS } from "../../common/qubic/encoding.js";
 import { address, getAddressEncoder } from "@solana/kit";
 import { type QubicLockEvent, type QubicOverrideLockEvent, type QubicUnlockEvent } from "./qubic-event-mapper.js";
+import { type QubicLockEventPayload } from "./schemas/qubic-event.js";
 
 type Logger = FastifyBaseLogger;
 
@@ -30,6 +31,10 @@ type QubicOrderSourcePayloadV1 = {
 };
 
 const addressEncoder = getAddressEncoder();
+
+function normalizeNonce(nonce: string): string {
+  return bytesToHex(nonceToBytes(nonce));
+}
 
 type QubicOrderFields = Pick<QubicLockEvent, "fromAddress" | "toAddress" | "amount" | "relayerFee" | "nonce">;
 
@@ -87,6 +92,40 @@ function createOrderFromLockEvent(
     relay_attempts: 0,
     source_nonce: sourceNonce,
     source_payload: serializeSourcePayload(buildSourcePayload(event)),
+  };
+}
+
+export function createFailedOrderFromLockEvent(
+  event: QubicLockEventPayload,
+  meta: { signature?: string },
+  failureReasonPublic: string,
+): OracleOrder {
+  const sourceNonce = normalizeNonce(event.nonce);
+  const signatureSeed = meta.signature ?? sourceNonce;
+  const orderId = orderIdFromSignature(signatureSeed);
+
+  return {
+    id: orderId,
+    source: "qubic",
+    dest: "solana",
+    from: event.fromAddress,
+    to: event.toAddress,
+    amount: event.amount,
+    relayerFee: event.relayerFee,
+    origin_trx_hash: signatureSeed,
+    signature: signatureSeed,
+    status: "failed",
+    oracle_accept_to_relay: false,
+    relay_attempts: 0,
+    source_nonce: sourceNonce,
+    source_payload: serializeSourcePayload({
+      v: 1,
+      nonce: normalizeNonce(event.nonce),
+      fromAddress: event.fromAddress,
+      protocol: PROTOCOL_NAME,
+      version: PROTOCOL_VERSION,
+    }),
+    failure_reason_public: failureReasonPublic,
   };
 }
 

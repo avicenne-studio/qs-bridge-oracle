@@ -2,7 +2,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { build, waitFor } from "../../helpers/build.js";
+import { build } from "../../helpers/build.js";
+import { waitFor } from "../../helpers/setup/wait-for.js";
+import { mockLogMethod } from "../../helpers/mocks/logger.js";
 import {
   kOrdersRepository,
   type OrdersRepository,
@@ -21,8 +23,7 @@ import { hex32 } from "../../../src/plugins/app/common/bytes.js";
 const HUB_PRIMARY_PORT = 6201;
 const HUB_FALLBACK_PORT = 6202;
 const HUB_URLS = `http://127.0.0.1:${HUB_PRIMARY_PORT},http://127.0.0.1:${HUB_FALLBACK_PORT}`;
-type MockMethod = { calls: Array<{ arguments: unknown[] }> };
-type StoredOrder = OracleOrder | null;
+type MockMethod = ReturnType<typeof mockLogMethod>;
 
 async function startHubServer(
   t: { after: (fn: () => void) => void },
@@ -121,6 +122,23 @@ function createLogLine(bytes: Uint8Array) {
   return `Program data: ${Buffer.from(bytes).toString("base64")}`;
 }
 
+function createHubHandler(getEventsResponse: () => unknown) {
+  return (req: IncomingMessage, res: ServerResponse) => {
+    if (req.url?.startsWith("/api/orders/events")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(getEventsResponse()));
+      return;
+    }
+    if (req.url === "/api/orders/signatures") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ data: [] }));
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  };
+}
+
 describe("hub events service", { concurrency: 1 }, () => {
   it("builds hub events paths", () => {
     assert.strictEqual(
@@ -150,20 +168,11 @@ describe("hub events service", { concurrency: 1 }, () => {
       value: [{ confirmationStatus: "confirmed", err: null }],
     }));
 
-    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
-      if (req.url?.startsWith("/api/orders/events")) {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(response));
-        return;
-      }
-      if (req.url === "/api/orders/signatures") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ data: [] }));
-        return;
-      }
-      res.writeHead(404);
-      res.end();
-    });
+    await startHubServer(
+      t,
+      HUB_PRIMARY_PORT,
+      createHubHandler(() => response),
+    );
     await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
       res.writeHead(404);
       res.end();
@@ -174,10 +183,10 @@ describe("hub events service", { concurrency: 1 }, () => {
     const eventsRepo =
       app.getDecorator<HubEventsRepository>(kHubEventsRepository);
 
-    let stored: StoredOrder = null;
+    let stored: OracleOrder | null = null;
     await waitFor(async () => {
       stored = await repo.findBySourceNonce(hex32(1));
-      return stored !== null
+      return stored !== null;
     }, 12_000);
     assert.ok(stored);
     const order = stored as OracleOrder;
@@ -193,20 +202,11 @@ describe("hub events service", { concurrency: 1 }, () => {
     const response = { bad: "payload" };
     let warnMock: MockMethod | null = null;
 
-    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
-      if (req.url?.startsWith("/api/orders/events")) {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(response));
-        return;
-      }
-      if (req.url === "/api/orders/signatures") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ data: [] }));
-        return;
-      }
-      res.writeHead(404);
-      res.end();
-    });
+    await startHubServer(
+      t,
+      HUB_PRIMARY_PORT,
+      createHubHandler(() => response),
+    );
     await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
       res.writeHead(404);
       res.end();
@@ -216,7 +216,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       useMocks: false,
       config: { HUB_URLS },
       beforeRegister: (instance) => {
-        warnMock = t.mock.method(instance.log, "warn").mock;
+        warnMock = mockLogMethod(t, instance.log, "warn");
       },
     });
 
@@ -237,20 +237,11 @@ describe("hub events service", { concurrency: 1 }, () => {
     const response = createOutboundEventResponse();
     let errorMock: MockMethod | null = null;
 
-    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
-      if (req.url?.startsWith("/api/orders/events")) {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(response));
-        return;
-      }
-      if (req.url === "/api/orders/signatures") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ data: [] }));
-        return;
-      }
-      res.writeHead(404);
-      res.end();
-    });
+    await startHubServer(
+      t,
+      HUB_PRIMARY_PORT,
+      createHubHandler(() => response),
+    );
     await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
       res.writeHead(404);
       res.end();
@@ -261,7 +252,7 @@ describe("hub events service", { concurrency: 1 }, () => {
     t.mock.method(repo, "upsert", async () => {
       throw new Error("db down");
     });
-    errorMock = t.mock.method(app.log, "error").mock;
+    errorMock = mockLogMethod(t, app.log, "error");
 
     await waitFor(
       () =>
@@ -284,20 +275,11 @@ describe("hub events service", { concurrency: 1 }, () => {
       value: [{ confirmationStatus: "confirmed", err: null }],
     }));
 
-    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
-      if (req.url?.startsWith("/api/orders/events")) {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(response));
-        return;
-      }
-      if (req.url === "/api/orders/signatures") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ data: [] }));
-        return;
-      }
-      res.writeHead(404);
-      res.end();
-    });
+    await startHubServer(
+      t,
+      HUB_PRIMARY_PORT,
+      createHubHandler(() => response),
+    );
 
     await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
       res.writeHead(404);
@@ -334,20 +316,11 @@ describe("hub events service", { concurrency: 1 }, () => {
       value: [{ confirmationStatus: "confirmed", err: null }],
     }));
 
-    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
-      if (req.url?.startsWith("/api/orders/events")) {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(shouldSendEvents ? response : emptyResponse));
-        return;
-      }
-      if (req.url === "/api/orders/signatures") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ data: [] }));
-        return;
-      }
-      res.writeHead(404);
-      res.end();
-    });
+    await startHubServer(
+      t,
+      HUB_PRIMARY_PORT,
+      createHubHandler(() => (shouldSendEvents ? response : emptyResponse)),
+    );
     await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
       res.writeHead(404);
       res.end();
@@ -437,20 +410,11 @@ describe("hub events service", { concurrency: 1 }, () => {
       data: [],
       cursor: { createdAt: "2024-01-01 00:00:00", id: 0 },
     };
-    await startHubServer(t, HUB_PRIMARY_PORT, (req, res) => {
-      if (req.url?.startsWith("/api/orders/events")) {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(response));
-        return;
-      }
-      if (req.url === "/api/orders/signatures") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ data: [] }));
-        return;
-      }
-      res.writeHead(404);
-      res.end();
-    });
+    await startHubServer(
+      t,
+      HUB_PRIMARY_PORT,
+      createHubHandler(() => response),
+    );
     await startHubServer(t, HUB_FALLBACK_PORT, (_req, res) => {
       res.writeHead(404);
       res.end();
@@ -461,7 +425,7 @@ describe("hub events service", { concurrency: 1 }, () => {
     await repo.create(existingOrder);
     response = overrideResponse;
 
-    let stored: StoredOrder = null;
+    let stored: OracleOrder | null = null;
     await waitFor(async () => {
       stored = await repo.findBySourceNonce(hex32(9));
       return Boolean(stored?.relayerFee === "7");

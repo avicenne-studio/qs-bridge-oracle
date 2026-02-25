@@ -143,5 +143,8 @@ yarn.lock
 # IDE
 .vscode
 
+# Claude Code
+.claude
+
 # OS
 .DS_Store

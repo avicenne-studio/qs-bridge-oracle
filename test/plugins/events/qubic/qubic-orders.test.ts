@@ -1,7 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
-import { createQubicOrderHandlers } from "../../../../src/plugins/app/events/qubic/qubic-orders.js";
+import { createInMemoryOrders } from "../../../helpers/factories/in-memory-orders.js";
+import {
+  createFailedOrderFromLockEvent,
+  createQubicOrderHandlers,
+} from "../../../../src/plugins/app/events/qubic/qubic-orders.js";
 import { mapStoredEventToQubicPayload } from "../../../../src/plugins/app/events/qubic/qubic-event-mapper.js";
 import type { FastifyBaseLogger } from "fastify";
 import { hex32, bytesToHex, nonceToBytes } from "../../../../src/plugins/app/common/bytes.js";
@@ -9,6 +12,16 @@ import { createMockSignerService } from "../../../helpers/signer-mock.js";
 
 function normalizeNonce(nonce: string): string {
   return bytesToHex(nonceToBytes(nonce));
+}
+
+function createLockPayload() {
+  return {
+    fromAddress: hex32(1),
+    toAddress: hex32(2),
+    amount: "100",
+    relayerFee: "12",
+    nonce: hex32(3),
+  };
 }
 
 function createLogger() {
@@ -294,5 +307,19 @@ describe("qubic order handlers", () => {
     assert.ok(
       entries.some((entry) => entry.message?.includes("missing signature"))
     );
+  });
+
+  it("builds failed orders without a signature fallback", () => {
+    const payload = createLockPayload();
+
+    const failed = createFailedOrderFromLockEvent(payload, {}, "Transaction failed");
+
+    assert.strictEqual(failed.status, "failed");
+    assert.strictEqual(failed.source, "qubic");
+    assert.strictEqual(failed.dest, "solana");
+    assert.strictEqual(failed.source_nonce, normalizeNonce(payload.nonce));
+    assert.strictEqual(failed.signature, failed.source_nonce);
+    assert.strictEqual(failed.origin_trx_hash, failed.source_nonce);
+    assert.strictEqual(failed.failure_reason_public, "Transaction failed");
   });
 });

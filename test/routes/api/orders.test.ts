@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { build } from "../../helpers/build.js";
-import { signHubHeaders } from "../../utils/hub-signing.js";
+import { signHubHeaders } from "../../helpers/setup/hub-signing.js";
+import { mockLogMethod } from "../../helpers/mocks/logger.js";
 import {
   kOrdersRepository,
   type OrdersRepository,
@@ -63,7 +64,7 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
   });
 }
 
-test("GET /api/orders returns pending orders", async (t) => {
+test("GET /api/orders returns consensus orders", async (t) => {
   const app = await build(t);
   await seedOrders(app);
 
@@ -76,23 +77,23 @@ test("GET /api/orders returns pending orders", async (t) => {
   assert.strictEqual(res.statusCode, 200);
   const body = JSON.parse(res.payload);
 
-  assert.strictEqual(body.data.length, 2);
+  assert.strictEqual(body.data.length, 3);
   assert.strictEqual(body.data[0].from, "A");
   assert.strictEqual(body.data[0].signature, "sig-1");
-  assert.strictEqual(body.data[1].status, "failed");
+  assert.strictEqual(body.data[2].status, "failed");
 });
 
 test("GET /api/orders handles repository errors", async (t) => {
   const app = await build(t);
   const { mock: repoMock } = t.mock.method(
     app.getDecorator<OrdersRepository>(kOrdersRepository),
-    "findPendingOrders"
+    "findConsensusOrders"
   );
   repoMock.mockImplementation(() => {
     throw new Error("db down");
   });
 
-  const { mock: logMock } = t.mock.method(app.log, "error");
+  const logMock = mockLogMethod(t, app.log, "error");
 
   const res = await app.inject({
     url: "/api/orders",

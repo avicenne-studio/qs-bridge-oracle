@@ -64,6 +64,9 @@ export const DEFAULT_TEST_CONFIG: EnvConfig = {
   RELAYER_FEE_QUBIC: "500",
   RELAYER_ENABLED: false,
   RELAYER_PROCESS_INTERVAL_MS: 50,
+  RELAYER_PER_ORDER_DELAY_MS: 0,
+  RELAYER_BACKOFF_BASE_MS: 1,
+  RELAYER_BACKOFF_MAX_MS: 1_000,
   RELAYER_MAX_ATTEMPTS: 3,
   EVENT_MAX_RETRIES: 3,
   EVENTS_LOOKBACK_DAYS: 14,
@@ -146,19 +149,4 @@ export async function build(
   }
 
   return app;
-}
-
-export async function waitFor(
-  condition: () => boolean | Promise<boolean>,
-  timeoutMs = 2_000,
-  intervalMs = 50
-) {
-  const start = Date.now();
-  while (true) {
-    if (await condition()) return;
-    if (Date.now() - start > timeoutMs) {
-      throw new Error("Timed out waiting for condition");
-    }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
 }

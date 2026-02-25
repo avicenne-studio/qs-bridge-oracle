@@ -30,6 +30,9 @@ export type EnvConfig = {
   RELAYER_FEE_QUBIC: string;
   RELAYER_ENABLED: boolean;
   RELAYER_PROCESS_INTERVAL_MS: number;
+  RELAYER_PER_ORDER_DELAY_MS: number;
+  RELAYER_BACKOFF_BASE_MS: number;
+  RELAYER_BACKOFF_MAX_MS: number;
   RELAYER_MAX_ATTEMPTS: number;
   EVENT_MAX_RETRIES: number;
   EVENTS_LOOKBACK_DAYS: number;
@@ -166,6 +169,21 @@ const schema = {
       type: "number",
       minimum: 500,
       default: 3000,
+    },
+    RELAYER_PER_ORDER_DELAY_MS: {
+      type: "number",
+      minimum: 0,
+      default: 300,
+    },
+    RELAYER_BACKOFF_BASE_MS: {
+      type: "number",
+      minimum: 1,
+      default: 500,
+    },
+    RELAYER_BACKOFF_MAX_MS: {
+      type: "number",
+      minimum: 1,
+      default: 30_000,
     },
     RELAYER_MAX_ATTEMPTS: {
       type: "number",

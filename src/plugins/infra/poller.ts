@@ -1,6 +1,7 @@
 import fp from "fastify-plugin";
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, type FastifyBaseLogger } from "fastify";
 import { kEnvConfig, type EnvConfig } from "./env.js";
+import { formatErrorPayload } from "../common/error-format.js";
 
 export type Fetcher<TResponse> = (
   server: string,
@@ -31,6 +32,7 @@ export type CreatePollerConfig<TResponse> = PollerOptions & {
   fallback?: string;
   fetchOne: Fetcher<TResponse>;
   onRound: PollerRoundHandler<TResponse>;
+  logger: FastifyBaseLogger;
 };
 
 export type PollerHandle = {
@@ -76,10 +78,16 @@ function createPoller<TResponse>(
     intervalMs,
     requestTimeoutMs,
     jitterMs,
+    logger,
   } = config;
 
   let runningPromise: Promise<void> | null = null;
   let shouldRun = false;
+
+  function logFetchError(error: unknown, server: string) {
+    const err = formatErrorPayload(error);
+    logger.error({ error: err, server }, "Poller fetchOne error");
+  }
 
   async function loop() {
     let round = 0;
@@ -94,26 +102,38 @@ function createPoller<TResponse>(
 
       let response: TResponse | null = null;
       let used: string = primary;
+      let primaryError: unknown | null = null;
+      let fallbackError: unknown | null = null;
 
       try {
         response = await withTimeout(requestTimeoutMs, (signal) =>
           fetchOne(primary, signal)
         );
         used = primary;
-      } catch {
+      } catch (error) {
+        primaryError = error;
         if (fallback) {
           try {
             response = await withTimeout(requestTimeoutMs, (signal) =>
               fetchOne(fallback, signal)
             );
             used = fallback;
-          } catch {
+          } catch (fallbackErr) {
+            fallbackError = fallbackErr;
             response = null;
             used = fallback;
           }
         } else {
           used = primary;
         }
+      }
+
+      if (primaryError) {
+        logFetchError(primaryError, primary);
+      }
+
+      if (fallbackError && fallback) {
+        logFetchError(fallbackError, fallback);
       }
 
       await onRound(response, {

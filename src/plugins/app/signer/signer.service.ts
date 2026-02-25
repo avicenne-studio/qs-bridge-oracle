@@ -2,21 +2,14 @@ import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
-import {
-  createKeyPairSignerFromBytes,
-  createSignableMessage,
-} from "@solana/kit";
-import qubicCrypto from "@qubic-lib/qubic-ts-library/dist/crypto/index.js";
+import { createKeyPairSignerFromBytes, createSignableMessage } from "@solana/kit";
+import qubicCrypto from "@qubic-lib/qubic-ts-library";
 import { QubicHelper } from "@qubic-lib/qubic-ts-library/dist/qubicHelper.js";
 import { SignerKeys, SignerKeysSchema } from "./schemas/keys.js";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import { kFileManager, type FileManager } from "../../infra/@file-manager.js";
 import { kValidation, type ValidationService } from "../common/validation.js";
-import {
-  decodeSecretKey,
-  normalizeSignatureValue,
-  assertFixedBytes,
-} from "../common/bytes.js";
+import { decodeSecretKey, normalizeSignatureValue, assertFixedBytes } from "../common/bytes.js";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../common/protocol.js";
 import {
   CONTRACT_ADDRESS_BYTES,
@@ -86,38 +79,25 @@ type QubicCrypto = {
   K12: (input: Uint8Array, output: Uint8Array, outputLength: number) => void;
 };
 
-// The WASM module exposes the crypto API behind a nested `.default` Promise.
+// The WASM module exposes the crypto API behind `.default.crypto` (a Promise).
 // The ESM interop wraps the CJS export, so we must unwrap it manually.
-const resolvedQubicCrypto = (
-  qubicCrypto as unknown as { default: Promise<QubicCrypto> }
-).default;
+const resolvedQubicCrypto = (qubicCrypto as unknown as { default: { crypto: Promise<QubicCrypto> } }).default.crypto;
 const QUBIC_DIGEST_LENGTH = 32;
 
-async function createSolanaSignerFromKeys(
-  keys: SignerKeys,
-): Promise<SolanaSigner> {
+async function createSolanaSignerFromKeys(keys: SignerKeys): Promise<SolanaSigner> {
   const secretKeyBytes = decodeSecretKey(keys.sKey);
   const signer = await createKeyPairSignerFromBytes(secretKeyBytes);
   if (keys.pKey && signer.address !== keys.pKey) {
-    throw new Error(
-      "SignerService(SOLANA_KEYS): public key does not match secret key",
-    );
+    throw new Error("SignerService(SOLANA_KEYS): public key does not match secret key");
   }
   return signer;
 }
 
-async function createQubicSignerFromKeys(
-  keys: SignerKeys,
-): Promise<QubicSigner> {
+async function createQubicSignerFromKeys(keys: SignerKeys): Promise<QubicSigner> {
   const helper = new QubicHelper();
-  const [id, crypto] = await Promise.all([
-    helper.createIdPackage(keys.sKey),
-    resolvedQubicCrypto,
-  ]);
+  const [id, crypto] = await Promise.all([helper.createIdPackage(keys.sKey), resolvedQubicCrypto]);
   if (keys.pKey && id.publicId !== keys.pKey) {
-    throw new Error(
-      "SignerService(QUBIC_KEYS): public key does not match seed",
-    );
+    throw new Error("SignerService(QUBIC_KEYS): public key does not match seed");
   }
   return {
     privateKey: id.privateKey,
@@ -125,11 +105,7 @@ async function createQubicSignerFromKeys(
     sign(serialized: Uint8Array): string {
       const digest = new Uint8Array(QUBIC_DIGEST_LENGTH);
       crypto.K12(serialized, digest, QUBIC_DIGEST_LENGTH);
-      const signature = crypto.schnorrq.sign(
-        id.privateKey,
-        id.publicKey,
-        digest,
-      );
+      const signature = crypto.schnorrq.sign(id.privateKey, id.publicKey, digest);
       return Buffer.from(signature).toString("base64");
     },
   };
@@ -143,9 +119,7 @@ export async function signLockOrderForSolanaWithSigner(
   const signableMessage = createSignableMessage(digest);
   const [sigDict] = await signer.signMessages([signableMessage]);
   if (!sigDict || !(signer.address in sigDict)) {
-    throw new Error(
-      "SignerService(SOLANA_KEYS): signer did not return a signature",
-    );
+    throw new Error("SignerService(SOLANA_KEYS): signer did not return a signature");
   }
   return normalizeSignatureValue(sigDict[signer.address]);
 }
@@ -180,8 +154,8 @@ export default fp(
     const signLockOrderForSolana = (order: OrderInput) =>
       signLockOrderForSolanaWithSigner(order, solanaSigner);
 
-    const signUnlockOrderForQubic = (order: OrderInput) =>
-      Promise.resolve(qubicSigner.sign(serializeOrder(order)));
+    const signUnlockOrderForQubic = async (order: OrderInput) =>
+      qubicSigner.sign(serializeOrder(order));
 
     fastify.decorate(kSignerService, {
       signLockOrderForSolana,

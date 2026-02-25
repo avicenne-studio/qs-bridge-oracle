@@ -18,11 +18,16 @@ type PersistedSignature = {
 };
 type StoredOrder = OracleOrder;
 type CreateOrder = OracleOrder;
-type UpdateOrder = Partial<OracleOrder>;
+type UpdateOrder = Partial<Omit<OracleOrder, "destination_trx_hash" | "failure_reason_public" | "next_relay_at" | "last_relay_error">> & {
+  destination_trx_hash?: string | null;
+  failure_reason_public?: string | null;
+  next_relay_at?: string | null;
+  last_relay_error?: string | null;
+};
 type StoredOrderWithSignatures = StoredOrder & { signatures: string[] };
 
 const MAX_BY_IDS = 100;
-const MAX_PENDING = 50;
+const MAX_CONSENSUS = 50;
 const MAX_READY_FOR_RELAY = 50;
 
 function normalizeOrderRow(row: StoredOrder): StoredOrder {
@@ -31,6 +36,8 @@ function normalizeOrderRow(row: StoredOrder): StoredOrder {
     oracle_accept_to_relay: Boolean(row.oracle_accept_to_relay),
     relay_attempts: Number(row.relay_attempts),
     failure_reason_public: row.failure_reason_public ?? undefined,
+    next_relay_at: row.next_relay_at ?? undefined,
+    last_relay_error: row.last_relay_error ?? undefined,
   };
 }
 
@@ -52,9 +59,10 @@ function createRepository(fastify: FastifyInstance) {
     },
 
     async update(id: string, changes: UpdateOrder) {
+      const payload = { ...changes } as Record<string, unknown>;
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("id", id)
-        .update(changes);
+        .update(payload);
 
       if (affectedRows === 0) {
         return null;
@@ -66,6 +74,7 @@ function createRepository(fastify: FastifyInstance) {
     async markReadyForRelay(id: string) {
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("id", id)
+        .whereIn("status", ["pending", "ready-for-relay"])
         .update({ status: "ready-for-relay", oracle_accept_to_relay: true });
 
       if (affectedRows === 0) {
@@ -101,14 +110,19 @@ function createRepository(fastify: FastifyInstance) {
       return rows.map((row) => normalizeOrderRow(row as StoredOrder));
     },
 
-    async findPendingOrders() {
+    async findConsensusOrders() {
       const rows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .select("*")
-        .where((builder) => {
-          builder.where("oracle_accept_to_relay", 1).orWhere("status", "failed");
-        })
+        .whereRaw("created_at >= datetime('now', '-1 day')")
+        .whereIn("status", [
+          "pending",
+          "ready-for-relay",
+          "relayed",
+          "finalized",
+          "failed",
+        ])
         .orderBy("id", "asc")
-        .limit(MAX_PENDING);
+        .limit(MAX_CONSENSUS);
 
       return rows.map((row) => normalizeOrderRow(row as StoredOrder));
     },
@@ -121,6 +135,13 @@ function createRepository(fastify: FastifyInstance) {
         })
         .andWhere("oracle_accept_to_relay", 1)
         .andWhere("relay_attempts", "<", maxRelayAttempts)
+        .andWhere((builder) => {
+          builder.whereNull("next_relay_at").orWhere(
+            "next_relay_at",
+            "<=",
+            knex.fn.now()
+          );
+        })
         .orderBy("id", "asc")
         .limit(limit);
 

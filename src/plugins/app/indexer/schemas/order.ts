@@ -31,6 +31,9 @@ export const OracleOrderSchema = Type.Object({
   destination_trx_hash: Type.Optional(
     Type.String({ maxLength: 255 })
   ),
+  created_at: Type.Optional(Type.String({ minLength: 1 })),
+  next_relay_at: Type.Optional(Type.String({ minLength: 1 })),
+  last_relay_error: Type.Optional(Type.String({ maxLength: 512 })),
   signature: SignatureSchema,
   status: OracleOrderStatus,
   oracle_accept_to_relay: Type.Boolean(),

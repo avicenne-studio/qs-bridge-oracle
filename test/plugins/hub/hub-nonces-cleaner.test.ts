@@ -4,11 +4,12 @@ import fastify from "fastify";
 import fp from "fastify-plugin";
 import hubNoncesCleaner from "../../../src/plugins/app/hub/hub-nonces-cleaner.js";
 import { kHubNoncesRepository } from "../../../src/plugins/app/hub/hub-nonces.repository.js";
+import { mockLogMethod } from "../../helpers/mocks/logger.js";
 
 describe("hub-nonces-cleaner", () => {
   it("runs cleanup without logging on success", async (t) => {
     const app = fastify();
-    const { mock: warnMock } = t.mock.method(app.log, "warn");
+    const warnMock = mockLogMethod(t, app.log, "warn");
 
     await app.register(
       fp(
@@ -31,7 +32,7 @@ describe("hub-nonces-cleaner", () => {
 
   it("logs when cleanup fails and clears interval on close", async (t) => {
     const app = fastify();
-    const { mock: warnMock } = t.mock.method(app.log, "warn");
+    const warnMock = mockLogMethod(t, app.log, "warn");
 
     await app.register(
       fp(

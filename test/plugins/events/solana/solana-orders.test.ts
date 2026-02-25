@@ -5,7 +5,7 @@ import {
   createSolanaOrderHandlers,
 } from "../../../../src/plugins/app/events/solana/solana-orders.js";
 import { bytesToHex, hex32 } from "../../../../src/plugins/app/common/bytes.js";
-import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
+import { createInMemoryOrders } from "../../../helpers/factories/in-memory-orders.js";
 import { FastifyBaseLogger } from "fastify";
 import { Value } from "@sinclair/typebox/value";
 import type { TSchema } from "@sinclair/typebox";
