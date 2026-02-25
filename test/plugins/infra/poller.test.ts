@@ -44,6 +44,7 @@ describe("poller plugin", () => {
       primary,
       fallback,
       fetchOne: (s: string) => fetchOne(s),
+      logger: app.log,
       onRound: (response, context) => {
         pollResults.push(response);
 
@@ -103,6 +104,7 @@ describe("poller plugin", () => {
       primary,
       fallback,
       fetchOne,
+      logger: app.log,
       onRound: (response, context) => {
         assert.strictEqual(response, "fast-response");
         assert.strictEqual(context.used, fallback);
@@ -136,6 +138,7 @@ describe("poller plugin", () => {
     const poller = pollerService.create({
       primary: "s1",
       fetchOne: async () => "ok",
+      logger: app.log,
       onRound: noop,
       intervalMs: 1,
       requestTimeoutMs: 10,
@@ -194,6 +197,7 @@ describe("poller plugin", () => {
       fallback: `http://127.0.0.1:${fastAddr.port}`,
       fetchOne: (server, signal) =>
         client.getJson<Response>(server, "/poll", signal),
+      logger: app.log,
       onRound: (response, context) => {
         assert.ok(response);
         observed.push(response);
@@ -240,6 +244,7 @@ describe("poller plugin", () => {
       fetchOne: async () => {
         throw new Error("boom");
       },
+      logger: app.log,
       onRound: (response, context) => {
         rounds.push({ response, used: context.used });
         if (context.round === 2) {
@@ -277,6 +282,7 @@ describe("poller plugin", () => {
       fetchOne: async () => {
         throw new Error("boom");
       },
+      logger: app.log,
       onRound: (response, context) => {
         rounds.push({ response, used: context.used });
         if (context.round === 2) {
@@ -296,6 +302,44 @@ describe("poller plugin", () => {
     assert.deepStrictEqual(rounds, [
       { response: null, used: "primary" },
       { response: null, used: "primary" },
+    ]);
+  });
+
+  it("logs non-Error poller failures without crashing", async (t) => {
+    const app = await build(t, { useMocks: false });
+    const pollerService: PollerService = app.getDecorator(kPoller);
+
+    const rounds: Array<{ response: string | null; used: string }> = [];
+    let done: (() => void) | null = null;
+    const completion = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+
+    const poller = pollerService.create({
+      primary: "primary",
+      fallback: "fallback",
+      fetchOne: async () => {
+        throw "non-error failure";
+      },
+      logger: app.log,
+      onRound: (response, context) => {
+        rounds.push({ response, used: context.used });
+        if (context.round === 1) {
+          queueMicrotask(() => {
+            poller.stop().then(() => done?.(), noop);
+          });
+        }
+      },
+      intervalMs: 10,
+      requestTimeoutMs: 20,
+      jitterMs: 0,
+    });
+
+    poller.start();
+    await completion;
+
+    assert.deepStrictEqual(rounds, [
+      { response: null, used: "fallback" },
     ]);
   });
 });

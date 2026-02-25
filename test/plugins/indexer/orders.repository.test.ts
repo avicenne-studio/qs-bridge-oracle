@@ -123,7 +123,7 @@ describe("ordersRepository", () => {
     await assert.rejects(() => repo.byIds(ids), /Cannot request more than 100/);
   });
 
-  it("should return pending orders ordered and limited", async (t) => {
+  it("should return consensus orders ordered and limited", async (t) => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
@@ -163,10 +163,10 @@ describe("ordersRepository", () => {
       source_payload: "{}",
     });
 
-    const pending = await repo.findPendingOrders();
-    assert.strictEqual(pending.length, 50);
-    assert.strictEqual(pending[0].id, makeId(1));
-    assert.strictEqual(pending[49].id, makeId(50));
+    const consensus = await repo.findConsensusOrders();
+    assert.strictEqual(consensus.length, 50);
+    assert.strictEqual(consensus[0].id, makeId(1));
+    assert.strictEqual(consensus[49].id, makeId(50));
   });
 
   it("should return ready-to-relay orders within retry limits", async (t) => {
@@ -284,6 +284,36 @@ describe("ordersRepository", () => {
     assert.ok(updated);
     assert.strictEqual(updated?.status, "ready-for-relay");
     assert.strictEqual(updated?.oracle_accept_to_relay, true);
+  });
+
+  it("should not mark relayed orders ready for relay", async (t) => {
+    const app = await build(t);
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
+
+    const created = await repo.create({
+      id: makeId(312),
+      source: "solana",
+      dest: "qubic",
+      from: "RelayedA",
+      to: "RelayedB",
+      amount: "33",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig-ready",
+      status: "relayed",
+      oracle_accept_to_relay: true,
+      relay_attempts: 1,
+      source_nonce: "nonce-312",
+      source_payload: "{}",
+    });
+
+    const updated = await repo.markReadyForRelay(created!.id);
+    assert.strictEqual(updated, null);
+
+    const stored = await repo.findById(created!.id);
+    assert.ok(stored);
+    assert.strictEqual(stored?.status, "relayed");
+    assert.strictEqual(stored?.oracle_accept_to_relay, true);
   });
 
   it("should return null when marking a non-existent order ready", async (t) => {

@@ -117,6 +117,7 @@ async function startHubEventsPolling(
         signal
       );
     },
+    logger: fastify.log,
     onRound: async (response, context) => {
       if (!response) {
         fastify.log.warn(

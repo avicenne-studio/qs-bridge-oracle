@@ -4,6 +4,7 @@ import { AddressInfo } from "node:net";
 import { build } from "../../helpers/build.js";
 import {
   kUndiciClient,
+  HttpError,
   type UndiciClientService,
 } from "../../../src/plugins/infra/undici-client.js";
 
@@ -13,12 +14,25 @@ describe("undici client plugin", () => {
     const undiciClient: UndiciClientService =
       app.getDecorator(kUndiciClient);
 
-    const receivedHeaders: Record<string, string | string[] | undefined>[] = [];
+    const receivedHeaders: Array<{
+      url: string | undefined;
+      headers: Record<string, string | string[] | undefined>;
+    }> = [];
     const server = createServer((req, res) => {
-      receivedHeaders.push(req.headers);
+      receivedHeaders.push({ url: req.url, headers: req.headers });
       if (req.url === "/poll" && req.method === "GET") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.url === "/text" && req.method === "GET") {
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end("plain-ok");
+        return;
+      }
+      if (req.url === "/bad-json" && req.method === "GET") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end("not-json");
         return;
       }
       if (req.url === "/submit" && req.method === "POST") {
@@ -51,8 +65,14 @@ describe("undici client plugin", () => {
     );
 
     t.assert.deepStrictEqual(data, { ok: true });
-    t.assert.strictEqual(receivedHeaders[0]["x-extra"], "1");
-    t.assert.strictEqual(receivedHeaders[0]["x-default"], "override");
+    t.assert.strictEqual(receivedHeaders[0].headers["x-extra"], "1");
+    t.assert.strictEqual(receivedHeaders[0].headers["x-default"], "override");
+
+    const textPayload = await client.getJson<string>(origin, "/text");
+    t.assert.strictEqual(textPayload, "plain-ok");
+
+    const badJsonPayload = await client.getJson<string>(origin, "/bad-json");
+    t.assert.strictEqual(badJsonPayload, "not-json");
 
     const posted = await client.postJson<{ trxHash: string }>(
       origin,
@@ -63,9 +83,23 @@ describe("undici client plugin", () => {
     );
 
     t.assert.deepStrictEqual(posted, { trxHash: "trx-1" });
-    t.assert.strictEqual(receivedHeaders[1]["x-default"], "override-post");
+    const submitEntry = receivedHeaders.find((entry) => entry.url === "/submit");
+    t.assert.ok(submitEntry);
+    t.assert.strictEqual(submitEntry?.headers["x-default"], "override-post");
 
     await t.assert.rejects(client.getJson(origin, "/fail"), /HTTP 503/);
+    await t.assert.rejects(
+      client.postJson(origin, "/fail", { ok: false }),
+      (err: unknown) => {
+        t.assert.ok(err instanceof HttpError);
+        const httpErr = err as HttpError;
+        t.assert.strictEqual(httpErr.statusCode, 503);
+        t.assert.strictEqual(httpErr.method, "POST");
+        t.assert.ok(httpErr.url.includes(origin));
+        t.assert.deepStrictEqual(httpErr.body, { error: "boom" });
+        return true;
+      }
+    );
 
     await client.close();
   });

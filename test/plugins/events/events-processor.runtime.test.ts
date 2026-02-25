@@ -165,6 +165,126 @@ test("processor creates failed orders for outbound events", async (t) => {
   assert.strictEqual(order?.status, "failed");
 });
 
+test("processor creates failed orders for qubic lock events", async (t) => {
+  const intervalMs = 50;
+  const maxRetries = 1;
+  const lockNonce = hex32(77);
+
+  const app = await build(t, {
+    config: {
+      EVENTS_PROCESS_INTERVAL_MS: intervalMs,
+      EVENT_MAX_RETRIES: maxRetries,
+    },
+    decorators: {
+      [kQubicEventValidator]: {
+        validate: async () => {
+          throw new Error("Transaction failed");
+        },
+      },
+    },
+  });
+
+  const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
+  const ordersRepo = app.getDecorator<OrdersRepository>(kOrdersRepository);
+
+  await repo.upsert({
+    hubUrl: "http://hub-1",
+    signature: "trx-qubic-failed",
+    slot: null,
+    chain: "qubic",
+    type: "lock",
+    nonce: lockNonce,
+    payload: {
+      fromAddress: hex32(78),
+      toAddress: hex32(79),
+      amount: "10",
+      relayerFee: "12",
+      nonce: lockNonce,
+    },
+    createdAt: "2024-01-01 00:00:00",
+  });
+
+  await waitFor(async () => {
+    const order = await ordersRepo.findBySourceNonce(lockNonce);
+    return order?.status === "failed";
+  }, 2_000);
+
+  const order = await ordersRepo.findBySourceNonce(lockNonce);
+  assert.ok(order);
+  assert.strictEqual(order?.status, "failed");
+  assert.strictEqual(order?.failure_reason_public, "Transaction failed");
+});
+
+test("processor skips failed lock orders when an order already exists", async (t) => {
+  const intervalMs = 50;
+  const maxRetries = 1;
+  const lockNonce = hex32(88);
+
+  const app = await build(t, {
+    config: {
+      EVENTS_PROCESS_INTERVAL_MS: intervalMs,
+      EVENT_MAX_RETRIES: maxRetries,
+    },
+    decorators: {
+      [kQubicEventValidator]: {
+        validate: async () => {
+          throw new Error("Transaction failed");
+        },
+      },
+    },
+  });
+
+  const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
+  const ordersRepo = app.getDecorator<OrdersRepository>(kOrdersRepository);
+  const warnMock = t.mock.method(app.log, "warn").mock;
+
+  await ordersRepo.create({
+    id: "00000000-0000-4000-8000-000000000088",
+    source: "qubic",
+    dest: "solana",
+    from: hex32(89),
+    to: hex32(90),
+    amount: "10",
+    relayerFee: "1",
+    origin_trx_hash: "trx-existing",
+    signature: "sig-existing",
+    status: "pending",
+    oracle_accept_to_relay: true,
+    relay_attempts: 0,
+    source_nonce: lockNonce,
+    source_payload: JSON.stringify({ v: 1 }),
+  });
+
+  await repo.upsert({
+    hubUrl: "http://hub-1",
+    signature: "trx-qubic-failed-existing",
+    slot: null,
+    chain: "qubic",
+    type: "lock",
+    nonce: lockNonce,
+    payload: {
+      fromAddress: hex32(89),
+      toAddress: hex32(90),
+      amount: "10",
+      relayerFee: "12",
+      nonce: lockNonce,
+    },
+    createdAt: "2024-01-01 00:00:00",
+  });
+
+  await waitFor(
+    () =>
+      warnMock.calls.some(
+        (call) => call.arguments[1] === "Failed event order already exists"
+      ),
+    2_000
+  );
+
+  const order = await ordersRepo.findBySourceNonce(lockNonce);
+  assert.ok(order);
+  assert.strictEqual(order?.id, "00000000-0000-4000-8000-000000000088");
+});
+
 test("processor handles qubic lock events", async (t) => {
   const intervalMs = 50;
   const lockNonce = hex32(70);
