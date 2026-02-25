@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryOrders } from "../../../utils/in-memory-orders.js";
+import { createInMemoryOrders } from "../../../helpers/factories/in-memory-orders.js";
 import {
   createFailedOrderFromLockEvent,
   createQubicOrderHandlers,

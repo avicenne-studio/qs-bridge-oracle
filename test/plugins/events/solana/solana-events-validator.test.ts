@@ -15,6 +15,7 @@ import fastify from "fastify";
 import fp from "fastify-plugin";
 import { kEnvConfig } from "../../../../src/plugins/infra/env.js";
 import { Connection } from "@solana/web3.js";
+import { mockLogMethod } from "../../../helpers/mocks/logger.js";
 
 function createOutboundEventBytes() {
   const encoder = getOutboundEventEncoder();
@@ -153,7 +154,7 @@ describe("solana event validator", () => {
 
   it("throws when transaction fails", async (t) => {
     const logger = { warn: () => {} };
-    const { mock: warnMock } = t.mock.method(logger, "warn");
+    const warnMock = mockLogMethod(t, logger, "warn");
     const validator = createSolanaEventValidator({
       getTransaction: async () =>
         ({
@@ -390,7 +391,7 @@ describe("solana event validator", () => {
 
   it("throws when signature status reports an error", async (t) => {
     const logger = { warn: () => {} };
-    const { mock: warnMock } = t.mock.method(logger, "warn");
+    const warnMock = mockLogMethod(t, logger, "warn");
     const validator = createSolanaEventValidator({
       getTransaction: async () => null,
       getSignatureStatus: async () => ({
