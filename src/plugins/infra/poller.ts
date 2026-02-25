@@ -1,7 +1,7 @@
 import fp from "fastify-plugin";
 import { FastifyInstance, type FastifyBaseLogger } from "fastify";
 import { kEnvConfig, type EnvConfig } from "./env.js";
-import { HttpError } from "./undici-client.js";
+import { formatErrorPayload } from "../common/error-format.js";
 
 export type Fetcher<TResponse> = (
   server: string,
@@ -85,24 +85,7 @@ function createPoller<TResponse>(
   let shouldRun = false;
 
   function logFetchError(error: unknown, server: string) {
-    const err =
-      error instanceof HttpError
-        ? {
-            name: error.name,
-            message: error.message,
-            statusCode: error.statusCode,
-            method: error.method,
-            url: error.url,
-            body: error.body,
-            stack: error.stack,
-          }
-        : error instanceof Error
-        ? {
-            name: error.name,
-            message: error.message,
-            stack: error.stack,
-          }
-        : { value: error };
+    const err = formatErrorPayload(error);
     logger.error({ error: err, server }, "Poller fetchOne error");
   }
 
