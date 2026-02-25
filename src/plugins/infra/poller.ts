@@ -32,7 +32,7 @@ export type CreatePollerConfig<TResponse> = PollerOptions & {
   fallback?: string;
   fetchOne: Fetcher<TResponse>;
   onRound: PollerRoundHandler<TResponse>;
-  logger?: FastifyBaseLogger;
+  logger: FastifyBaseLogger;
 };
 
 export type PollerHandle = {
@@ -85,9 +85,6 @@ function createPoller<TResponse>(
   let shouldRun = false;
 
   function logFetchError(error: unknown, server: string) {
-    if (!logger) {
-      return;
-    }
     const err =
       error instanceof HttpError
         ? {
@@ -217,10 +214,7 @@ export default fp(
     fastify.decorate(kPoller, {
       defaults,
       create<TResponse>(config: CreatePollerConfig<TResponse>) {
-        const handle = createPoller({
-          ...config,
-          logger: config.logger ?? fastify.log,
-        });
+        const handle = createPoller(config);
         handles.add(handle);
         return handle;
       },

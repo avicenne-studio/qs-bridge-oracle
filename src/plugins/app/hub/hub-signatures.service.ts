@@ -64,6 +64,7 @@ function startHubSignaturePolling(
         "/api/orders/signatures",
         signal
       ),
+    logger: fastify.log,
     onRound: async (response, context) => {
       if (!response) {
         fastify.log.warn(
