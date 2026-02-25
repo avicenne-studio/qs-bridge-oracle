@@ -1,7 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { build, waitFor } from "../helpers/build.js";
+import { build } from "../helpers/build.js";
+import { waitFor } from "../helpers/setup/wait-for.js";
+import { mockLogMethod } from "../helpers/mocks/logger.js";
 import {
   ORDER_SIGNATURES_TABLE_NAME,
   kOrdersRepository,
@@ -282,7 +284,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       useMocks: false,
       config: { HUB_URLS },
       beforeReady: (instance) => {
-        warnMock = t.mock.method(instance.log, "warn").mock;
+        warnMock = mockLogMethod(t, instance.log, "warn");
       },
     });
     t.after(() => app.close());
@@ -329,7 +331,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
     const ordersRepository: OrdersRepository =
       app.getDecorator(kOrdersRepository);
 
-    const { mock: errorMock } = t.mock.method(app.log, "error");
+    const errorMock = mockLogMethod(t, app.log, "error");
     const { mock: addMock } = t.mock.method(
       ordersRepository,
       "addSignatures"
@@ -365,7 +367,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
     const app = await build(t, { useMocks: false, config: { HUB_URLS } });
     t.after(() => app.close());
 
-    const { mock: warnMock } = t.mock.method(app.log, "warn");
+    const warnMock = mockLogMethod(t, app.log, "warn");
 
     await waitFor(() =>
       warnMock.calls.some(

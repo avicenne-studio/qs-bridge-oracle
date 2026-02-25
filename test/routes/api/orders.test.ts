@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { build } from "../../helpers/build.js";
-import { signHubHeaders } from "../../utils/hub-signing.js";
+import { signHubHeaders } from "../../helpers/setup/hub-signing.js";
+import { mockLogMethod } from "../../helpers/mocks/logger.js";
 import {
   kOrdersRepository,
   type OrdersRepository,
@@ -92,7 +93,7 @@ test("GET /api/orders handles repository errors", async (t) => {
     throw new Error("db down");
   });
 
-  const { mock: logMock } = t.mock.method(app.log, "error");
+  const logMock = mockLogMethod(t, app.log, "error");
 
   const res = await app.inject({
     url: "/api/orders",

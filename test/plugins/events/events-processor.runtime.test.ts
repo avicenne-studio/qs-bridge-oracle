@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { build, waitFor } from "../../helpers/build.js";
+import { build } from "../../helpers/build.js";
+import { waitFor } from "../../helpers/setup/wait-for.js";
+import { mockLogMethod } from "../../helpers/mocks/logger.js";
 import {
   kHubEventsRepository,
   type HubEventsRepository,
@@ -70,7 +72,7 @@ test("processor logs when processing throws", async (t) => {
   t.mock.method(repo, "listPending", async () => {
     throw new Error("boom");
   });
-  errorMock = t.mock.method(app.log, "error").mock;
+  errorMock = mockLogMethod(t, app.log, "error");
 
   await waitFor(
     () =>
@@ -236,7 +238,7 @@ test("processor skips failed lock orders when an order already exists", async (t
 
   const repo = app.getDecorator<HubEventsRepository>(kHubEventsRepository);
   const ordersRepo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-  const warnMock = t.mock.method(app.log, "warn").mock;
+  const warnMock = mockLogMethod(t, app.log, "warn");
 
   await ordersRepo.create({
     id: "00000000-0000-4000-8000-000000000088",

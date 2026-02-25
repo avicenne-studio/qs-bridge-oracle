@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { build } from "../../helpers/build.js";
-import { signHubHeaders } from "../../utils/hub-signing.js";
+import { signHubHeaders } from "../../helpers/setup/hub-signing.js";
+import { mockLogMethod } from "../../helpers/mocks/logger.js";
 import {
   HUB_AUTH_TIME_SKEW_SECONDS,
   HUB_NONCE_CLEANUP_BUFFER_SECONDS,
@@ -13,7 +14,7 @@ import {
 
 test("rejects requests missing hub auth headers", async (t) => {
   const app = await build(t);
-  const { mock: warnMock } = t.mock.method(app.log, "warn");
+  const warnMock = mockLogMethod(t, app.log, "warn");
 
   const res = await app.inject({
     url: "/api/health",
@@ -248,7 +249,7 @@ test("rejects requests when nonce insert fails", async (t) => {
 
 test("rejects invalid signatures", async (t) => {
   const app = await build(t);
-  const { mock: warnMock } = t.mock.method(app.log, "warn");
+  const warnMock = mockLogMethod(t, app.log, "warn");
 
   const headers = await signHubHeaders({ method: "GET", url: "/api/health" });
   headers["X-Signature"] = "invalid-signature";

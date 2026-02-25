@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { build } from "../../helpers/build.js";
-import { signHubHeaders } from "../../utils/hub-signing.js";
+import { signHubHeaders } from "../../helpers/setup/hub-signing.js";
+import { mockLogMethod } from "../../helpers/mocks/logger.js";
 import {
   kKnex,
   type KnexAccessor,
@@ -31,7 +32,7 @@ test("GET /api/health handles knex failure", async (t) => {
   const app = await build(t);
   const knex = app.getDecorator<KnexAccessor>(kKnex).get();
 
-  const { mock: mockLog } = t.mock.method(app.log, "error");
+  const mockLog = mockLogMethod(t, app.log, "error");
   const { mock: mockSelect } = t.mock.method(knex, "select");
   mockSelect.mockImplementation(
     () =>

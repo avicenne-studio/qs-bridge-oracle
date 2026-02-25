@@ -10,6 +10,7 @@ import {
   type Address,
 } from "@solana/kit";
 import { build, DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
+import { mockLogMethod } from "../../helpers/mocks/logger.js";
 import {
   kOrdersRepository,
   type OrdersRepository,
@@ -783,7 +784,7 @@ describe("relayer plugin", () => {
         }
       },
     };
-    const { mock: logMock } = t.mock.method(app.log, "error");
+    const logMock = mockLogMethod(t, app.log, "error");
 
     startRelayer(app, {
       relayer,
@@ -1094,7 +1095,7 @@ describe("relayer plugin", () => {
         throw "non-error cycle failure";
       },
     };
-    const { mock: logMock } = t.mock.method(app.log, "error");
+    const logMock = mockLogMethod(t, app.log, "error");
 
     startRelayer(app, {
       relayer,

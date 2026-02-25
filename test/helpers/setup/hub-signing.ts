@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, createPrivateKey, randomBytes, sign } from "node:crypto";
-import { buildCanonicalString } from "../../src/plugins/app/hub/hub-verifier.js";
+import { buildCanonicalString } from "../../../src/plugins/app/hub/hub-verifier.js";
 
 const hubKeysFixturePath = path.join(
   process.cwd(),
