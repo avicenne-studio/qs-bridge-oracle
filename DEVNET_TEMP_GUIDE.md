@@ -2,7 +2,7 @@
 
 This is the shortest path to add oracles and submit an inbound order on devnet using the `.temp` files.
 
-## 1) Generate 6 oracle keypairs
+## 1) Generate 6 oracle keypairs (Solana)
 
 ```bash
 # mkdir -p .temp
@@ -11,6 +11,21 @@ This is the shortest path to add oracles and submit an inbound order on devnet u
 #   echo "oracle-${i} generated"
 # done
 ```
+
+## 1b) Generate 6 oracle Qubic keys
+
+Each oracle needs a Qubic identity (55-char seed, publicId) for future Qubic signing. Same layout as Solana: one keys file per oracle.
+
+```bash
+# for i in 1 2 3 4 5 6; do
+#   OUT=.temp/oracle-${i}.qubic.json node scripts/generate-qubic-keys.js > .temp/oracle-${i}.qubic.keys.json
+#   echo "oracle-${i} qubic keys generated"
+# done
+```
+
+- `oracle-N.qubic.keys.json`: `pKey` = Qubic public ID, `sKey` = 55-char seed (same format as `SignerKeysSchema`).
+- Optional backup: `OUT=.temp/oracle-N.qubic.json` writes the seed to a file.
+- In `.env.local`, set `QUBIC_KEYS` to the path for that oracle (e.g. `.temp/oracle-1.qubic.keys.json`).
 
 ## 2) Bundle oracle keys
 

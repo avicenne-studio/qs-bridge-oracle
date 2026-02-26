@@ -30,6 +30,8 @@ import {
   decodeSecretKey,
   normalizeSignatureValue,
 } from "../../../src/plugins/app/common/bytes.js";
+import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../../src/plugins/app/common/protocol.js";
+import { CONTRACT_ADDRESS_BYTES } from "../../../src/plugins/app/common/solana/program.js";
 
 const fixturesDir = path.join(process.cwd(), "test/fixtures/signer");
 const validSolanaKeys = path.join(fixturesDir, "solana.keys.json");
@@ -115,6 +117,31 @@ async function createTempSolanaKeysFile(payload: {
   return filePath;
 }
 
+function makeOrder(overrides: Partial<{
+  networkIn: number;
+  networkOut: number;
+  tokenIn: Uint8Array;
+  tokenOut: Uint8Array;
+  fromAddress: Uint8Array;
+  toAddress: Uint8Array;
+  amount: bigint;
+  relayerFee: bigint;
+  nonce: Uint8Array;
+}> = {}) {
+  return {
+    networkIn: 1,
+    networkOut: 2,
+    tokenIn: bytes32(2),
+    tokenOut: bytes32(3),
+    fromAddress: bytes32(4),
+    toAddress: bytes32(5),
+    amount: 1n,
+    relayerFee: 0n,
+    nonce: bytes32(6),
+    ...overrides,
+  };
+}
+
 describe("signerService", () => {
   it("rejects when SOLANA_KEYS is not a JSON file", async () => {
     await assert.rejects(
@@ -164,6 +191,7 @@ describe("signerService", () => {
     const signer: SignerService = app.getDecorator(kSignerService);
 
     assert.strictEqual(typeof signer.signLockOrderForSolana, "function");
+    assert.strictEqual(typeof signer.signUnlockOrderForQubic, "function");
   });
 
   it("signs a solana order using the fixture keypair", async (t: TestContext) => {
@@ -171,27 +199,13 @@ describe("signerService", () => {
     t.after(() => app.close());
     const signer: SignerService = app.getDecorator(kSignerService);
 
-    const order = {
-      protocolName: "QubicBridge",
-      protocolVersion: "1",
-      contractAddress: bytes32(1),
-      networkIn: 1,
-      networkOut: 2,
-      tokenIn: bytes32(2),
-      tokenOut: bytes32(3),
-      fromAddress: bytes32(4),
-      toAddress: bytes32(5),
-      amount: 1n,
-      relayerFee: 0n,
-      nonce: bytes32(6),
-    };
-
+    const order = makeOrder();
     const signature = await signer.signLockOrderForSolana(order);
 
     const encoded = concatBytes([
-      encodeString(order.protocolName),
-      encodeString(order.protocolVersion),
-      new Uint8Array(getBytesEncoder().encode(order.contractAddress)),
+      encodeString(PROTOCOL_NAME),
+      encodeString(PROTOCOL_VERSION),
+      new Uint8Array(getBytesEncoder().encode(CONTRACT_ADDRESS_BYTES)),
       new Uint8Array(getU32Encoder().encode(order.networkIn)),
       new Uint8Array(getU32Encoder().encode(order.networkOut)),
       new Uint8Array(getBytesEncoder().encode(order.tokenIn)),
@@ -217,109 +231,13 @@ describe("signerService", () => {
     t.assert.ok(ok);
   });
 
-  it("signs a solana order with numeric fields provided as strings", async (t) => {
-    const app = await buildSignerApp();
-    t.after(() => app.close());
-    const signer: SignerService = app.getDecorator(kSignerService);
-
-    const signature = await signer.signLockOrderForSolana({
-      protocolName: "QubicBridge",
-      protocolVersion: "1",
-      contractAddress: bytes32(10),
-      networkIn: "1",
-      networkOut: "2",
-      tokenIn: bytes32(11),
-      tokenOut: bytes32(12),
-      fromAddress: bytes32(13),
-      toAddress: bytes32(14),
-      amount: "1",
-      relayerFee: "0",
-      nonce: bytes32(15),
-    });
-
-    assert.ok(Buffer.from(signature, "base64").length > 0);
-  });
-
-  it("signs a solana order with numeric fields provided as numbers", async (t) => {
-    const app = await buildSignerApp();
-    t.after(() => app.close());
-    const signer: SignerService = app.getDecorator(kSignerService);
-
-    const signature = await signer.signLockOrderForSolana({
-      protocolName: "QubicBridge",
-      protocolVersion: "1",
-      contractAddress: bytes32(20),
-      networkIn: 1,
-      networkOut: 2,
-      tokenIn: bytes32(21),
-      tokenOut: bytes32(22),
-      fromAddress: bytes32(23),
-      toAddress: bytes32(24),
-      amount: 1,
-      relayerFee: 0,
-      nonce: bytes32(25),
-    });
-
-    assert.ok(Buffer.from(signature, "base64").length > 0);
-  });
-
-  it("rejects solana orders with invalid numeric fields", async (t) => {
-    const app = await buildSignerApp();
-    t.after(() => app.close());
-    const signer: SignerService = app.getDecorator(kSignerService);
-
-    const baseOrder = {
-      protocolName: "QubicBridge",
-      protocolVersion: "1",
-      contractAddress: bytes32(30),
-      networkIn: 1,
-      networkOut: 2,
-      tokenIn: bytes32(31),
-      tokenOut: bytes32(32),
-      fromAddress: bytes32(33),
-      toAddress: bytes32(34),
-      amount: 1n,
-      relayerFee: 0n,
-      nonce: bytes32(35),
-    };
-
-    await assert.rejects(
-      signer.signLockOrderForSolana({
-        ...baseOrder,
-        networkIn: 4294967296,
-      }),
-      /networkIn must be uint32/
-    );
-
-    await assert.rejects(
-      signer.signLockOrderForSolana({
-        ...baseOrder,
-        amount: -1n,
-      }),
-      /amount must be uint64/
-    );
-  });
-
-  it("rejects solana orders with invalid byte lengths", async (t) => {
+  it("rejects orders with invalid byte lengths", async (t) => {
     const app = await buildSignerApp();
     t.after(() => app.close());
     const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signLockOrderForSolana({
-        protocolName: "QubicBridge",
-        protocolVersion: "1",
-        contractAddress: bytes32(1),
-        networkIn: 1,
-        networkOut: 2,
-        tokenIn: new Uint8Array(31),
-        tokenOut: bytes32(3),
-        fromAddress: bytes32(4),
-        toAddress: bytes32(5),
-        amount: 1n,
-        relayerFee: 0n,
-        nonce: bytes32(6),
-      }),
+      signer.signLockOrderForSolana(makeOrder({ tokenIn: new Uint8Array(31) })),
       /tokenIn must be 32 bytes/
     );
   });
@@ -329,31 +247,12 @@ describe("signerService", () => {
       pKey: solanaFixtureKeys.pKey,
       sKey: Buffer.from("short").toString("base64"),
     });
-    const app = await buildSignerApp({ SOLANA_KEYS: solanaKeysFile });
     t.after(async () => {
-      await app.close();
-      await fs.rm(path.dirname(solanaKeysFile), {
-        recursive: true,
-        force: true,
-      });
+      await fs.rm(path.dirname(solanaKeysFile), { recursive: true, force: true });
     });
-    const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signLockOrderForSolana({
-        protocolName: "QubicBridge",
-        protocolVersion: "1",
-        contractAddress: bytes32(40),
-        networkIn: 1,
-        networkOut: 2,
-        tokenIn: bytes32(41),
-        tokenOut: bytes32(42),
-        fromAddress: bytes32(43),
-        toAddress: bytes32(44),
-        amount: 1n,
-        relayerFee: 0n,
-        nonce: bytes32(45),
-      }),
+      buildSignerApp({ SOLANA_KEYS: solanaKeysFile }),
       /secret key must be 64 bytes/
     );
   });
@@ -363,32 +262,30 @@ describe("signerService", () => {
       pKey: "Mismatch",
       sKey: solanaFixtureKeys.sKey,
     });
-    const app = await buildSignerApp({ SOLANA_KEYS: solanaKeysFile });
     t.after(async () => {
-      await app.close();
-      await fs.rm(path.dirname(solanaKeysFile), {
-        recursive: true,
-        force: true,
-      });
+      await fs.rm(path.dirname(solanaKeysFile), { recursive: true, force: true });
     });
-    const signer: SignerService = app.getDecorator(kSignerService);
 
     await assert.rejects(
-      signer.signLockOrderForSolana({
-        protocolName: "QubicBridge",
-        protocolVersion: "1",
-        contractAddress: bytes32(50),
-        networkIn: 1,
-        networkOut: 2,
-        tokenIn: bytes32(51),
-        tokenOut: bytes32(52),
-        fromAddress: bytes32(53),
-        toAddress: bytes32(54),
-        amount: 1n,
-        relayerFee: 0n,
-        nonce: bytes32(55),
-      }),
+      buildSignerApp({ SOLANA_KEYS: solanaKeysFile }),
       /public key does not match secret key/
+    );
+  });
+
+  it("rejects qubic keys when the public key does not match", async (t) => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "oracle-signer-"));
+    const qubicKeysFile = path.join(tempDir, "qubic.keys.json");
+    await fs.writeFile(qubicKeysFile, JSON.stringify({
+      pKey: "MISMATCHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      sKey: "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl",
+    }));
+    t.after(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    await assert.rejects(
+      buildSignerApp({ QUBIC_KEYS: qubicKeysFile }),
+      /public key does not match seed/
     );
   });
 
@@ -407,20 +304,7 @@ describe("signerService", () => {
 
     await assert.rejects(
       signLockOrderForSolanaWithSigner(
-        {
-          protocolName: "QubicBridge",
-          protocolVersion: "1",
-          contractAddress: bytes32(60),
-          networkIn: 1,
-          networkOut: 2,
-          tokenIn: bytes32(61),
-          tokenOut: bytes32(62),
-          fromAddress: bytes32(63),
-          toAddress: bytes32(64),
-          amount: 1n,
-          relayerFee: 0n,
-          nonce: bytes32(65),
-        },
+        makeOrder(),
         {
           address: "missing",
           signMessages: async () => [{}],

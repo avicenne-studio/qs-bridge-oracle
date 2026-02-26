@@ -5,12 +5,23 @@ import {
   createFailedOrderFromLockEvent,
   createQubicOrderHandlers,
 } from "../../../../src/plugins/app/events/qubic/qubic-orders.js";
+import { mapStoredEventToQubicPayload } from "../../../../src/plugins/app/events/qubic/qubic-event-mapper.js";
 import type { FastifyBaseLogger } from "fastify";
 import { hex32, bytesToHex, nonceToBytes } from "../../../../src/plugins/app/common/bytes.js";
 import { createMockSignerService } from "../../../helpers/signer-mock.js";
 
 function normalizeNonce(nonce: string): string {
   return bytesToHex(nonceToBytes(nonce));
+}
+
+function createLockPayload() {
+  return {
+    fromAddress: hex32(1),
+    toAddress: hex32(2),
+    amount: "100",
+    relayerFee: "12",
+    nonce: hex32(3),
+  };
 }
 
 function createLogger() {
@@ -52,23 +63,77 @@ function createHandlers() {
   };
 }
 
-function createLockPayload() {
-  return {
+function makeLockStoredEvent(overrides: Partial<{
+  fromAddress: string;
+  toAddress: string;
+  amount: string;
+  relayerFee: string;
+  nonce: string;
+}> = {}) {
+  const payload = {
     fromAddress: hex32(1),
     toAddress: hex32(2),
     amount: "100",
     relayerFee: "12",
     nonce: hex32(3),
+    ...overrides,
+  };
+  return {
+    id: 1,
+    signature: "trx-lock",
+    chain: "qubic" as const,
+    type: "lock" as const,
+    nonce: payload.nonce,
+    payload,
+    createdAt: "2024-01-01 00:00:00",
   };
 }
 
-function createOverridePayload() {
-  return {
+function makeOverrideStoredEvent(overrides: Partial<{
+  fromAddress: string;
+  toAddress: string;
+  amount: string;
+  relayerFee: string;
+  nonce: string;
+}> = {}) {
+  const payload = {
     fromAddress: hex32(1),
     toAddress: hex32(4),
     amount: "100",
     relayerFee: "5",
     nonce: hex32(3),
+    ...overrides,
+  };
+  return {
+    id: 2,
+    signature: "trx-override",
+    chain: "qubic" as const,
+    type: "override-lock" as const,
+    nonce: payload.nonce,
+    payload,
+    createdAt: "2024-01-01 00:00:01",
+  };
+}
+
+function makeUnlockStoredEvent(overrides: Partial<{
+  toAddress: string;
+  amount: string;
+  nonce: string;
+}> = {}) {
+  const payload = {
+    toAddress: hex32(2),
+    amount: "100",
+    nonce: hex32(3),
+    ...overrides,
+  };
+  return {
+    id: 3,
+    signature: "trx-unlock",
+    chain: "qubic" as const,
+    type: "unlock" as const,
+    nonce: payload.nonce,
+    payload,
+    createdAt: "2024-01-01 00:00:02",
   };
 }
 
@@ -76,17 +141,17 @@ describe("qubic order handlers", () => {
   it("creates a new order from lock events", async () => {
     const { repo, handleLockEvent } = createHandlers();
 
-    const payload = createLockPayload();
-    await handleLockEvent(payload, { signature: "trx-lock" });
+    const stored_event = makeLockStoredEvent();
+    const { event } = mapStoredEventToQubicPayload(stored_event) as { type: "lock"; event: ReturnType<typeof mapStoredEventToQubicPayload>["event"] };
+    await handleLockEvent(event as never, { signature: "trx-lock" });
 
-    const stored = await repo.findBySourceNonce(payload.nonce);
+    const stored = await repo.findBySourceNonce(normalizeNonce(stored_event.nonce));
     assert.ok(stored);
     assert.strictEqual(stored?.source, "qubic");
     assert.strictEqual(stored?.dest, "solana");
-    assert.strictEqual(stored?.amount, payload.amount);
-    assert.strictEqual(stored?.relayerFee, payload.relayerFee);
-    assert.strictEqual(stored?.from, payload.fromAddress);
-    assert.strictEqual(stored?.to, payload.toAddress);
+    assert.strictEqual(stored?.amount, stored_event.payload.amount);
+    assert.strictEqual(stored?.relayerFee, stored_event.payload.relayerFee);
+    assert.strictEqual(stored?.from, stored_event.payload.fromAddress);
     assert.strictEqual(stored?.origin_trx_hash, "trx-lock");
     assert.ok(stored?.signature);
     assert.strictEqual(stored?.oracle_accept_to_relay, true);
@@ -94,8 +159,8 @@ describe("qubic order handlers", () => {
     const sourcePayload = JSON.parse(stored?.source_payload ?? "{}");
     assert.deepStrictEqual(sourcePayload, {
       v: 1,
-      nonce: normalizeNonce(payload.nonce),
-      fromAddress: payload.fromAddress,
+      nonce: normalizeNonce(stored_event.nonce),
+      fromAddress: stored_event.payload.fromAddress,
       protocol: "QubicBridge",
       version: "1",
     });
@@ -103,11 +168,12 @@ describe("qubic order handlers", () => {
 
   it("produces a real Ed25519 signature (not a placeholder)", async () => {
     const { repo, handleLockEvent } = createHandlers();
-    const payload = createLockPayload();
+    const stored_event = makeLockStoredEvent();
+    const mapped = mapStoredEventToQubicPayload(stored_event);
 
-    await handleLockEvent(payload, { signature: "trx-lock" });
+    await handleLockEvent(mapped.event as never, { signature: "trx-lock" });
 
-    const stored = await repo.findBySourceNonce(payload.nonce);
+    const stored = await repo.findBySourceNonce(normalizeNonce(stored_event.nonce));
     assert.ok(stored);
     const sigBytes = Buffer.from(stored!.signature, "base64");
     assert.ok(sigBytes.length > 0, "Signature should be non-empty base64");
@@ -115,64 +181,71 @@ describe("qubic order handlers", () => {
 
   it("skips lock events for existing orders", async () => {
     const { repo, handleLockEvent } = createHandlers();
-    const payload = createLockPayload();
-    await handleLockEvent(payload, { signature: "trx-lock" });
-    await handleLockEvent(payload, { signature: "trx-lock-duplicate" });
+    const stored_event = makeLockStoredEvent();
+    const mapped = mapStoredEventToQubicPayload(stored_event);
+
+    await handleLockEvent(mapped.event as never, { signature: "trx-lock" });
+    await handleLockEvent(mapped.event as never, { signature: "trx-lock-duplicate" });
 
     assert.strictEqual(repo.store.size, 1);
   });
 
   it("creates an order when signature metadata is missing", async () => {
     const { repo, handleLockEvent } = createHandlers();
-    const payload = createLockPayload();
+    const stored_event = makeLockStoredEvent();
+    const mapped = mapStoredEventToQubicPayload(stored_event);
 
-    await handleLockEvent(payload);
+    await handleLockEvent(mapped.event as never);
 
-    const stored = await repo.findBySourceNonce(payload.nonce);
+    const stored = await repo.findBySourceNonce(normalizeNonce(stored_event.nonce));
     assert.ok(stored);
-    assert.strictEqual(stored?.origin_trx_hash, payload.nonce);
+    assert.strictEqual(stored?.origin_trx_hash, normalizeNonce(stored_event.nonce));
   });
 
   it("updates orders for override events", async () => {
     const { repo, handleLockEvent, handleOverrideLockEvent } = createHandlers();
-    const payload = createLockPayload();
-    await handleLockEvent(payload, { signature: "trx-lock" });
+    const lock_event = makeLockStoredEvent();
+    const override_event = makeOverrideStoredEvent();
+    const mappedLock = mapStoredEventToQubicPayload(lock_event);
+    const mappedOverride = mapStoredEventToQubicPayload(override_event);
 
-    const overridePayload = createOverridePayload();
-    await handleOverrideLockEvent(overridePayload);
+    await handleLockEvent(mappedLock.event as never, { signature: "trx-lock" });
+    await handleOverrideLockEvent(mappedOverride.event as never);
 
-    const stored = await repo.findBySourceNonce(payload.nonce);
+    const stored = await repo.findBySourceNonce(normalizeNonce(lock_event.nonce));
     assert.ok(stored);
-    assert.strictEqual(stored?.to, overridePayload.toAddress);
-    assert.strictEqual(stored?.relayerFee, overridePayload.relayerFee);
+    assert.strictEqual(stored?.to, override_event.payload.toAddress);
+    assert.strictEqual(stored?.relayerFee, override_event.payload.relayerFee);
     assert.strictEqual(stored?.oracle_accept_to_relay, false);
   });
 
   it("ignores override events for finalized orders", async () => {
     const { repo, handleOverrideLockEvent, entries } = createHandlers();
-    const payload = createLockPayload();
+    const lock_event = makeLockStoredEvent();
+    const override_event = makeOverrideStoredEvent();
     repo.store.set("order-final", {
       id: "order-final",
       source: "qubic",
       dest: "solana",
-      from: payload.fromAddress,
-      to: payload.toAddress,
-      amount: payload.amount,
-      relayerFee: payload.relayerFee,
+      from: lock_event.payload.fromAddress,
+      to: lock_event.payload.toAddress,
+      amount: lock_event.payload.amount,
+      relayerFee: lock_event.payload.relayerFee,
       origin_trx_hash: "trx-final",
       signature: "sig-final",
       status: "finalized",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: payload.nonce,
+      source_nonce: normalizeNonce(lock_event.nonce),
       source_payload: JSON.stringify({ v: 1 }),
     });
 
-    await handleOverrideLockEvent(createOverridePayload());
+    const mappedOverride = mapStoredEventToQubicPayload(override_event);
+    await handleOverrideLockEvent(mappedOverride.event as never);
 
-    const stored = await repo.findBySourceNonce(payload.nonce);
+    const stored = await repo.findBySourceNonce(normalizeNonce(lock_event.nonce));
     assert.ok(stored);
-    assert.strictEqual(stored?.to, payload.toAddress);
+    assert.strictEqual(stored?.to, lock_event.payload.toAddress);
     assert.ok(
       entries.some((entry) => entry.message?.includes("order is finalized"))
     );
@@ -181,7 +254,9 @@ describe("qubic order handlers", () => {
   it("warns when override events have no matching order", async () => {
     const { handleOverrideLockEvent, entries } = createHandlers();
 
-    await handleOverrideLockEvent(createOverridePayload());
+    const override_event = makeOverrideStoredEvent();
+    const mapped = mapStoredEventToQubicPayload(override_event);
+    await handleOverrideLockEvent(mapped.event as never);
 
     assert.ok(
       entries.some((entry) => entry.message?.includes("unknown order"))
@@ -190,19 +265,15 @@ describe("qubic order handlers", () => {
 
   it("updates destination transaction hash for unlock events", async () => {
     const { repo, handleLockEvent, handleUnlockEvent } = createHandlers();
-    const payload = createLockPayload();
-    await handleLockEvent(payload, { signature: "trx-lock" });
+    const lock_event = makeLockStoredEvent();
+    const unlock_event = makeUnlockStoredEvent();
+    const mappedLock = mapStoredEventToQubicPayload(lock_event);
+    const mappedUnlock = mapStoredEventToQubicPayload(unlock_event);
 
-    await handleUnlockEvent(
-      {
-        toAddress: payload.toAddress,
-        amount: payload.amount,
-        nonce: payload.nonce,
-      },
-      { signature: "trx-unlock" }
-    );
+    await handleLockEvent(mappedLock.event as never, { signature: "trx-lock" });
+    await handleUnlockEvent(mappedUnlock.event as never, { signature: "trx-unlock" });
 
-    const stored = await repo.findBySourceNonce(payload.nonce);
+    const stored = await repo.findBySourceNonce(normalizeNonce(lock_event.nonce));
     assert.ok(stored);
     assert.strictEqual(stored?.destination_trx_hash, "trx-unlock");
     assert.strictEqual(stored?.status, "finalized");
@@ -211,14 +282,9 @@ describe("qubic order handlers", () => {
   it("warns when unlock events have no matching order", async () => {
     const { handleUnlockEvent, entries } = createHandlers();
 
-    await handleUnlockEvent(
-      {
-        toAddress: hex32(99),
-        amount: "1",
-        nonce: hex32(100),
-      },
-      { signature: "trx-unlock" }
-    );
+    const unlock_event = makeUnlockStoredEvent({ nonce: hex32(99) });
+    const mapped = mapStoredEventToQubicPayload(unlock_event);
+    await handleUnlockEvent(mapped.event as never, { signature: "trx-unlock" });
 
     assert.ok(
       entries.some((entry) => entry.message?.includes("unknown order"))
@@ -227,16 +293,15 @@ describe("qubic order handlers", () => {
 
   it("warns when unlock events are missing signatures", async () => {
     const { repo, handleLockEvent, handleUnlockEvent, entries } = createHandlers();
-    const payload = createLockPayload();
-    await handleLockEvent(payload, { signature: "trx-lock" });
+    const lock_event = makeLockStoredEvent();
+    const unlock_event = makeUnlockStoredEvent();
+    const mappedLock = mapStoredEventToQubicPayload(lock_event);
+    const mappedUnlock = mapStoredEventToQubicPayload(unlock_event);
 
-    await handleUnlockEvent({
-      toAddress: payload.toAddress,
-      amount: payload.amount,
-      nonce: payload.nonce,
-    });
+    await handleLockEvent(mappedLock.event as never, { signature: "trx-lock" });
+    await handleUnlockEvent(mappedUnlock.event as never);
 
-    const stored = await repo.findBySourceNonce(payload.nonce);
+    const stored = await repo.findBySourceNonce(normalizeNonce(lock_event.nonce));
     assert.ok(stored);
     assert.strictEqual(stored?.destination_trx_hash, undefined);
     assert.ok(
