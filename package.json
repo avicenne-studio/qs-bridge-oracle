@@ -63,7 +63,7 @@
     "@solana-program/token": "^0.9.0",
     "@solana/kit": "^5.5.1",
     "@solana/web3.js": "^1.98.4",
-    "better-sqlite3": "^12.5.0",
+    "better-sqlite3": "^12.6.2",
     "borsh": "^2.0.0",
     "close-with-grace": "^2.4.0",
     "concurrently": "^9.2.1",
