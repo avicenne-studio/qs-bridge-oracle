@@ -259,7 +259,7 @@ describe("ordersRepository", () => {
     assert.strictEqual(fetched?.amount, "42");
   });
 
-  it("should mark an order ready for relay", async (t) => {
+  it("should mark an order ready for relay without changing relay acceptance", async (t) => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
 
@@ -277,6 +277,33 @@ describe("ordersRepository", () => {
       oracle_accept_to_relay: false,
       relay_attempts: 0,
       source_nonce: "nonce-311",
+      source_payload: "{}",
+    });
+
+    const updated = await repo.markReadyForRelay(created!.id);
+    assert.ok(updated);
+    assert.strictEqual(updated?.status, "ready-for-relay");
+    assert.strictEqual(updated?.oracle_accept_to_relay, false);
+  });
+
+  it("should preserve oracle acceptance when already true", async (t) => {
+    const app = await build(t);
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
+
+    const created = await repo.create({
+      id: makeId(3111),
+      source: "solana",
+      dest: "qubic",
+      from: "ReadyTrueA",
+      to: "ReadyTrueB",
+      amount: "33",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig-ready-true",
+      status: "pending",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      source_nonce: "nonce-3111",
       source_payload: "{}",
     });
 
