@@ -44,11 +44,7 @@ function makeId(value: number) {
   return `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 }
 
-type LoggerLike = {
-  info: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-};
+type RelayerLogger = Parameters<typeof createRelayerService>[0]["logger"];
 
 type LoggerMocks = {
   infoLogs: unknown[][];
@@ -56,18 +52,17 @@ type LoggerMocks = {
   errorLogs: unknown[][];
 };
 
-function makeLogger(overrides: Partial<LoggerLike> = {}) {
+function makeLogger() {
   const logs: LoggerMocks = {
     infoLogs: [],
     warnLogs: [],
     errorLogs: [],
   };
-  const logger: LoggerLike = {
-    info: (...args) => logs.infoLogs.push(args),
-    warn: (...args) => logs.warnLogs.push(args),
-    error: (...args) => logs.errorLogs.push(args),
-    ...overrides,
-  };
+  const logger = {
+    info: (...args: unknown[]) => logs.infoLogs.push(args),
+    warn: (...args: unknown[]) => logs.warnLogs.push(args),
+    error: (...args: unknown[]) => logs.errorLogs.push(args),
+  } as unknown as RelayerLogger;
   return { logger, logs };
 }
 
@@ -81,9 +76,10 @@ function makeRepo(order: OracleOrder, onUpdate?: (data: Record<string, unknown>)
   } as unknown as OrdersRepository;
 }
 
-function makeRateLimitErrorWithCode(code: number) {
-  const err = new Error("rpc error") as Error & { context: { __code: number } };
+function makeSolanaError(code: number, cause?: Error) {
+  const err = new Error(`Solana error #${code}`) as Error & { context: { __code: number }; cause?: Error };
   err.context = { __code: code };
+  if (cause) err.cause = cause;
   return err;
 }
 
@@ -97,12 +93,12 @@ const noopRelayerLogger = {
   info() {},
   warn() {},
   error() {},
-} as Parameters<typeof createRelayerService>[0]["logger"];
+} as unknown as RelayerLogger;
 
 const noopSolanaLogger = {
   info() {},
   error() {},
-} as SolanaRelayDeps["logger"];
+} as unknown as SolanaRelayDeps["logger"];
 
 async function startQubicServer(t: TestContext, basePath = "") {
   const server = Fastify({ logger: false });
@@ -302,7 +298,7 @@ describe("relayer plugin", () => {
       undiciClient: {
         create: () => ({
           postJson: async () => {
-            throw makeRateLimitErrorWithCode(8100002);
+            throw makeSolanaError(8100002);
           },
         }),
       } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
@@ -403,7 +399,7 @@ describe("relayer plugin", () => {
       undiciClient: {
         create: () => ({
           postJson: async () => {
-            throw makeRateLimitErrorWithCode(8100002);
+            throw makeSolanaError(8100002);
           },
         }),
       } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
@@ -460,7 +456,7 @@ describe("relayer plugin", () => {
       undiciClient: {
         create: () => ({
           postJson: async () => {
-            throw makeRateLimitErrorWithCode(8100002);
+            throw makeSolanaError(8100002);
           },
         }),
       } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
@@ -798,7 +794,7 @@ describe("relayer plugin", () => {
     assert.ok(logMock.calls.length >= 1);
   });
 
-  it("marks order relayed without retry when already-relayed message is detected", async () => {
+  it("marks order relayed without retry when already-relayed code is detected", async () => {
     const orderData: OracleOrder = {
       id: makeId(10),
       source: "solana",
@@ -827,7 +823,7 @@ describe("relayer plugin", () => {
       undiciClient: {
         create: () => ({
           postJson: async () => {
-            throw new Error("already been initialized");
+            throw makeSolanaError(4615009);
           },
         }),
       } as unknown as Parameters<
@@ -844,11 +840,11 @@ describe("relayer plugin", () => {
     assert.strictEqual(updatedWith.relay_attempts, undefined);
     assert.ok(
       logs.warnLogs.length >= 1,
-      "expected warn log for already-relayed message",
+      "expected warn log for already-relayed code",
     );
   });
 
-  it("marks order relayed without retry when already-relayed code is detected", async () => {
+  it("marks order relayed when already-relayed code is nested in preflight cause", async () => {
     const orderData: OracleOrder = {
       id: makeId(11),
       source: "solana",
@@ -877,7 +873,7 @@ describe("relayer plugin", () => {
       undiciClient: {
         create: () => ({
           postJson: async () => {
-            throw new Error("error 7050003 from chain");
+            throw makeSolanaError(-32002, makeSolanaError(4615009));
           },
         }),
       } as unknown as Parameters<
@@ -894,7 +890,7 @@ describe("relayer plugin", () => {
     assert.strictEqual(updatedWith.relay_attempts, undefined);
     assert.ok(
       logs.warnLogs.length >= 1,
-      "expected warn log for already-relayed code",
+      "expected warn log for already-relayed code in cause chain",
     );
   });
 
@@ -926,7 +922,7 @@ describe("relayer plugin", () => {
       undiciClient: {
         create: () => ({
           postJson: async () => {
-            throw makeRateLimitErrorWithCode(42);
+            throw makeSolanaError(42);
           },
         }),
       } as unknown as Parameters<
@@ -1249,7 +1245,7 @@ describe("relayer plugin", () => {
     assert.strictEqual(updatedWith.relay_attempts, 1);
   });
 
-  it("marks solana order relayed without retry when already-relayed message is detected", async () => {
+  it("marks solana order relayed without retry when already-relayed code is detected", async () => {
     const fromHex = "00".repeat(32);
     const toHex = "01".repeat(32);
     const nonceHex = "02".repeat(32);
@@ -1286,7 +1282,7 @@ describe("relayer plugin", () => {
         config: DEFAULT_TEST_CONFIG,
         ordersRepository: {
           findSignatures: async () => {
-            throw new Error("already been initialized");
+            throw makeSolanaError(4615009);
           },
         } as unknown as SolanaRelayDeps["ordersRepository"],
         logger: noopSolanaLogger,
@@ -1336,7 +1332,7 @@ describe("relayer plugin", () => {
       undiciClient: {
         create: () => ({
           postJson: async () => {
-            throw new Error("already been initialized");
+            throw makeSolanaError(4615009);
           },
         }),
       } as unknown as Parameters<
@@ -1392,7 +1388,7 @@ describe("relayer plugin", () => {
       undiciClient: {
         create: () => ({
           postJson: async () => {
-            throw new Error("uninitialized account");
+            throw makeSolanaError(4615009);
           },
         }),
       } as unknown as Parameters<
@@ -1445,7 +1441,7 @@ describe("relayer plugin", () => {
       undiciClient: {
         create: () => ({
           postJson: async () => {
-            throw makeRateLimitErrorWithCode(0);
+            throw makeSolanaError(0);
           },
         }),
       } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
@@ -1457,5 +1453,213 @@ describe("relayer plugin", () => {
 
     assert.ok(updatedWith);
     assert.strictEqual(updatedWith.relay_attempts, 1);
+  });
+
+  it("marks order failed immediately when insufficient funds error is detected", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(70),
+      source: "solana",
+      dest: "qubic",
+      from: "A",
+      to: "B",
+      amount: "10",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      source_nonce: "nonce-70",
+      source_payload: "{}",
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+    const { logger, logs } = makeLogger();
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => {
+            throw makeSolanaError(7050003);
+          },
+        }),
+      } as unknown as Parameters<
+        typeof createRelayerService
+      >[0]["undiciClient"],
+      logger,
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "failed");
+    assert.strictEqual(updatedWith.failure_reason_public, "Insufficient funds on relayer wallet");
+    assert.ok(
+      logs.errorLogs.some(
+        (args) =>
+          typeof args[1] === "string" &&
+          args[1].includes("insufficient funds"),
+      ),
+      "expected error log for insufficient funds",
+    );
+  });
+
+  it("marks order failed when insufficient funds code is nested in preflight cause", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(71),
+      source: "solana",
+      dest: "qubic",
+      from: "A",
+      to: "B",
+      amount: "10",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      source_nonce: "nonce-71",
+      source_payload: "{}",
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+    const { logger } = makeLogger();
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => {
+            throw makeSolanaError(-32002, makeSolanaError(7050003));
+          },
+        }),
+      } as unknown as Parameters<
+        typeof createRelayerService
+      >[0]["undiciClient"],
+      logger,
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "failed");
+    assert.strictEqual(updatedWith.failure_reason_public, "Insufficient funds on relayer wallet");
+  });
+
+  it("logs error when order update fails after insufficient funds", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(72),
+      source: "solana",
+      dest: "qubic",
+      from: "A",
+      to: "B",
+      amount: "10",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      source_nonce: "nonce-72",
+      source_payload: "{}",
+    };
+
+    const { logger, logs } = makeLogger();
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async () => {
+          throw new Error("db write failed");
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => {
+            throw makeSolanaError(7050003);
+          },
+        }),
+      } as unknown as Parameters<
+        typeof createRelayerService
+      >[0]["undiciClient"],
+      logger,
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    const updateFailLog = logs.errorLogs.find(
+      (args) =>
+        typeof args[1] === "string" &&
+        args[1].includes("Failed to update order after insufficient funds"),
+    );
+    assert.ok(
+      updateFailLog,
+      "expected a log about update failure after insufficient funds",
+    );
+  });
+
+  it("stringifies non-Error update failures after insufficient funds", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(73),
+      source: "solana",
+      dest: "qubic",
+      from: "A",
+      to: "B",
+      amount: "10",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      source_nonce: "nonce-73",
+      source_payload: "{}",
+    };
+
+    const { logger, logs } = makeLogger();
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [orderData],
+        update: async () => {
+          throw "raw string db failure";
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      undiciClient: {
+        create: () => ({
+          postJson: async () => {
+            throw makeSolanaError(7050003);
+          },
+        }),
+      } as unknown as Parameters<
+        typeof createRelayerService
+      >[0]["undiciClient"],
+      logger,
+      solanaDeps: {} as unknown as SolanaRelayDeps,
+    });
+
+    await relayer.relayPending();
+
+    const updateFailLog = logs.errorLogs.find(
+      (args) =>
+        typeof args[1] === "string" &&
+        args[1].includes("Failed to update order after insufficient funds"),
+    );
+    assert.ok(
+      updateFailLog,
+      "expected a log about update failure after insufficient funds",
+    );
   });
 });
