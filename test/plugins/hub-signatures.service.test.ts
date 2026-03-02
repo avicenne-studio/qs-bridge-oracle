@@ -146,7 +146,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
     ]);
   });
 
-  it("marks orders ready when signatures meet the threshold", async (t) => {
+  it("marks orders ready when signatures meet the threshold without changing relay acceptance", async (t) => {
     let hitCount = 0;
     let payload = { data: [] as Array<unknown> };
 
@@ -182,7 +182,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
       signature: "sig-hub-3",
-      status: "ready-for-relay",
+      status: "pending",
       oracle_accept_to_relay: false,
       relay_attempts: 0,
       source_nonce: "nonce-903",
@@ -193,18 +193,20 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       data: [{ orderId: order!.id, signatures: ["sig-3", "sig-4"] }],
     };
 
-    let relayAccepted = false;
+    let ready = false;
     await waitFor(async () => {
       if (hitCount === 0) {
         return false;
       }
 
       const updated = await ordersRepository.findById(order!.id);
-      relayAccepted = updated?.oracle_accept_to_relay === true
-      return relayAccepted;
+      ready = updated?.status === "ready-for-relay";
+      return ready;
     }, 12_000);
 
-    assert.ok(relayAccepted);
+    const updated = await ordersRepository.findById(order!.id);
+    assert.ok(ready);
+    assert.strictEqual(updated?.oracle_accept_to_relay, false);
   });
 
   it("does not mark orders ready when signatures are below the threshold", async (t) => {
