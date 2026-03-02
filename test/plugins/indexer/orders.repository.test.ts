@@ -259,6 +259,35 @@ describe("ordersRepository", () => {
     assert.strictEqual(fetched?.amount, "42");
   });
 
+  it("should clear failure reason when status changes away from failed", async (t) => {
+    const app = await build(t);
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
+
+    const created = await repo.create({
+      id: makeId(302),
+      source: "solana",
+      dest: "qubic",
+      from: "FailA",
+      to: "FailB",
+      amount: "50",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig-fail",
+      status: "failed",
+      failure_reason_public: "Relay failed",
+      oracle_accept_to_relay: true,
+      relay_attempts: 1,
+      source_nonce: "nonce-302",
+      source_payload: "{}",
+    });
+
+    const updated = await repo.update(created!.id, { status: "pending" });
+
+    assert.ok(updated);
+    assert.strictEqual(updated?.status, "pending");
+    assert.strictEqual(updated?.failure_reason_public, undefined);
+  });
+
   it("should mark an order ready for relay without changing relay acceptance", async (t) => {
     const app = await build(t);
     const repo: OrdersRepository = app.getDecorator(kOrdersRepository);

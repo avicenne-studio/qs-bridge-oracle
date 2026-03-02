@@ -60,6 +60,9 @@ function createRepository(fastify: FastifyInstance) {
 
     async update(id: string, changes: UpdateOrder) {
       const payload = { ...changes } as Record<string, unknown>;
+      if (payload.status !== "failed") {
+        payload.failure_reason_public = null;
+      }
       const affectedRows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
         .where("id", id)
         .update(payload);
