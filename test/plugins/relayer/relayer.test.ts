@@ -10,7 +10,7 @@ import {
   type Address,
 } from "@solana/kit";
 import { build, DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
-import { mockLogMethod } from "../../helpers/mocks/logger.js";
+import { mockLogMethod, makeLogger, type LoggerMocks } from "../../helpers/mocks/logger.js";
 import {
   kOrdersRepository,
   type OrdersRepository,
@@ -46,24 +46,9 @@ function makeId(value: number) {
 
 type RelayerLogger = Parameters<typeof createRelayerService>[0]["logger"];
 
-type LoggerMocks = {
-  infoLogs: unknown[][];
-  warnLogs: unknown[][];
-  errorLogs: unknown[][];
-};
-
-function makeLogger() {
-  const logs: LoggerMocks = {
-    infoLogs: [],
-    warnLogs: [],
-    errorLogs: [],
-  };
-  const logger = {
-    info: (...args: unknown[]) => logs.infoLogs.push(args),
-    warn: (...args: unknown[]) => logs.warnLogs.push(args),
-    error: (...args: unknown[]) => logs.errorLogs.push(args),
-  } as unknown as RelayerLogger;
-  return { logger, logs };
+function makeRelayerLogger(): { logger: RelayerLogger; logs: LoggerMocks } {
+  const { logger, logs } = makeLogger();
+  return { logger: logger as unknown as RelayerLogger, logs };
 }
 
 function makeRepo(order: OracleOrder, onUpdate?: (data: Record<string, unknown>) => void) {
@@ -381,7 +366,7 @@ describe("relayer plugin", () => {
       source_payload: "{}",
     };
 
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: {
@@ -412,7 +397,7 @@ describe("relayer plugin", () => {
     const updateFailLog = logs.errorLogs.find(
       (args) =>
         typeof args[1] === "string" &&
-        args[1].includes("Failed to update order after rate limit"),
+        args[1].includes("Failed to update order after exponential back-off"),
     );
     assert.ok(
       updateFailLog,
@@ -438,7 +423,7 @@ describe("relayer plugin", () => {
       source_payload: "{}",
     };
 
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: {
@@ -469,7 +454,7 @@ describe("relayer plugin", () => {
     const updateFailLog = logs.errorLogs.find(
       (args) =>
         typeof args[1] === "string" &&
-        args[1].includes("Failed to update order after rate limit"),
+        args[1].includes("Failed to update order after exponential back-off"),
     );
     assert.ok(
       updateFailLog,
@@ -813,7 +798,7 @@ describe("relayer plugin", () => {
     };
 
     let updatedWith: Record<string, unknown> | undefined;
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: makeRepo(orderData, (data) => {
@@ -863,7 +848,7 @@ describe("relayer plugin", () => {
     };
 
     let updatedWith: Record<string, unknown> | undefined;
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: makeRepo(orderData, (data) => {
@@ -1000,7 +985,7 @@ describe("relayer plugin", () => {
       source_payload: "{}",
     };
 
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: {
@@ -1051,7 +1036,7 @@ describe("relayer plugin", () => {
       source_payload: "{}",
     };
 
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: {
@@ -1267,7 +1252,7 @@ describe("relayer plugin", () => {
     };
 
     let updatedWith: Record<string, unknown> | undefined;
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: makeRepo(solanaOrder, (data) => {
@@ -1319,7 +1304,7 @@ describe("relayer plugin", () => {
       source_payload: "{}",
     };
 
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: {
@@ -1375,7 +1360,7 @@ describe("relayer plugin", () => {
       source_payload: "{}",
     };
 
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: {
@@ -1474,7 +1459,7 @@ describe("relayer plugin", () => {
     };
 
     let updatedWith: Record<string, unknown> | undefined;
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: makeRepo(orderData, (data) => {
@@ -1528,7 +1513,7 @@ describe("relayer plugin", () => {
     };
 
     let updatedWith: Record<string, unknown> | undefined;
-    const { logger } = makeLogger();
+    const { logger } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: makeRepo(orderData, (data) => {
@@ -1573,7 +1558,7 @@ describe("relayer plugin", () => {
       source_payload: "{}",
     };
 
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: {
@@ -1627,7 +1612,7 @@ describe("relayer plugin", () => {
       source_payload: "{}",
     };
 
-    const { logger, logs } = makeLogger();
+    const { logger, logs } = makeRelayerLogger();
 
     const relayer = createRelayerService({
       ordersRepository: {

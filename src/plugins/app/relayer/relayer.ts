@@ -114,7 +114,7 @@ async function relayOrder(
         const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
         logger.error(
           { orderId: order.id, updateError: msg },
-          "Failed to update order after rate limit",
+          "Failed to update order after exponential back-off",
         );
       }
       return;
