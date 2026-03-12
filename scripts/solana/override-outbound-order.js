@@ -1,6 +1,6 @@
+import { Buffer } from "node:buffer";
 import process from "node:process";
 import {
-  address,
   appendTransactionMessageInstruction,
   createKeyPairSignerFromBytes,
   createTransactionMessage,
@@ -10,91 +10,91 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
 } from "@solana/kit";
-import { getClaimOracleFeeInstruction } from "../dist/clients/js/instructions/claimOracleFee.js";
-import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
-import { findOraclePda } from "../dist/clients/js/pdas/oracle.js";
-import { fetchGlobalState } from "../dist/clients/js/accounts/globalState.js";
-import { fetchOracle } from "../dist/clients/js/accounts/oracle.js";
+import { findGlobalStatePda } from "../../dist/clients/js/pdas/globalState.js";
+import { findOutboundOrderPda } from "../../dist/clients/js/pdas/outboundOrder.js";
+import { getOverrideOutboundInstruction } from "../../dist/clients/js/instructions/overrideOutbound.js";
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
-  TOKEN_PROGRAM_ADDRESS,
   createRpcClients,
   applyComputeBudget,
-  findAssociatedTokenAddress,
+  logSection,
+  parseArgs,
+  parseHexBytes32,
+  readJson,
   readKeypairBytes,
   resolveRpcUrl,
   resolveWsUrl,
 } from "./utils.js";
 
-const DEFAULT_ADMIN_KEYPAIR = "./.temp/solana-admin.json";
-
 async function main() {
-  const oraclePubkeyRaw = process.argv[2];
-  const adminKeyPath = process.argv[3] || DEFAULT_ADMIN_KEYPAIR;
-  if (!oraclePubkeyRaw) {
+  const parsedArgs = parseArgs(process.argv.slice(2));
+  const orderPath = parsedArgs._[0];
+  const userKeyPath = parsedArgs._[1];
+  if (!orderPath || !userKeyPath) {
     throw new Error(
-      "Usage: node scripts/claim-oracle-fee.js <oraclePubkey> [adminKeyPath]"
+      "Usage: node scripts/solana/override-outbound-order.js <outbound-order.json> <user-key.json> [--to-address <hex>] [--relayer-fee <number>]"
     );
+  }
+
+  const overrideToAddress = parsedArgs.toAddress;
+  const overrideRelayerFee = parsedArgs.relayerFee;
+  if (!overrideToAddress && !overrideRelayerFee) {
+    throw new Error("Provide --to-address and/or --relayer-fee to override.");
   }
 
   const rpcUrl = resolveRpcUrl();
   const wsUrl = resolveWsUrl();
 
-  const adminBytes = await readKeypairBytes(
-    adminKeyPath,
-    "Admin keypair file"
+  const order = await readJson(orderPath);
+  const userSigner = await createKeyPairSignerFromBytes(
+    await readKeypairBytes(userKeyPath, "User keypair")
   );
-  const adminSigner = await createKeyPairSignerFromBytes(adminBytes);
-  const oracleOwner = address(oraclePubkeyRaw);
+
+  const networkOut = Number(order.networkOut);
+  const nonce = parseHexBytes32(order.nonce, "nonce");
+  const toAddress = overrideToAddress
+    ? parseHexBytes32(overrideToAddress, "toAddress")
+    : null;
+  const relayerFee = overrideRelayerFee ? BigInt(overrideRelayerFee) : null;
 
   const { rpc, sendAndConfirmTransaction } = createRpcClients(rpcUrl, wsUrl);
 
   const [globalStatePda] = await findGlobalStatePda();
-  const globalState = await fetchGlobalState(rpc, globalStatePda);
-  const tokenMint = globalState.data.tokenMint;
+  const [outboundOrderPda] = await findOutboundOrderPda({ networkOut, nonce });
 
-  const [oraclePda] = await findOraclePda({ oracle: oracleOwner });
-  const oracleAccount = await fetchOracle(rpc, oraclePda);
-
-  if (globalState.data.admin !== adminSigner.address) {
-    throw new Error(
-      `Admin key does not match globalState admin: ${globalState.data.admin}`
-    );
-  }
-  if (oracleAccount.data.claimableBalance === 0n) {
-    process.stdout.write("Oracle claimable balance is 0. Nothing to claim.\n");
-    return;
-  }
-
-  const tokenProgram = address(TOKEN_PROGRAM_ADDRESS);
-  const associatedTokenProgram = address(ASSOCIATED_TOKEN_PROGRAM_ADDRESS);
-  const oracleAta = await findAssociatedTokenAddress(
-    oracleOwner,
-    tokenMint,
-    tokenProgram,
-    associatedTokenProgram
+  logSection("override-outbound-order", "Inputs");
+  process.stdout.write(
+    JSON.stringify(
+      {
+        orderPath,
+        userKeyPath,
+        user: userSigner.address,
+        networkOut,
+        nonce: Buffer.from(nonce).toString("hex"),
+        toAddress: toAddress ? Buffer.from(toAddress).toString("hex") : null,
+        relayerFee: relayerFee?.toString() ?? null,
+        outboundOrderPda,
+      },
+      null,
+      2
+    ) + "\n"
   );
 
-  const instruction = getClaimOracleFeeInstruction({
-    claimer: adminSigner,
+  const instruction = getOverrideOutboundInstruction({
+    caller: userSigner,
     globalState: globalStatePda,
-    oraclePda,
-    oracleOwner,
-    tokenMint,
-    oracleAta,
-    tokenProgram,
-    associatedTokenProgram,
+    outboundOrder: outboundOrderPda,
+    toAddress,
+    relayerFee,
   });
 
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
-
   const message = applyComputeBudget(
     appendTransactionMessageInstruction(
       instruction,
       setTransactionMessageLifetimeUsingBlockhash(
         latestBlockhash,
         setTransactionMessageFeePayer(
-          adminSigner.address,
+          userSigner.address,
           createTransactionMessage({ version: "legacy" })
         )
       )
@@ -103,6 +103,9 @@ async function main() {
 
   const signedTransaction = await signTransactionMessageWithSigners(message);
   const signature = getSignatureFromTransaction(signedTransaction);
+
+  logSection("override-outbound-order", "Transaction");
+  process.stdout.write(`signature: ${signature}\n`);
 
   if (typeof rpc.simulateTransaction === "function") {
     const encoded = getBase64EncodedWireTransaction(signedTransaction);
@@ -132,7 +135,7 @@ async function main() {
   await sendAndConfirmTransaction(signedTransaction, { commitment: "confirmed" });
 
   process.stdout.write(
-    `Oracle fee claimed. Transaction signature: ${signature}\n` +
+    `Outbound order override sent. Transaction signature: ${signature}\n` +
       `Explorer: https://solscan.io/tx/${signature}?cluster=devnet\n`
   );
 }

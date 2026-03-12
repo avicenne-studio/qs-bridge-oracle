@@ -9,9 +9,9 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
 } from "@solana/kit";
-import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
-import { findOraclePda } from "../dist/clients/js/pdas/oracle.js";
-import { getAddOracleInstruction } from "../dist/clients/js/instructions/addOracle.js";
+import { findGlobalStatePda } from "../../dist/clients/js/pdas/globalState.js";
+import { findOraclePda } from "../../dist/clients/js/pdas/oracle.js";
+import { getAddOracleInstruction } from "../../dist/clients/js/instructions/addOracle.js";
 import {
   createRpcClients,
   applyComputeBudget,
@@ -27,17 +27,14 @@ async function main() {
   const adminKeyPath = process.argv[3] || DEFAULT_ADMIN_KEYPAIR;
   if (!oraclePubkeyRaw) {
     throw new Error(
-      "Usage: node scripts/add-oracle.js <oraclePubkey> [adminKeyPath]"
+      "Usage: node scripts/solana/add-oracle.js <oraclePubkey> [adminKeyPath]"
     );
   }
 
   const rpcUrl = resolveRpcUrl();
   const wsUrl = resolveWsUrl();
 
-  const adminBytes = await readKeypairBytes(
-    adminKeyPath,
-    "Admin keypair file"
-  );
+  const adminBytes = await readKeypairBytes(adminKeyPath, "Admin keypair file");
   const adminSigner = await createKeyPairSignerFromBytes(adminBytes);
   const oracleAddress = address(oraclePubkeyRaw);
 

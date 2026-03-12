@@ -1,5 +1,4 @@
 import process from "node:process";
-import { setTimeout as delay } from "node:timers/promises";
 import {
   address,
   appendTransactionMessageInstruction,
@@ -11,12 +10,17 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
 } from "@solana/kit";
-import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
-import { findOraclePda } from "../dist/clients/js/pdas/oracle.js";
-import { getRemoveOracleInstruction } from "../dist/clients/js/instructions/removeOracle.js";
+import { getClaimOracleFeeInstruction } from "../../dist/clients/js/instructions/claimOracleFee.js";
+import { findGlobalStatePda } from "../../dist/clients/js/pdas/globalState.js";
+import { findOraclePda } from "../../dist/clients/js/pdas/oracle.js";
+import { fetchGlobalState } from "../../dist/clients/js/accounts/globalState.js";
+import { fetchOracle } from "../../dist/clients/js/accounts/oracle.js";
 import {
+  ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
+  TOKEN_PROGRAM_ADDRESS,
   createRpcClients,
   applyComputeBudget,
+  findAssociatedTokenAddress,
   readKeypairBytes,
   resolveRpcUrl,
   resolveWsUrl,
@@ -24,54 +28,59 @@ import {
 
 const DEFAULT_ADMIN_KEYPAIR = "./.temp/solana-admin.json";
 
-async function waitForRemoval(rpc, oraclePda, retries) {
-  for (let i = 0; i < retries; i += 1) {
-    const account = await rpc
-      .getAccountInfo(oraclePda, { encoding: "base64" })
-      .send();
-    if (!account?.value) {
-      return true;
-    }
-    await delay(500);
-  }
-  return false;
-}
-
 async function main() {
   const oraclePubkeyRaw = process.argv[2];
   const adminKeyPath = process.argv[3] || DEFAULT_ADMIN_KEYPAIR;
   if (!oraclePubkeyRaw) {
     throw new Error(
-      "Usage: node scripts/delete-oracle.js <oraclePubkey> [adminKeyPath]"
+      "Usage: node scripts/solana/claim-oracle-fee.js <oraclePubkey> [adminKeyPath]"
     );
   }
 
   const rpcUrl = resolveRpcUrl();
   const wsUrl = resolveWsUrl();
 
-  const adminBytes = await readKeypairBytes(
-    adminKeyPath,
-    "Admin keypair file"
-  );
+  const adminBytes = await readKeypairBytes(adminKeyPath, "Admin keypair file");
   const adminSigner = await createKeyPairSignerFromBytes(adminBytes);
-  const oracleAddress = address(oraclePubkeyRaw);
-
-  const [globalStatePda] = await findGlobalStatePda();
-  const [oraclePda] = await findOraclePda({ oracle: oracleAddress });
+  const oracleOwner = address(oraclePubkeyRaw);
 
   const { rpc, sendAndConfirmTransaction } = createRpcClients(rpcUrl, wsUrl);
-  const existing = await rpc
-    .getAccountInfo(oraclePda, { encoding: "base64" })
-    .send();
-  if (!existing?.value) {
-    process.stdout.write("Oracle already removed.\n");
+
+  const [globalStatePda] = await findGlobalStatePda();
+  const globalState = await fetchGlobalState(rpc, globalStatePda);
+  const tokenMint = globalState.data.tokenMint;
+
+  const [oraclePda] = await findOraclePda({ oracle: oracleOwner });
+  const oracleAccount = await fetchOracle(rpc, oraclePda);
+
+  if (globalState.data.admin !== adminSigner.address) {
+    throw new Error(
+      `Admin key does not match globalState admin: ${globalState.data.admin}`
+    );
+  }
+  if (oracleAccount.data.claimableBalance === 0n) {
+    process.stdout.write("Oracle claimable balance is 0. Nothing to claim.\n");
     return;
   }
 
-  const instruction = getRemoveOracleInstruction({
-    admin: adminSigner,
+  const tokenProgram = address(TOKEN_PROGRAM_ADDRESS);
+  const associatedTokenProgram = address(ASSOCIATED_TOKEN_PROGRAM_ADDRESS);
+  const oracleAta = await findAssociatedTokenAddress(
+    oracleOwner,
+    tokenMint,
+    tokenProgram,
+    associatedTokenProgram
+  );
+
+  const instruction = getClaimOracleFeeInstruction({
+    claimer: adminSigner,
     globalState: globalStatePda,
     oraclePda,
+    oracleOwner,
+    tokenMint,
+    oracleAta,
+    tokenProgram,
+    associatedTokenProgram,
   });
 
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
@@ -103,15 +112,10 @@ async function main() {
       .send();
     if (simulation?.value?.err) {
       process.stderr.write(
-        `Simulation error: ${JSON.stringify(
-          simulation.value.err,
-          (_key, value) => (typeof value === "bigint" ? value.toString() : value)
-        )}\n`
+        `Simulation error: ${JSON.stringify(simulation.value.err)}\n`
       );
       if (simulation.value.logs?.length) {
-        process.stderr.write(
-          `Simulation logs:\n${simulation.value.logs.join("\n")}\n`
-        );
+        process.stderr.write(`Logs:\n${simulation.value.logs.join("\n")}\n`);
       }
       return;
     }
@@ -119,10 +123,8 @@ async function main() {
 
   await sendAndConfirmTransaction(signedTransaction, { commitment: "confirmed" });
 
-  const removed = await waitForRemoval(rpc, oraclePda, 10);
   process.stdout.write(
-    `Oracle removal tx: ${signature}\n` +
-      `Removed: ${removed ? "yes" : "pending"}\n` +
+    `Oracle fee claimed. Transaction signature: ${signature}\n` +
       `Explorer: https://solscan.io/tx/${signature}?cluster=devnet\n`
   );
 }

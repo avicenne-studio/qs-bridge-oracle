@@ -45,7 +45,7 @@ async function main() {
   const amountRaw = process.argv[3];
   if (!target) {
     throw new Error(
-      "Usage: node scripts/airdrop-solana.js <address|keypair.json> [lamports]"
+      "Usage: node scripts/solana/airdrop-solana.js <address|keypair.json> [lamports]"
     );
   }
 
