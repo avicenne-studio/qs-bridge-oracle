@@ -19,12 +19,12 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
 } from "@solana/kit";
-import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
-import { findOraclePda } from "../dist/clients/js/pdas/oracle.js";
-import { findInboundOrderPda } from "../dist/clients/js/pdas/inboundOrder.js";
-import { getInboundInstruction } from "../dist/clients/js/instructions/inbound.js";
-import { QS_BRIDGE_PROGRAM_ADDRESS } from "../dist/clients/js/programs/qsBridge.js";
-import { fetchGlobalState } from "../dist/clients/js/accounts/globalState.js";
+import { findGlobalStatePda } from "../../dist/clients/js/pdas/globalState.js";
+import { findOraclePda } from "../../dist/clients/js/pdas/oracle.js";
+import { findInboundOrderPda } from "../../dist/clients/js/pdas/inboundOrder.js";
+import { getInboundInstruction } from "../../dist/clients/js/instructions/inbound.js";
+import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../dist/clients/js/programs/qsBridge.js";
+import { fetchGlobalState } from "../../dist/clients/js/accounts/globalState.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
   RENT_SYSVAR_ADDRESS,
@@ -111,23 +111,12 @@ async function signInboundOrder(payload, signer) {
 }
 
 function getCreateAssociatedTokenAccountInstruction({
-  payerSigner,
-  ata,
-  owner,
-  mint,
-  tokenProgram,
-  associatedTokenProgram,
-  systemProgram,
-  rentSysvar,
+  payerSigner, ata, owner, mint, tokenProgram, associatedTokenProgram, systemProgram, rentSysvar,
 }) {
   return {
     programAddress: associatedTokenProgram,
     accounts: [
-      {
-        address: payerSigner.address,
-        role: AccountRole.WRITABLE_SIGNER,
-        signer: payerSigner,
-      },
+      { address: payerSigner.address, role: AccountRole.WRITABLE_SIGNER, signer: payerSigner },
       { address: ata, role: AccountRole.WRITABLE },
       { address: owner, role: AccountRole.READONLY },
       { address: mint, role: AccountRole.READONLY },
@@ -140,9 +129,7 @@ function getCreateAssociatedTokenAccountInstruction({
 }
 
 function padToLength(items, length, filler) {
-  if (items.length >= length) {
-    return items.slice(0, length);
-  }
+  if (items.length >= length) return items.slice(0, length);
   const padding = Array.from({ length: length - items.length }, () => filler);
   return items.concat(padding);
 }
@@ -162,7 +149,7 @@ async function main() {
   const relayerKeyPath = process.argv[4];
   if (!orderPath || !oracleKeysPath || !relayerKeyPath) {
     throw new Error(
-      "Usage: node scripts/send-inbound-order.js <order.json> <oracle-keys.json> <relayer-key.json>"
+      "Usage: node scripts/solana/send-inbound-order.js <order.json> <oracle-keys.json> <relayer-key.json>"
     );
   }
 
@@ -179,9 +166,7 @@ async function main() {
 
   const oracleSigners = await Promise.all(
     oracleKeys.map((entry, index) =>
-      createKeyPairSignerFromBytes(
-        parseKeypairBytes(entry, `Oracle keypair #${index + 1}`)
-      )
+      createKeyPairSignerFromBytes(parseKeypairBytes(entry, `Oracle keypair #${index + 1}`))
     )
   );
 
@@ -203,27 +188,19 @@ async function main() {
   const [globalStatePda] = await findGlobalStatePda();
   const globalState = await fetchGlobalState(rpc, globalStatePda);
   const tokenMint = globalState.data.tokenMint;
-
   const tokenOut = parseBytes32(tokenMint, "tokenOut");
 
   logSection("send-inbound-order", "Inputs");
   process.stdout.write(
     JSON.stringify(
       {
-        orderPath,
-        oracleKeysPath,
-        relayerKeyPath,
-        relayer: relayerSigner.address,
-        recipient,
-        tokenMint,
-        networkIn,
-        networkOut,
-        amount: amount.toString(),
-        relayerFee: relayerFee.toString(),
+        orderPath, oracleKeysPath, relayerKeyPath,
+        relayer: relayerSigner.address, recipient, tokenMint,
+        networkIn, networkOut,
+        amount: amount.toString(), relayerFee: relayerFee.toString(),
         nonce: Buffer.from(nonce).toString("hex"),
       },
-      null,
-      2
+      null, 2
     ) + "\n"
   );
 
@@ -232,67 +209,19 @@ async function main() {
   const systemProgram = SYSTEM_PROGRAM_ADDRESS;
   const rentSysvar = RENT_SYSVAR_ADDRESS;
 
-  const recipientAta = await findAssociatedTokenAddress(
-    recipient,
-    tokenMint,
-    tokenProgram,
-    associatedTokenProgram
-  );
-  const relayerAta = await findAssociatedTokenAddress(
-    relayerSigner.address,
-    tokenMint,
-    tokenProgram,
-    associatedTokenProgram
-  );
+  const recipientAta = await findAssociatedTokenAddress(recipient, tokenMint, tokenProgram, associatedTokenProgram);
+  const relayerAta = await findAssociatedTokenAddress(relayerSigner.address, tokenMint, tokenProgram, associatedTokenProgram);
 
-  logSection("send-inbound-order", "Owner accounts");
-  const relayerAccount = await rpc
-    .getAccountInfo(relayerSigner.address, { encoding: "base64" })
-    .send();
-  const recipientAccount = await rpc
-    .getAccountInfo(recipient, { encoding: "base64" })
-    .send();
-  process.stdout.write(
-    `relayer exists: ${!!relayerAccount?.value}\n` +
-      `recipient exists: ${!!recipientAccount?.value}\n`
-  );
-  if (!relayerAccount?.value) {
-    process.stderr.write(
-      "Relayer account not found. Fund the relayer address with devnet SOL.\n"
-    );
-    return;
-  }
-  if (!recipientAccount?.value) {
-    process.stderr.write(
-      "Recipient account not found. Fund the recipient address with devnet SOL.\n"
-    );
-    return;
-  }
-
-  const ataTargets = [
+  for (const target of [
     { label: "recipientAta", address: recipientAta, owner: recipient },
-    {
-      label: "relayerAta",
-      address: relayerAta,
-      owner: relayerSigner.address,
-    },
-  ];
-
-  for (const target of ataTargets) {
-    const accountInfo = await rpc
-      .getAccountInfo(target.address, { encoding: "base64" })
-      .send();
+    { label: "relayerAta", address: relayerAta, owner: relayerSigner.address },
+  ]) {
+    const accountInfo = await rpc.getAccountInfo(target.address, { encoding: "base64" }).send();
     if (!accountInfo?.value) {
       logSection("send-inbound-order", `Creating ${target.label}`);
       const ix = getCreateAssociatedTokenAccountInstruction({
-        payerSigner: relayerSigner,
-        ata: target.address,
-        owner: target.owner,
-        mint: tokenMint,
-        tokenProgram,
-        associatedTokenProgram,
-        systemProgram,
-        rentSysvar,
+        payerSigner: relayerSigner, ata: target.address, owner: target.owner,
+        mint: tokenMint, tokenProgram, associatedTokenProgram, systemProgram, rentSysvar,
       });
       const { value: blockhash } = await rpc.getLatestBlockhash().send();
       const ataMessage = applyComputeBudget(
@@ -300,96 +229,31 @@ async function main() {
           ix,
           setTransactionMessageLifetimeUsingBlockhash(
             blockhash,
-            setTransactionMessageFeePayer(
-              relayerSigner.address,
-              createTransactionMessage({ version: "legacy" })
-            )
+            setTransactionMessageFeePayer(relayerSigner.address, createTransactionMessage({ version: "legacy" }))
           )
         )
       );
       const ataTx = await signTransactionMessageWithSigners(ataMessage);
-      const ataSig = getSignatureFromTransaction(ataTx);
-      if (typeof rpc.simulateTransaction === "function") {
-        const encodedAta = getBase64EncodedWireTransaction(ataTx);
-        const simulation = await rpc
-          .simulateTransaction(encodedAta, {
-            encoding: "base64",
-            sigVerify: false,
-            replaceRecentBlockhash: true,
-          })
-          .send();
-        if (simulation?.value?.err) {
-          process.stderr.write(
-            `ATA simulation error: ${JSON.stringify(
-              simulation.value.err,
-              (_key, value) =>
-                typeof value === "bigint" ? value.toString() : value
-            )}\n`
-          );
-          if (simulation.value.logs?.length) {
-            process.stderr.write(
-              `ATA simulation logs:\n${simulation.value.logs.join("\n")}\n`
-            );
-          }
-          return;
-        }
-      }
       await sendAndConfirmTransaction(ataTx, { commitment: "confirmed" });
       process.stdout.write(`Created ${target.label}: ${target.address}\n`);
-      process.stdout.write(
-        `ATA tx: ${ataSig}\n` +
-          `Explorer: https://solscan.io/tx/${ataSig}?cluster=devnet\n`
-      );
     }
   }
 
-  const contractAddressBytes = new Uint8Array(
-    getAddressEncoder().encode(address(QS_BRIDGE_PROGRAM_ADDRESS))
-  );
+  const contractAddressBytes = new Uint8Array(getAddressEncoder().encode(address(QS_BRIDGE_PROGRAM_ADDRESS)));
 
   const orderPayload = {
-    protocolName,
-    protocolVersion,
-    contractAddress: contractAddressBytes,
-    networkIn,
-    networkOut,
-    tokenIn,
-    tokenOut,
-    fromAddress,
-    toAddress,
-    amount,
-    relayerFee,
-    nonce,
+    protocolName, protocolVersion, contractAddress: contractAddressBytes,
+    networkIn, networkOut, tokenIn, tokenOut, fromAddress, toAddress,
+    amount, relayerFee, nonce,
   };
 
   const oracleCount = globalState.data.oracleCount;
-  const signatureOverride = process.env.SIGNATURE_COUNT
-    ? Number(process.env.SIGNATURE_COUNT)
-    : null;
-  const signatureCount =
-    signatureOverride && Number.isFinite(signatureOverride)
-      ? Math.max(1, Math.min(6, Math.floor(signatureOverride)))
-      : Math.min(
-          Math.max(1, Math.ceil(oracleCount * (ORACLE_THRESHOLD_PERCENT / 100))),
-          6
-        );
-  logSection("send-inbound-order", "Oracle threshold");
-  process.stdout.write(
-    JSON.stringify(
-      {
-        oracleCount,
-        thresholdPercent: ORACLE_THRESHOLD_PERCENT,
-        signatureOverride,
-        signatureCount,
-      },
-      null,
-      2
-    ) + "\n"
+  const signatureCount = Math.min(
+    Math.max(1, Math.ceil(oracleCount * (ORACLE_THRESHOLD_PERCENT / 100))), 6
   );
+
   if (oracleSigners.length < signatureCount) {
-    throw new Error(
-      `Need ${signatureCount} oracle keys, got ${oracleSigners.length}`
-    );
+    throw new Error(`Need ${signatureCount} oracle keys, got ${oracleSigners.length}`);
   }
 
   const signingOracles = oracleSigners.slice(0, signatureCount);
@@ -398,83 +262,27 @@ async function main() {
     signatures.push(await signInboundOrder(orderPayload, signer));
   }
 
-  const oracleAddresses = signingOracles.map((signer) => signer.address);
   const oraclePdas = await Promise.all(
-    oracleAddresses.map(async (oracle) => {
-      const [oraclePda] = await findOraclePda({ oracle });
+    signingOracles.map(async (signer) => {
+      const [oraclePda] = await findOraclePda({ oracle: signer.address });
       return oraclePda;
     })
   );
   const paddedOraclePdas = padToLength(oraclePdas, 6, oraclePdas[0]);
-  logSection("send-inbound-order", "Oracle PDAs");
-  paddedOraclePdas.forEach((oraclePda, index) => {
-    process.stdout.write(`oracle${index + 1}: ${oraclePda}\n`);
-  });
 
-  const requiredAccounts = [
-    { label: "globalState", address: globalStatePda },
-    { label: "tokenMint", address: tokenMint },
-    { label: "recipientAta", address: recipientAta },
-    { label: "relayerAta", address: relayerAta },
-  ];
-  const oracleAccountChecks = paddedOraclePdas.map((oraclePda, index) => ({
-    label: `oraclePda${index + 1}`,
-    address: oraclePda,
-  }));
-  const missingChecks = await Promise.all(
-    requiredAccounts
-      .concat(oracleAccountChecks)
-      .map((entry) => checkAccountExists(rpc, entry.address, entry.label))
-  );
-  if (missingChecks.some((exists) => !exists)) {
-    process.stderr.write(
-      "Create missing accounts (or ensure oracles are added) before retrying.\n"
-    );
-    return;
-  }
-
-  const [inboundOrderPda] = await findInboundOrderPda({
-    networkIn,
-    nonce,
-  });
-  logSection("send-inbound-order", "Inbound order PDA");
-  process.stdout.write(`inboundOrderPda: ${inboundOrderPda}\n`);
-  const existingInbound = await rpc
-    .getAccountInfo(inboundOrderPda, { encoding: "base64" })
-    .send();
+  const [inboundOrderPda] = await findInboundOrderPda({ networkIn, nonce });
+  const existingInbound = await rpc.getAccountInfo(inboundOrderPda, { encoding: "base64" }).send();
   if (existingInbound?.value) {
-    throw new Error(
-      "Inbound order already exists for this nonce. Update order.json with a new nonce."
-    );
+    throw new Error("Inbound order already exists for this nonce.");
   }
 
   const instruction = getInboundInstruction({
-    relayer: relayerSigner,
-    globalState: globalStatePda,
-    tokenMint,
-    recipient,
-    recipientAta,
-    relayerAta,
-    inboundOrderPda,
-    tokenProgram,
-    associatedTokenProgram,
-    oracle1Pda: paddedOraclePdas[0],
-    oracle2Pda: paddedOraclePdas[1],
-    oracle3Pda: paddedOraclePdas[2],
-    oracle4Pda: paddedOraclePdas[3],
-    oracle5Pda: paddedOraclePdas[4],
-    oracle6Pda: paddedOraclePdas[5],
-    order: {
-      networkIn,
-      networkOut,
-      tokenIn,
-      tokenOut,
-      fromAddress,
-      toAddress,
-      amount,
-      relayerFee,
-      nonce,
-    },
+    relayer: relayerSigner, globalState: globalStatePda, tokenMint,
+    recipient, recipientAta, relayerAta, inboundOrderPda, tokenProgram, associatedTokenProgram,
+    oracle1Pda: paddedOraclePdas[0], oracle2Pda: paddedOraclePdas[1],
+    oracle3Pda: paddedOraclePdas[2], oracle4Pda: paddedOraclePdas[3],
+    oracle5Pda: paddedOraclePdas[4], oracle6Pda: paddedOraclePdas[5],
+    order: { networkIn, networkOut, tokenIn, tokenOut, fromAddress, toAddress, amount, relayerFee, nonce },
     signatures,
   });
 
@@ -482,10 +290,7 @@ async function main() {
 
   let message = setTransactionMessageLifetimeUsingBlockhash(
     latestBlockhash,
-    setTransactionMessageFeePayer(
-      relayerSigner.address,
-      createTransactionMessage({ version: "legacy" })
-    )
+    setTransactionMessageFeePayer(relayerSigner.address, createTransactionMessage({ version: "legacy" }))
   );
   message = appendTransactionMessageInstruction(instruction, message);
   message = applyComputeBudget(message);
@@ -499,23 +304,12 @@ async function main() {
   if (typeof rpc.simulateTransaction === "function") {
     const encoded = getBase64EncodedWireTransaction(signedTransaction);
     const simulation = await rpc
-      .simulateTransaction(encoded, {
-        encoding: "base64",
-        sigVerify: false,
-        replaceRecentBlockhash: true,
-      })
+      .simulateTransaction(encoded, { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true })
       .send();
     if (simulation?.value?.err) {
-      process.stderr.write(
-        `Simulation error: ${JSON.stringify(
-          simulation.value.err,
-          (_key, value) => (typeof value === "bigint" ? value.toString() : value)
-        )}\n`
-      );
+      process.stderr.write(`Simulation error: ${JSON.stringify(simulation.value.err)}\n`);
       if (simulation.value.logs?.length) {
-        process.stderr.write(
-          `Simulation logs:\n${simulation.value.logs.join("\n")}\n`
-        );
+        process.stderr.write(`Logs:\n${simulation.value.logs.join("\n")}\n`);
       }
       return;
     }

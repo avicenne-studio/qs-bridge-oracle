@@ -230,3 +230,315 @@ npm run airdrop-solana -- .temp/recipient.json 10000000
 ## Notes
 - `scripts/send-inbound-order.js` uses the token mint from global state, so `order.json` stays minimal.
 - Ensure the relayer key has devnet SOL for fees.
+
+---
+
+## Real Qubic Smart Contract — Testnet Scripts
+
+The scripts below target the **real Qubic SC at contract index 24** on testnet. They live in `oracle/scripts/qubic/` and are run directly with Node from the `oracle/` root.
+
+### Prerequisites
+
+Install dependencies from `oracle/`:
+
+```bash
+npm install
+```
+
+#### RPC node
+
+The testnet node exposes its API under the `/live/v1/` prefix:
+
+| Endpoint | Description |
+|---|---|
+| `GET /live/v1/tick-info` | Current tick and epoch |
+| `POST /live/v1/broadcast-transaction` | Broadcast a signed transaction |
+| `POST /live/v1/querySmartContract` | Read contract state |
+
+`broadcastTransaction` body: `{ "encodedTransaction": "<base64>" }` — returns `{ "peersBroadcasted": N, "transactionId": "..." }`.
+
+`querySmartContract` body: `{ "contractIndex": 24, "inputType": N, "inputSize": N, "requestData": "<base64>" }` — returns `{ "responseData": "<base64>" }`.
+
+> **Note — Bob Node (`http://34.155.44.160:40420`) is connected to mainnet, not testnet.** Do not use it for broadcasts or queries when working with the testnet SC.
+
+#### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `QUBIC_RPC_URL` | `http://95.216.34.251:41841` | Qubic testnet node |
+| `QUBIC_CONTRACT_INDEX` | `24` | Smart contract index |
+| `QUBIC_CONTRACT_ADDRESS` | `YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA` | SC identity (deterministic from index 24) |
+| `QUBIC_ADMIN_SEED` | — | 55-char admin seed |
+| `QUBIC_TICK_OFFSET` | `10` | Ticks in the future to target |
+
+#### Confirmed contract details
+
+- **Contract index**: 24
+- **Contract address**: `YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`
+- **Admin public key**: `SINUBYSBZKBSVEFQDZBQWUEJWRXCXOZNKPHIXDZWRBKXDSPJEHFAMBACXHUN` (see `.temp/qubic-admin.json`)
+- **Oracle seeds**: `.temp/oracle-qubic-keys.json` (6 seeds)
+- **K12 + SchnorrQ**: `@qubic-lib/qubic-ts-library/dist/crypto/index.js` (CommonJS, returns a Promise)
+
+#### Confirmed struct layouts
+
+**GetLockedOrder response** — 168 bytes:
+```
+exists(8/u64) | sender(32) | amount(8) | relayerFee(8) |
+networkOut(4) | nonce(4) | toAddress(64) | orderHash(32) |
+lockEpoch(4/epoch number) | active(4/u32)
+```
+
+**LockInput** — 88 bytes:
+```
+amount(8) | relayerFee(8) | toAddress(64) | networkOut(4) | nonce(4)
+```
+
+#### Remaining blockers
+
+| ID | What's missing |
+|---|---|
+| **S1** | Response layouts for get-config, get-oracles, is-order-filled, UnlockInput |
+
+---
+
+### A) Key generation
+
+Generate a new Qubic key pair (seed → publicId):
+
+```bash
+node scripts/qubic/generate-keys.js
+```
+
+Write result to a file:
+
+```bash
+# OUT=.temp/oracle-1.qubic.json node scripts/qubic/generate-keys.js
+```
+
+Output format: `{ "pKey": "<publicId>", "sKey": "<55-char-seed>" }`
+
+---
+
+### B) Read contract state
+
+#### Get contract config (function 1)
+
+```bash
+node scripts/qubic/get-config.js
+```
+
+> ⚠️ **Blocked: S1** — response layout unconfirmed.
+
+#### List registered oracles (function 7)
+
+```bash
+node scripts/qubic/get-oracles.js
+```
+
+> ⚠️ **Blocked: S1** — response assumed as `count(4) + accounts[64×32B]`; confirm with Seeker.
+
+#### Query a locked order by nonce (function 4) ✅
+
+```bash
+node scripts/qubic/get-locked-order.js --nonce 1
+```
+
+Returns confirmed fields: `exists`, `sender`, `amount`, `relayerFee`, `networkOut`, `nonce`, `toAddress`, `orderHash`, `lockEpoch`, `active`.
+
+#### Check replay protection (function 5)
+
+```bash
+node scripts/qubic/is-order-filled.js --hash <64-char-hex>
+```
+
+> ⚠️ **Blocked: S1** — response layout unconfirmed.
+
+---
+
+### C) Admin operations
+
+Admin credentials are in `.temp/qubic-admin.json`:
+- `pKey`: `SINUBYSBZKBSVEFQDZBQWUEJWRXCXOZNKPHIXDZWRBKXDSPJEHFAMBACXHUN`
+- `sKey`: see `.temp/qubic-admin.json`
+
+#### Register an oracle (procedure 12)
+
+```bash
+QUBIC_ADMIN_SEED=eraaastggldisjhoojaekgyimrsddjxbvgaawswfvnvaygqmusnkevv \
+node scripts/qubic/add-oracle.js <oraclePublicId>
+```
+
+#### Remove an oracle (procedure 13)
+
+```bash
+QUBIC_ADMIN_SEED=eraaastggldisjhoojaekgyimrsddjxbvgaawswfvnvaygqmusnkevv \
+node scripts/qubic/remove-oracle.js <oraclePublicId>
+```
+
+#### Transfer admin role (procedure 10)
+
+```bash
+QUBIC_ADMIN_SEED=eraaastggldisjhoojaekgyimrsddjxbvgaawswfvnvaygqmusnkevv \
+node scripts/qubic/transfer-admin.js <newAdminPublicId>
+```
+
+> ⚠️ **WARNING** — `transfer-admin` is irreversible. Double-check the public ID before running.
+
+---
+
+### D) Lock flow (Qubic → Solana) ✅
+
+Lock has been tested end-to-end on testnet. The `amount` is attached as `invocationReward` — tokens leave the sender's account immediately.
+
+#### 1. Submit a Lock (procedure 1)
+
+```bash
+node scripts/qubic/lock.js \
+  --from eraaastggldisjhoojaekgyimrsddjxbvgaawswfvnvaygqmusnkevv \
+  --to 11111111111111111111111111111111 \
+  --amount 1000 \
+  --relayer-fee 10 \
+  --nonce 1 \
+  --network-out 1
+```
+
+- `--from`: 55-char Qubic seed (sender pays `amount` as invocation reward)
+- `--to`: Solana base58 address (32 bytes) — zero-padded to 64 bytes internally
+- `--nonce`: uint32, must be unique per sender
+- `--network-out`: `1` = Solana
+
+On success prints `transactionId`. Confirm with:
+
+```bash
+node scripts/qubic/get-locked-order.js --nonce 1
+```
+
+Expected output (nonce 1, locked by admin key):
+```json
+{
+  "exists": true,
+  "amount": "1000",
+  "relayerFee": "10",
+  "networkOut": 1,
+  "nonce": 1,
+  "lockEpoch": 206,
+  "active": true
+}
+```
+
+#### 2. Override an existing lock (procedure 2)
+
+```bash
+node scripts/qubic/override-lock.js \
+  --from eraaastggldisjhoojaekgyimrsddjxbvgaawswfvnvaygqmusnkevv \
+  --nonce 1 \
+  --to 11111111111111111111111111111111 \
+  --relayer-fee 5
+```
+
+#### 3. Cancel a lock (procedure 4)
+
+```bash
+node scripts/qubic/cancel-lock.js \
+  --from eraaastggldisjhoojaekgyimrsddjxbvgaawswfvnvaygqmusnkevv \
+  --nonce 1
+```
+
+---
+
+### E) Unlock / relay (oracle relayer — procedure 3)
+
+Use `relay-unlock.js` — mirrors `send-inbound-order.js` on the Solana side.
+
+Oracle keys are in `.temp/oracle-qubic-keys.json` (array of 6 seeds).
+
+#### qubic-order.json shape
+
+```json
+{
+  "fromAddress": "<qubicPublicId or 64-char hex>",
+  "toAddress":   "<solanaBase58 or 64-char hex>",
+  "amount":      "1000",
+  "relayerFee":  "10",
+  "networkOut":  1,
+  "nonce":       1,
+  "tokenIn":     "0",
+  "tokenOut":    "0",
+  "networkIn":   0,
+  "destinationChainId": 1
+}
+```
+
+Notes:
+- `fromAddress` is the **lock sender**; you can paste the `sender` from `get-locked-order` as 64-char hex.
+- `toAddress` can be Solana base58 or 64-char hex. The Solana system program address
+  `11111111111111111111111111111111` decodes to all-zero bytes, so don’t use it as a destination.
+
+#### Create `.temp/qubic-order.json` from a locked order
+
+```bash
+node <<'NODE'
+const fs = require('fs');
+const order = {
+  fromAddress: '11111111111111111111111111111111',
+  toAddress: '46F9i1Bzv8kwShyG8xbtdkA7nEoYmzyueKwjXyDgtAQV', // your Solana address
+  amount: '1000',
+  relayerFee: '5',
+  networkOut: 1,
+  nonce: 2,
+  tokenIn: '0',
+  tokenOut: '0',
+  networkIn: 0,
+  destinationChainId: 1
+};
+fs.writeFileSync('.temp/qubic-order.json', JSON.stringify(order, null, 2));
+console.log('Wrote .temp/qubic-order.json');
+NODE
+```
+
+#### Run
+
+```bash
+node scripts/qubic/relay-unlock.js \
+  .temp/qubic-order.json \
+  .temp/oracle-qubic-keys.json \
+  .temp/qubic-admin.json
+```
+
+Dry-run (sign + encode but skip broadcast):
+
+```bash
+DRY_RUN=1 node scripts/qubic/relay-unlock.js \
+  .temp/qubic-order.json \
+  .temp/oracle-qubic-keys.json \
+  .temp/qubic-admin.json
+```
+
+On success the node returns `{ "peersBroadcasted": 1, "transactionId": "..." }`. Whether the SC accepts the unlock depends on the oracle signatures matching the on-chain order hash computation.
+
+> ⚠️ **Pending: S1** — `UnlockInput` struct layout (variable vs fixed sig slots) must be confirmed with Seeker. Current implementation sends only the actual signature count (variable-length), which keeps the tx under 1024 bytes. Set `FIXED_SIG_SLOTS=64` env var in relay-unlock.js if the SC requires a fixed-size array.
+
+**Relay test result (2026-03-11):**
+- Order nonce 1 relayed via 6 oracle signatures → `transactionId: umbgmlbqirvehbmcwkuccqlpaargkuenrugicpxrbdxszwczlhyngzteqnfi`
+- Broadcast accepted (`peersBroadcasted: 1`), SC execution result pending Seeker confirmation.
+
+---
+
+### F) Event polling
+
+> ⚠️ **Not available on testnet** — `poll-events.js` and `verify-event.js` use the Bob Node (`/findLog`) which is mainnet-only. The testnet RPC does not expose a log/event query endpoint. Ask Seeker for a testnet event indexer if needed.
+
+---
+
+### G) Typical test flow (end-to-end)
+
+```
+1.  [Admin]   Add 6 test oracles:  add-oracle.js  (using .temp/oracle-qubic-keys.json pubkeys)
+2.  [Read]    Verify:               get-oracles.js  (blocked: S1 layout)
+3.  [User]    Lock funds:           lock.js --from <seed> --to <solana-addr> --amount 1000 --nonce 1
+4.  [Read] ✅ Confirm lock:         get-locked-order.js --nonce 1
+5.  [Relay] ✅ Unlock on Qubic:    relay-unlock.js  (tx accepted; SC outcome pending Seeker confirm)
+6.  [Read]    Check replay guard:   is-order-filled.js --hash <orderHash>  (blocked: S1 layout)
+```
+
+Steps 1, 3, 4, and 5 are operational (tx accepted by node). Step 6 requires Seeker to confirm remaining struct layouts.

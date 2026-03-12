@@ -17,10 +17,10 @@ import {
 } from "@solana-program/address-lookup-table";
 import { TOKEN_PROGRAM_ADDRESS, ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { SYSTEM_PROGRAM_ADDRESS } from "@solana-program/system";
-import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
-import { findOraclePda } from "../dist/clients/js/pdas/oracle.js";
-import { QS_BRIDGE_PROGRAM_ADDRESS } from "../dist/clients/js/programs/qsBridge.js";
-import { getOracleSize, getOracleDecoder } from "../dist/clients/js/accounts/oracle.js";
+import { findGlobalStatePda } from "../../dist/clients/js/pdas/globalState.js";
+import { findOraclePda } from "../../dist/clients/js/pdas/oracle.js";
+import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../dist/clients/js/programs/qsBridge.js";
+import { getOracleSize, getOracleDecoder } from "../../dist/clients/js/accounts/oracle.js";
 import {
   createRpcClients,
   applyComputeBudget,
