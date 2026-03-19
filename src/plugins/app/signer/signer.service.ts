@@ -14,8 +14,8 @@ import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../common/protocol.js";
 import {
   CONTRACT_ADDRESS_BYTES,
   serializeBridgeOrder,
-  type BridgeOrderFields,
 } from "../common/solana/program.js";
+import { QUBIC_CONTRACT_ADDRESS_BYTES } from "../common/qubic/encoding.js";
 
 export type OrderInput = {
   networkIn: number;
@@ -36,13 +36,13 @@ export type SignerService = {
 
 export const kSignerService = Symbol("app.signerService");
 
-function serializeOrder(order: OrderInput): Uint8Array {
+function serializeOrderForSolana(order: OrderInput): Uint8Array {
   assertFixedBytes(order.tokenIn, "tokenIn", 32);
   assertFixedBytes(order.tokenOut, "tokenOut", 32);
   assertFixedBytes(order.fromAddress, "fromAddress", 32);
   assertFixedBytes(order.toAddress, "toAddress", 32);
   assertFixedBytes(order.nonce, "nonce", 32);
-  const fields: BridgeOrderFields = {
+  return serializeBridgeOrder({
     protocolName: PROTOCOL_NAME,
     protocolVersion: PROTOCOL_VERSION,
     contractAddress: CONTRACT_ADDRESS_BYTES,
@@ -55,8 +55,29 @@ function serializeOrder(order: OrderInput): Uint8Array {
     amount: order.amount,
     relayerFee: order.relayerFee,
     nonce: order.nonce,
-  };
-  return serializeBridgeOrder(fields);
+  });
+}
+
+function serializeOrderForQubic(order: OrderInput): Uint8Array {
+  assertFixedBytes(order.tokenIn, "tokenIn", 32);
+  assertFixedBytes(order.tokenOut, "tokenOut", 32);
+  assertFixedBytes(order.fromAddress, "fromAddress", 32);
+  assertFixedBytes(order.toAddress, "toAddress", 32);
+  assertFixedBytes(order.nonce, "nonce", 32);
+  return serializeBridgeOrder({
+    protocolName: PROTOCOL_NAME,
+    protocolVersion: PROTOCOL_VERSION,
+    contractAddress: QUBIC_CONTRACT_ADDRESS_BYTES,
+    networkIn: order.networkIn,
+    networkOut: order.networkOut,
+    tokenIn: order.tokenIn,
+    tokenOut: order.tokenOut,
+    fromAddress: order.fromAddress,
+    toAddress: order.toAddress,
+    amount: order.amount,
+    relayerFee: order.relayerFee,
+    nonce: order.nonce,
+  });
 }
 
 type SolanaSigner = {
@@ -115,7 +136,7 @@ export async function signLockOrderForSolanaWithSigner(
   order: OrderInput,
   signer: SolanaSigner,
 ): Promise<string> {
-  const digest = createHash("sha256").update(serializeOrder(order)).digest();
+  const digest = createHash("sha256").update(serializeOrderForSolana(order)).digest();
   const signableMessage = createSignableMessage(digest);
   const [sigDict] = await signer.signMessages([signableMessage]);
   if (!sigDict || !(signer.address in sigDict)) {
@@ -155,7 +176,7 @@ export default fp(
       signLockOrderForSolanaWithSigner(order, solanaSigner);
 
     const signUnlockOrderForQubic = async (order: OrderInput) =>
-      qubicSigner.sign(serializeOrder(order));
+      qubicSigner.sign(serializeOrderForQubic(order));
 
     fastify.decorate(kSignerService, {
       signLockOrderForSolana,
