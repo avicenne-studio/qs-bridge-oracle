@@ -26,6 +26,7 @@ export const SolanaOutboundEventPayloadSchema = Type.Object({
   amount: AmountSchema,
   relayerFee: AmountSchema,
   nonce: Hex32Schema,
+  orderEra: Type.Integer({ minimum: 0 }),
 });
 
 export const SolanaOverrideOutboundEventPayloadSchema = Type.Object({
@@ -44,6 +45,7 @@ export const SolanaInboundEventPayloadSchema = Type.Object({
   amount: AmountSchema,
   relayerFee: AmountSchema,
   nonce: Hex32Schema,
+  orderEra: Type.Integer({ minimum: 0 }),
 });
 
 export const SolanaEventPayloadSchema = Type.Union([

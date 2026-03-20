@@ -18,6 +18,7 @@ export function mapStoredEventToSolanaPayload(event: SolanaStoredEvent) {
           amount: toU64BigInt(payload.amount, "amount"),
           relayerFee: toU64BigInt(payload.relayerFee, "relayerFee"),
           nonce: hexToBytes(payload.nonce),
+          orderEra: payload.orderEra ?? 0,
         },
       };
     }
@@ -38,6 +39,7 @@ export function mapStoredEventToSolanaPayload(event: SolanaStoredEvent) {
           amount: toU64BigInt(payload.amount, "amount"),
           relayerFee: toU64BigInt(payload.relayerFee, "relayerFee"),
           nonce: hexToBytes(payload.nonce),
+          orderEra: payload.orderEra ?? 0,
         },
       };
     }

@@ -28,6 +28,7 @@ type QubicOrderSourcePayloadV1 = {
   fromAddress: string;
   protocol: string;
   version: string;
+  orderEra: number;
 };
 
 const addressEncoder = getAddressEncoder();
@@ -36,7 +37,7 @@ function normalizeNonce(nonce: string): string {
   return bytesToHex(nonceToBytes(nonce));
 }
 
-type QubicOrderFields = Pick<QubicLockEvent, "fromAddress" | "toAddress" | "amount" | "relayerFee" | "nonce">;
+type QubicOrderFields = Pick<QubicLockEvent, "fromAddress" | "toAddress" | "amount" | "relayerFee" | "nonce" | "orderEra">;
 
 function buildOrderToSign(
   tokenMint: string,
@@ -52,6 +53,7 @@ function buildOrderToSign(
     amount: event.amount,
     relayerFee: event.relayerFee,
     nonce: event.nonce,
+    orderEra: event.orderEra,
   };
 }
 
@@ -66,6 +68,7 @@ function buildSourcePayload(event: QubicLockEvent): QubicOrderSourcePayloadV1 {
     fromAddress: bytesToHex(event.fromAddress),
     protocol: PROTOCOL_NAME,
     version: PROTOCOL_VERSION,
+    orderEra: event.orderEra,
   };
 }
 
@@ -92,6 +95,7 @@ function createOrderFromLockEvent(
     relay_attempts: 0,
     source_nonce: sourceNonce,
     source_payload: serializeSourcePayload(buildSourcePayload(event)),
+    order_era: event.orderEra,
   };
 }
 
@@ -124,7 +128,9 @@ export function createFailedOrderFromLockEvent(
       fromAddress: event.fromAddress,
       protocol: PROTOCOL_NAME,
       version: PROTOCOL_VERSION,
+      orderEra: Number(event.orderEra),
     }),
+    order_era: Number(event.orderEra),
     failure_reason_public: failureReasonPublic,
   };
 }

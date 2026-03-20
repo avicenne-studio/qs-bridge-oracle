@@ -27,6 +27,7 @@ export type OrderInput = {
   amount: bigint;
   relayerFee: bigint;
   nonce: Uint8Array;
+  orderEra: number;
 };
 
 export type SignerService = {
@@ -55,6 +56,7 @@ function serializeOrderForSolana(order: OrderInput): Uint8Array {
     amount: order.amount,
     relayerFee: order.relayerFee,
     nonce: order.nonce,
+    orderEra: order.orderEra,
   });
 }
 
@@ -77,6 +79,7 @@ function serializeOrderForQubic(order: OrderInput): Uint8Array {
     amount: order.amount,
     relayerFee: order.relayerFee,
     nonce: order.nonce,
+    orderEra: order.orderEra,
   });
 }
 

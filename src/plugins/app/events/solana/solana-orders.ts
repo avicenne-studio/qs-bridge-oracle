@@ -58,6 +58,7 @@ function buildSourcePayload(event: OutboundEvent): SolanaOrderSourcePayloadV1 {
     tokenIn: bytesToHex(event.tokenIn),
     tokenOut: bytesToHex(event.tokenOut),
     nonce: bytesToHex(event.nonce),
+    orderEra: event.orderEra,
   };
 }
 
@@ -84,6 +85,7 @@ function createOrderFromOutboundEvent(
     relay_attempts: 0,
     source_nonce: sourceNonce,
     source_payload: serializeSourcePayload(buildSourcePayload(event)),
+    order_era: event.orderEra,
   };
 }
 
@@ -110,6 +112,7 @@ export function createFailedOrderFromOutboundEvent(
     relay_attempts: 0,
     source_nonce: sourceNonce,
     source_payload: serializeSourcePayload(buildSourcePayload(event)),
+    order_era: event.orderEra,
     failure_reason_public: failureReasonPublic,
   };
 }
@@ -125,6 +128,7 @@ function normalizeOutboundEvent(event: OutboundEvent): OrderInput {
     amount: event.amount,
     relayerFee: event.relayerFee,
     nonce: new Uint8Array(event.nonce),
+    orderEra: event.orderEra,
   };
 }
 
@@ -143,6 +147,7 @@ function buildNormalizedOrderFromOverride(
     amount: BigInt(existing.amount),
     relayerFee: event.relayerFee,
     nonce: hexToBytes(sourcePayload.nonce),
+    orderEra: sourcePayload.orderEra,
   };
 }
 

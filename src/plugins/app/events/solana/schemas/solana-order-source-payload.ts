@@ -9,6 +9,7 @@ export const SolanaOrderSourcePayloadSchema = Type.Object({
   tokenIn: Hex32Schema,
   tokenOut: Hex32Schema,
   nonce: Hex32Schema,
+  orderEra: Type.Integer({ minimum: 0 }),
 });
 
 export type SolanaOrderSourcePayloadV1 = Static<

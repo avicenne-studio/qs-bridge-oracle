@@ -16,6 +16,7 @@ function buildUnlockPayload(order: OracleOrder) {
     to: order.to,
     amount: order.amount,
     nonce: order.source_nonce,
+    orderEra: order.order_era,
   };
 }
 
