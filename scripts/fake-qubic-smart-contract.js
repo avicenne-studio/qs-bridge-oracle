@@ -12,6 +12,7 @@ const unlocks = [];
 const unlockedNonces = new Set();
 const state = {
   orders: new Map(), // nonce -> order
+  orderEra: 0,
 };
 
 function nowIso() {
@@ -114,6 +115,7 @@ fastify.post("/lock", async (request, reply) => {
     relayerFee: String(body.relayerFee ?? "0"),
     networkOut: Number(body.networkOut ?? 1),
     nonce,
+    orderEra: String(state.orderEra),
   };
 
   if (state.orders.has(nonce)) {
@@ -153,6 +155,7 @@ fastify.post("/override-lock", async (request, reply) => {
     ...payload,
     fromAddress: existing.fromAddress,
     amount: existing.amount,
+    orderEra: existing.orderEra,
   });
   state.orders.set(payload.nonce, {
     ...existing,
@@ -176,13 +179,18 @@ fastify.post("/unlock", async (request, reply) => {
   } catch (err) {
     return reply.code(400).send({ message: err.message });
   }
+  const reqEra = Number(body.orderEra ?? 0);
   const payload = {
     toAddress,
     amount: String(body.amount ?? "0"),
     nonce: String(body.nonce ?? Date.now()),
+    orderEra: String(reqEra),
   };
   if (unlockedNonces.has(payload.nonce)) {
     return reply.code(409).send({ message: "nonce already unlocked" });
+  }
+  if (reqEra !== state.orderEra && (state.orderEra === 0 || reqEra !== state.orderEra - 1)) {
+    return reply.code(400).send({ message: "order era mismatch" });
   }
   const event = storeEvent("unlock", payload);
   const tx = buildTransaction(event);
@@ -196,6 +204,10 @@ fastify.post("/unlock", async (request, reply) => {
   unlockedNonces.add(payload.nonce);
   unlocks.push(record);
   return reply.code(201).send({ trxHash: record.trxHash, event });
+});
+
+fastify.get("/config", async (_request, reply) => {
+  return reply.send({ orderEra: state.orderEra });
 });
 
 fastify.get("/events", async (_request, reply) => {

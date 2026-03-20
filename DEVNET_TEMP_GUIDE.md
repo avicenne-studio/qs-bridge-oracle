@@ -81,6 +81,7 @@ const order = {
   amount: '1000000',
   relayerFee: '1000',
   nonce: '0x' + randomBytes(32).toString('hex'),
+  orderEra: 0,
   recipient: '46F9i1Bzv8kwShyG8xbtdkA7nEoYmzyueKwjXyDgtAQV',
   protocolName: 'QubicBridge',
   protocolVersion: '1',
@@ -115,6 +116,7 @@ const order = {
   amount: '500000', // in token base units
   relayerFee: '1000',
   nonce: '0x' + randomBytes(32).toString('hex'),
+  orderEra: 0, // query current era from Qubic GetConfig
 };
 fs.writeFileSync('.temp/outbound-order.json', JSON.stringify(order, null, 2));
 NODE
@@ -140,6 +142,7 @@ The fake Qubic contract runs a local Fastify server with:
 - `POST /lock`
 - `POST /override-lock`
 - `POST /unlock`
+- `GET /config` (returns `{ orderEra }`)
 - `GET /events`
 - `GET /transactions/:trxHash`
 

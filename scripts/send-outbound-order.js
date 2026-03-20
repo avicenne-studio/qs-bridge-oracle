@@ -119,6 +119,7 @@ async function main() {
     amount,
     relayerFee,
     nonce,
+    orderEra: Number(order.orderEra ?? 0),
   });
 
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();

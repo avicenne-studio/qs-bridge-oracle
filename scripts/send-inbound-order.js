@@ -95,6 +95,7 @@ function serializeInboundOrder(payload) {
     new Uint8Array(getU64Encoder().encode(payload.amount)),
     new Uint8Array(getU64Encoder().encode(payload.relayerFee)),
     new Uint8Array(getBytesEncoder().encode(payload.nonce)),
+    new Uint8Array(getU32Encoder().encode(payload.orderEra ?? 0)),
   ]);
 }
 
@@ -360,6 +361,7 @@ async function main() {
     amount,
     relayerFee,
     nonce,
+    orderEra: Number(order.orderEra ?? 0),
   };
 
   const oracleCount = globalState.data.oracleCount;
@@ -474,6 +476,7 @@ async function main() {
       amount,
       relayerFee,
       nonce,
+      orderEra: orderPayload.orderEra,
     },
     signatures,
   });
