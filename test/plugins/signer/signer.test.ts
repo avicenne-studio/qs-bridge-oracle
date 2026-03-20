@@ -132,6 +132,7 @@ function makeOrder(
     amount: 1n,
     relayerFee: 0n,
     nonce: bytes32(6),
+    orderEra: 0,
     ...overrides,
   };
 }
@@ -209,6 +210,7 @@ describe("signerService", () => {
       new Uint8Array(getU64Encoder().encode(order.amount)),
       new Uint8Array(getU64Encoder().encode(order.relayerFee)),
       new Uint8Array(getBytesEncoder().encode(order.nonce)),
+      new Uint8Array(getU32Encoder().encode(order.orderEra)),
     ]);
     const digest = createHash("sha256").update(encoded).digest();
     const message = createSignableMessage(digest);

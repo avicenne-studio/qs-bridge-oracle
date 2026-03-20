@@ -202,6 +202,7 @@ test("processor creates failed orders for qubic lock events", async (t) => {
       amount: "10",
       relayerFee: "12",
       nonce: lockNonce,
+      orderEra: "0",
     },
     createdAt: "2024-01-01 00:00:00",
   });
@@ -255,6 +256,7 @@ test("processor skips failed lock orders when an order already exists", async (t
     relay_attempts: 0,
     source_nonce: lockNonce,
     source_payload: JSON.stringify({ v: 1 }),
+    order_era: 0,
   });
 
   await repo.upsert({
@@ -316,6 +318,7 @@ test("processor handles qubic lock events", async (t) => {
       amount: "10",
       relayerFee: "12",
       nonce: lockNonce,
+      orderEra: "0",
     },
     createdAt: "2024-01-01 00:00:00",
   });
@@ -400,6 +403,7 @@ test("processor stores destination transaction hash for qubic unlock events", as
     relay_attempts: 0,
     source_nonce: unlockNonce,
     source_payload: JSON.stringify({ v: 1 }),
+    order_era: 0,
   });
 
   await repo.upsert({
@@ -454,6 +458,7 @@ test("processor finalizes order for solana inbound events", async (t) => {
     relay_attempts: 0,
     source_nonce: inboundNonce,
     source_payload: JSON.stringify({ v: 1 }),
+    order_era: 0,
   });
 
   await repo.upsert({

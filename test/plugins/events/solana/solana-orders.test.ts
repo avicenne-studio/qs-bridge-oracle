@@ -57,6 +57,7 @@ function createOutboundEvent() {
     amount: 10n,
     relayerFee: 2n,
     nonce,
+    orderEra: 0,
   };
 }
 
@@ -134,6 +135,7 @@ describe("solana order handlers", () => {
       tokenIn: bytesToHex(event.tokenIn),
       tokenOut: bytesToHex(event.tokenOut),
       nonce: bytesToHex(event.nonce),
+      orderEra: 0,
     });
   });
 
@@ -175,7 +177,8 @@ describe("solana order handlers", () => {
         oracle_accept_to_relay: true,
         relay_attempts: 0,
         source_nonce: existingNonce,
-        source_payload: JSON.stringify({ v: 1, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: existingNonce }),
+        source_payload: JSON.stringify({ v: 1, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: existingNonce, orderEra: 0 }),
+        order_era: 0,
       },
     ]);
     const { handleOutboundEvent } = createHandlers(repo);
@@ -208,7 +211,8 @@ describe("solana order handlers", () => {
       oracle_accept_to_relay: true,
       relay_attempts: 0,
       source_nonce: overrideNonce,
-      source_payload: JSON.stringify({ v: 1, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: overrideNonce }),
+      source_payload: JSON.stringify({ v: 1, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: overrideNonce, orderEra: 0 }),
+      order_era: 0,
     });
 
     await handleOverrideOutboundEvent(overrideEvent);
@@ -228,7 +232,8 @@ describe("solana order handlers", () => {
       oracle_accept_to_relay: true,
       relay_attempts: 0,
       source_nonce: overrideNonce,
-      source_payload: JSON.stringify({ v: 2, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: overrideNonce }),
+      source_payload: JSON.stringify({ v: 2, networkIn: 1, networkOut: 1, tokenIn: hex32(1), tokenOut: hex32(2), nonce: overrideNonce, orderEra: 0 }),
+      order_era: 0,
     });
 
     await handleOverrideOutboundEvent(overrideEvent);
@@ -249,6 +254,7 @@ describe("solana order handlers", () => {
       relay_attempts: 0,
       source_nonce: overrideNonce,
       source_payload: "{bad",
+      order_era: 0,
     });
 
     await handleOverrideOutboundEvent(overrideEvent);
@@ -283,7 +289,9 @@ describe("solana order handlers", () => {
         tokenIn: hex32(1),
         tokenOut: hex32(2),
         nonce: overrideNonce,
+        orderEra: 0,
       }),
+      order_era: 0,
     });
 
     await handleOverrideOutboundEvent(overrideEvent);
@@ -336,6 +344,7 @@ describe("solana order handlers", () => {
       tokenIn: hex32(1),
       tokenOut: hex32(2),
       nonce: hex32(3),
+      orderEra: 0,
     });
 
     const parsed = parseSourcePayload(payload);
@@ -364,6 +373,7 @@ describe("solana order handlers", () => {
         relay_attempts: 0,
         source_nonce: sourceNonce,
         source_payload: JSON.stringify({ v: 1 }),
+        order_era: 0,
       },
     ]);
     const { handleInboundEvent } = createHandlers(repo);
@@ -419,6 +429,7 @@ describe("solana order handlers", () => {
         relay_attempts: 0,
         source_nonce: sourceNonce,
         source_payload: JSON.stringify({ v: 1 }),
+        order_era: 0,
       },
     ]);
     const { handleInboundEvent } = createHandlers(repo);
@@ -452,6 +463,7 @@ describe("solana order handlers", () => {
         relay_attempts: 0,
         source_nonce: sourceNonce,
         source_payload: JSON.stringify({ v: 1 }),
+        order_era: 0,
       },
     ]);
     const { handleInboundEvent } = createHandlers(repo);

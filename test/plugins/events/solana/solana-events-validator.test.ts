@@ -31,6 +31,7 @@ function createOutboundEventBytes() {
       amount: 10n,
       relayerFee: 2n,
       nonce: new Uint8Array(32).fill(5),
+      orderEra: 0,
     })
   );
 }
@@ -49,6 +50,7 @@ function createInboundEventBytes() {
       amount: 12n,
       relayerFee: 1n,
       nonce: new Uint8Array(32).fill(5),
+      orderEra: 0,
     })
   );
 }
@@ -73,6 +75,7 @@ function createEvent() {
       amount: "10",
       relayerFee: "2",
       nonce: hex(5),
+      orderEra: 0,
     },
     createdAt: new Date().toISOString(),
   } as const;

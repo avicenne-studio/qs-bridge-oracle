@@ -21,6 +21,7 @@ function createLockPayload() {
     amount: "100",
     relayerFee: "12",
     nonce: hex32(3),
+    orderEra: "0",
   };
 }
 
@@ -76,6 +77,7 @@ function makeLockStoredEvent(overrides: Partial<{
     amount: "100",
     relayerFee: "12",
     nonce: hex32(3),
+    orderEra: "0",
     ...overrides,
   };
   return {
@@ -102,6 +104,7 @@ function makeOverrideStoredEvent(overrides: Partial<{
     amount: "100",
     relayerFee: "5",
     nonce: hex32(3),
+    orderEra: "0",
     ...overrides,
   };
   return {
@@ -163,6 +166,7 @@ describe("qubic order handlers", () => {
       fromAddress: stored_event.payload.fromAddress,
       protocol: "QubicBridge",
       version: "1",
+      orderEra: 0,
     });
   });
 
@@ -238,6 +242,7 @@ describe("qubic order handlers", () => {
       relay_attempts: 0,
       source_nonce: normalizeNonce(lock_event.nonce),
       source_payload: JSON.stringify({ v: 1 }),
+      order_era: 0,
     });
 
     const mappedOverride = mapStoredEventToQubicPayload(override_event);

@@ -101,6 +101,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       relay_attempts: 0,
       source_nonce: "nonce-901",
       source_payload: "{}",
+      order_era: 0,
     });
     const order2 = await ordersRepository.create({
       id: makeId(902),
@@ -117,6 +118,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       relay_attempts: 0,
       source_nonce: "nonce-902",
       source_payload: "{}",
+      order_era: 0,
     });
 
     payload = {
@@ -187,6 +189,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       relay_attempts: 0,
       source_nonce: "nonce-903",
       source_payload: "{}",
+      order_era: 0,
     });
 
     payload = {
@@ -250,6 +253,7 @@ describe("hub signatures polling", { concurrency: 1 }, () => {
       relay_attempts: 0,
       source_nonce: "nonce-904",
       source_payload: "{}",
+      order_era: 0,
     });
 
     payload = { data: [{ orderId: order!.id, signatures: ["sig-5"] }] };

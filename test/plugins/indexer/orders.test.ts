@@ -25,6 +25,7 @@ describe("OracleOrder utilities", () => {
       relay_attempts: 0,
       source_nonce: "nonce",
       source_payload: "payload",
+      order_era: 0,
     };
 
     assert.doesNotThrow(() => assertValidOracleOrder(order));
@@ -46,6 +47,7 @@ describe("OracleOrder utilities", () => {
       relay_attempts: 0,
       source_nonce: "nonce",
       source_payload: "payload",
+      order_era: 0,
     };
 
     assert.throws(
