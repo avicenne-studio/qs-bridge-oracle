@@ -38,7 +38,6 @@ Each oracle needs a Qubic identity (55-char seed, publicId) for future Qubic sig
 # NODE
 ```
 
-
 ## 3) Add the 6 oracles on-chain
 
 ```bash
@@ -47,7 +46,6 @@ Each oracle needs a Qubic identity (55-char seed, publicId) for future Qubic sig
 #   npm run add-oracle -- "$PUB"
 # done
 ```
-
 
 ## 4) Create the Address Lookup Table
 
@@ -97,6 +95,7 @@ npm run send-inbound-order -- .temp/order.json .temp/oracle-keys.json .temp/orac
 ```
 
 Notes:
+
 - With 6 oracles on-chain, the script signs with 60% (4) by default.
 - You can override the signature count: `SIGNATURE_COUNT=4 npm run send-inbound-order -- ...`
 - The script will create missing recipient/relayer ATAs automatically.
@@ -139,6 +138,7 @@ npm run override-outbound-order -- .temp/outbound-order.json .temp/recipient.jso
 ## 8) Fake Qubic smart contract (local simulation)
 
 The fake Qubic contract runs a local Fastify server with:
+
 - `POST /lock`
 - `POST /override-lock`
 - `POST /unlock`
@@ -164,10 +164,9 @@ FAKE_QUBIC_HOST=0.0.0.0 FAKE_QUBIC_PORT=3015 npm run fake-qubic
 ```bash
 npm run lock -- \
   --from "ABCDEFGHIJKLMNOPQRSTUVWXABCDEFGHIJKLMNOPQRSTUVWX" \
-  --to "46F9i1Bzv8kwShyG8xbtdkA7nEoYmzyueKwjXyDgtAQV" \
+  --to "<SOLANA_RECIPIENT_ADDRESS>" \
   --amount 1000000 \
   --relayerFee 1000 \
-  --nonce 42
 ```
 
 ### Override lock
@@ -231,5 +230,6 @@ npm run airdrop-solana -- .temp/recipient.json 10000000
 ```
 
 ## Notes
+
 - `scripts/send-inbound-order.js` uses the token mint from global state, so `order.json` stays minimal.
 - Ensure the relayer key has devnet SOL for fees.

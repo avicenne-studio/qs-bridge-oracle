@@ -189,7 +189,7 @@ fastify.post("/unlock", async (request, reply) => {
   if (unlockedNonces.has(payload.nonce)) {
     return reply.code(409).send({ message: "nonce already unlocked" });
   }
-  if (reqEra !== state.orderEra && (state.orderEra === 0 || reqEra !== state.orderEra - 1)) {
+  if (reqEra !== state.orderEra) {
     return reply.code(400).send({ message: "order era mismatch" });
   }
   const event = storeEvent("unlock", payload);
