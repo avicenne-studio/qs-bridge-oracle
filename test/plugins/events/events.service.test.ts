@@ -57,6 +57,7 @@ function createOutboundEventResponse() {
           amount: "10",
           relayerFee: "2",
           nonce: hex32(1),
+          orderEra: 0,
         },
         createdAt,
       },
@@ -102,6 +103,7 @@ function createOutboundEventBytes() {
       amount: 10n,
       relayerFee: 2n,
       nonce: new Uint8Array(32).fill(1),
+      orderEra: 0,
     }),
   );
 }
@@ -346,6 +348,7 @@ describe("hub events service", { concurrency: 1 }, () => {
       relay_attempts: 0,
       source_nonce: hex32(1),
       source_payload: "{}",
+      order_era: 0,
     });
     shouldSendEvents = true;
 
@@ -403,7 +406,9 @@ describe("hub events service", { concurrency: 1 }, () => {
         tokenIn: hex32(3),
         tokenOut: hex32(4),
         nonce: hex32(9),
+        orderEra: 0,
       }),
+      order_era: 0,
     };
 
     let response: unknown = {

@@ -24,6 +24,7 @@ function createInboundEventBytes() {
       amount: 10n,
       relayerFee: 2n,
       nonce: new Uint8Array(32).fill(5),
+      orderEra: 0,
     })
   );
 }
@@ -42,6 +43,7 @@ function createOutboundEventBytes() {
       amount: 10n,
       relayerFee: 2n,
       nonce: new Uint8Array(32).fill(5),
+      orderEra: 0,
     })
   );
 }

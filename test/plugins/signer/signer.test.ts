@@ -16,9 +16,7 @@ import {
 } from "@solana/kit";
 import { signatureBytes, verifySignature } from "@solana/keys";
 
-import envPlugin, {
-  autoConfig as envAutoConfig,
-} from "../../../src/plugins/infra/env.js";
+import envPlugin, { autoConfig as envAutoConfig } from "../../../src/plugins/infra/env.js";
 import fmPlugin from "../../../src/plugins/infra/@file-manager.js";
 import validationPlugin from "../../../src/plugins/app/common/validation.js";
 import signerService, {
@@ -26,12 +24,10 @@ import signerService, {
   kSignerService,
   type SignerService,
 } from "../../../src/plugins/app/signer/signer.service.js";
-import {
-  decodeSecretKey,
-  normalizeSignatureValue,
-} from "../../../src/plugins/app/common/bytes.js";
+import { decodeSecretKey, normalizeSignatureValue } from "../../../src/plugins/app/common/bytes.js";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../../src/plugins/app/common/protocol.js";
 import { CONTRACT_ADDRESS_BYTES } from "../../../src/plugins/app/common/solana/program.js";
+
 
 const fixturesDir = path.join(process.cwd(), "test/fixtures/signer");
 const validSolanaKeys = path.join(fixturesDir, "solana.keys.json");
@@ -83,8 +79,7 @@ async function buildSignerApp(overrides: SignerEnvOverrides = {}) {
       SOLANA_KEYS: overrides.SOLANA_KEYS ?? validSolanaKeys,
       QUBIC_KEYS: overrides.QUBIC_KEYS ?? validQubicKeys,
       HUB_KEYS_FILE:
-        overrides.HUB_KEYS_FILE ??
-        path.join(process.cwd(), "test/fixtures/hub-keys.json"),
+        overrides.HUB_KEYS_FILE ?? path.join(process.cwd(), "test/fixtures/hub-keys.json"),
       HUB_URLS: "http://127.0.0.1:3010,http://127.0.0.1:3011",
       SOLANA_RPC_URL: "http://localhost:8899",
       QUBIC_RPC_URL: "http://127.0.0.1:3015",
@@ -107,27 +102,26 @@ async function buildSignerApp(overrides: SignerEnvOverrides = {}) {
   }
 }
 
-async function createTempSolanaKeysFile(payload: {
-  pKey: string;
-  sKey: string;
-}): Promise<string> {
+async function createTempSolanaKeysFile(payload: { pKey: string; sKey: string }): Promise<string> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "oracle-signer-"));
   const filePath = path.join(tempDir, "solana.keys.json");
   await fs.writeFile(filePath, JSON.stringify(payload, null, 2));
   return filePath;
 }
 
-function makeOrder(overrides: Partial<{
-  networkIn: number;
-  networkOut: number;
-  tokenIn: Uint8Array;
-  tokenOut: Uint8Array;
-  fromAddress: Uint8Array;
-  toAddress: Uint8Array;
-  amount: bigint;
-  relayerFee: bigint;
-  nonce: Uint8Array;
-}> = {}) {
+function makeOrder(
+  overrides: Partial<{
+    networkIn: number;
+    networkOut: number;
+    tokenIn: Uint8Array;
+    tokenOut: Uint8Array;
+    fromAddress: Uint8Array;
+    toAddress: Uint8Array;
+    amount: bigint;
+    relayerFee: bigint;
+    nonce: Uint8Array;
+  }> = {},
+) {
   return {
     networkIn: 1,
     networkOut: 2,
@@ -138,6 +132,7 @@ function makeOrder(overrides: Partial<{
     amount: 1n,
     relayerFee: 0n,
     nonce: bytes32(6),
+    orderEra: 0,
     ...overrides,
   };
 }
@@ -146,42 +141,42 @@ describe("signerService", () => {
   it("rejects when SOLANA_KEYS is not a JSON file", async () => {
     await assert.rejects(
       buildSignerApp({ SOLANA_KEYS: "./keys.txt" }),
-      /SOLANA_KEYS must point to a JSON file/
+      /SOLANA_KEYS must point to a JSON file/,
     );
   });
 
   it("rejects when QUBIC_KEYS contains traversal sequences", async () => {
     await assert.rejects(
       buildSignerApp({ QUBIC_KEYS: "../test/fixtures/signer/qubic.keys.json" }),
-      /QUBIC_KEYS must not contain parent directory traversal/
+      /QUBIC_KEYS must not contain parent directory traversal/,
     );
   });
 
   it("rejects when a keys file cannot be parsed as JSON", async () => {
     await assert.rejects(
       buildSignerApp({ SOLANA_KEYS: malformedFile }),
-      /SignerService\(SOLANA_KEYS\): file does not contain valid JSON/
+      /SignerService\(SOLANA_KEYS\): file does not contain valid JSON/,
     );
   });
 
   it("rejects when a keys file does not match the schema", async () => {
     await assert.rejects(
       buildSignerApp({ SOLANA_KEYS: invalidStructureFile }),
-      /SignerService\(SOLANA_KEYS\): invalid schema/
+      /SignerService\(SOLANA_KEYS\): invalid schema/,
     );
   });
 
   it("rejects when a keys file is missing", async () => {
     await assert.rejects(
       buildSignerApp({ SOLANA_KEYS: missingFile }),
-      /SignerService\(SOLANA_KEYS\): file not found/
+      /SignerService\(SOLANA_KEYS\): file not found/,
     );
   });
 
   it("rejects when a keys file cannot be read", async () => {
     await assert.rejects(
       buildSignerApp({ SOLANA_KEYS: unreadablePath }),
-      /SignerService\(SOLANA_KEYS\): unable to read file/
+      /SignerService\(SOLANA_KEYS\): unable to read file/,
     );
   });
 
@@ -215,20 +210,36 @@ describe("signerService", () => {
       new Uint8Array(getU64Encoder().encode(order.amount)),
       new Uint8Array(getU64Encoder().encode(order.relayerFee)),
       new Uint8Array(getBytesEncoder().encode(order.nonce)),
+      new Uint8Array(getU32Encoder().encode(order.orderEra)),
     ]);
     const digest = createHash("sha256").update(encoded).digest();
     const message = createSignableMessage(digest);
     const sigBytes = signatureBytes(Buffer.from(signature, "base64"));
     const keypairSigner = await createKeyPairSignerFromBytes(
-      new Uint8Array(Buffer.from(solanaFixtureKeys.sKey, "base64"))
+      new Uint8Array(Buffer.from(solanaFixtureKeys.sKey, "base64")),
     );
 
-    const ok = await verifySignature(
-      keypairSigner.keyPair.publicKey,
-      sigBytes,
-      message.content
-    );
+    const ok = await verifySignature(keypairSigner.keyPair.publicKey, sigBytes, message.content);
     t.assert.ok(ok);
+  });
+
+  it("signs a qubic unlock order using the fixture keypair", async (t: TestContext) => {
+    const app = await buildSignerApp();
+    t.after(() => app.close());
+    const signer: SignerService = app.getDecorator(kSignerService);
+
+    const order = makeOrder();
+    const signature = await signer.signUnlockOrderForQubic(order);
+
+    const sigBuf = Buffer.from(signature, "base64");
+    t.assert.ok(sigBuf.length === 64, "SchnorrQ signature must be 64 bytes");
+
+    const solanaSig = await signer.signLockOrderForSolana(order);
+    t.assert.notStrictEqual(
+      signature,
+      solanaSig,
+      "Qubic and Solana signatures must differ (different domain)",
+    );
   });
 
   it("rejects orders with invalid byte lengths", async (t) => {
@@ -238,7 +249,7 @@ describe("signerService", () => {
 
     await assert.rejects(
       signer.signLockOrderForSolana(makeOrder({ tokenIn: new Uint8Array(31) })),
-      /tokenIn must be 32 bytes/
+      /tokenIn must be 32 bytes/,
     );
   });
 
@@ -253,7 +264,7 @@ describe("signerService", () => {
 
     await assert.rejects(
       buildSignerApp({ SOLANA_KEYS: solanaKeysFile }),
-      /secret key must be 64 bytes/
+      /secret key must be 64 bytes/,
     );
   });
 
@@ -268,49 +279,43 @@ describe("signerService", () => {
 
     await assert.rejects(
       buildSignerApp({ SOLANA_KEYS: solanaKeysFile }),
-      /public key does not match secret key/
+      /public key does not match secret key/,
     );
   });
 
   it("rejects qubic keys when the public key does not match", async (t) => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "oracle-signer-"));
     const qubicKeysFile = path.join(tempDir, "qubic.keys.json");
-    await fs.writeFile(qubicKeysFile, JSON.stringify({
-      pKey: "MISMATCHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      sKey: "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl",
-    }));
+    await fs.writeFile(
+      qubicKeysFile,
+      JSON.stringify({
+        pKey: "MISMATCHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        sKey: "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl",
+      }),
+    );
     t.after(async () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     });
 
     await assert.rejects(
       buildSignerApp({ QUBIC_KEYS: qubicKeysFile }),
-      /public key does not match seed/
+      /public key does not match seed/,
     );
   });
 
   it("exposes helper behavior for signature normalization and error paths", async () => {
     assert.strictEqual(normalizeSignatureValue("Zg=="), "Zg==");
 
-    assert.throws(
-      () => decodeSecretKey("not-base64"),
-      /secret key must be 64 bytes/
-    );
+    assert.throws(() => decodeSecretKey("not-base64"), /secret key must be 64 bytes/);
 
-    assert.throws(
-      () => normalizeSignatureValue(123),
-      /unsupported signature format/
-    );
+    assert.throws(() => normalizeSignatureValue(123), /unsupported signature format/);
 
     await assert.rejects(
-      signLockOrderForSolanaWithSigner(
-        makeOrder(),
-        {
-          address: "missing",
-          signMessages: async () => [{}],
-        }
-      ),
-      /signer did not return a signature/
+      signLockOrderForSolanaWithSigner(makeOrder(), {
+        address: "missing",
+        signMessages: async () => [{}],
+      }),
+      /signer did not return a signature/,
     );
   });
 });

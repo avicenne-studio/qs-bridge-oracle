@@ -177,6 +177,7 @@ export async function relayToSolana(
   const amount = BigInt(order.amount);
   const relayerFee = BigInt(order.relayerFee);
   const nonce = nonceToBytes(order.source_nonce);
+  const orderEra = order.order_era;
 
   const orderPayload = {
     networkIn,
@@ -188,6 +189,7 @@ export async function relayToSolana(
     amount,
     relayerFee,
     nonce,
+    orderEra,
   };
 
   const serialized = serializeBridgeOrder({
@@ -272,6 +274,7 @@ export async function relayToSolana(
       amount,
       relayerFee,
       nonce,
+      orderEra,
     },
     signatures: orderedSignatures,
   });

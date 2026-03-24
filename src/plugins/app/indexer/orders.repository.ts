@@ -35,6 +35,7 @@ function normalizeOrderRow(row: StoredOrder): StoredOrder {
     ...row,
     oracle_accept_to_relay: Boolean(row.oracle_accept_to_relay),
     relay_attempts: Number(row.relay_attempts),
+    order_era: Number(row.order_era),
     failure_reason_public: row.failure_reason_public ?? undefined,
     next_relay_at: row.next_relay_at ?? undefined,
     last_relay_error: row.last_relay_error ?? undefined,

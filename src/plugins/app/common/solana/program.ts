@@ -52,6 +52,7 @@ export type BridgeOrderFields = {
   amount: bigint;
   relayerFee: bigint;
   nonce: Uint8Array;
+  orderEra: number;
 };
 
 export function serializeBridgeOrder(order: BridgeOrderFields): Uint8Array {
@@ -68,6 +69,7 @@ export function serializeBridgeOrder(order: BridgeOrderFields): Uint8Array {
     new Uint8Array(getU64Encoder().encode(order.amount)),
     new Uint8Array(getU64Encoder().encode(order.relayerFee)),
     new Uint8Array(getBytesEncoder().encode(order.nonce)),
+    new Uint8Array(getU32Encoder().encode(order.orderEra)),
   ]);
 }
 

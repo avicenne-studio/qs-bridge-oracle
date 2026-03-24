@@ -13,6 +13,7 @@ export type QubicLockEvent = {
   amount: bigint;
   relayerFee: bigint;
   nonce: Uint8Array;
+  orderEra: number;
 };
 
 export type QubicOverrideLockEvent = {
@@ -21,6 +22,7 @@ export type QubicOverrideLockEvent = {
   amount: bigint;
   relayerFee: bigint;
   nonce: Uint8Array;
+  orderEra: number;
 };
 
 export type QubicUnlockEvent = {
@@ -36,6 +38,7 @@ function mapLockPayload(payload: QubicLockEventPayload): QubicLockEvent {
     amount: toU64BigInt(payload.amount, "amount"),
     relayerFee: toU64BigInt(payload.relayerFee, "relayerFee"),
     nonce: nonceToBytes(payload.nonce),
+    orderEra: Number(payload.orderEra),
   };
 }
 
@@ -46,6 +49,7 @@ function mapOverrideLockPayload(payload: QubicOverrideLockEventPayload): QubicOv
     amount: toU64BigInt(payload.amount, "amount"),
     relayerFee: toU64BigInt(payload.relayerFee, "relayerFee"),
     nonce: nonceToBytes(payload.nonce),
+    orderEra: Number(payload.orderEra),
   };
 }
 

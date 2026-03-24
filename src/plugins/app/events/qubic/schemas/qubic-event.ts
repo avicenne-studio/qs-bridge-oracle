@@ -17,6 +17,7 @@ export const QubicLockEventPayloadSchema = Type.Object({
   amount: AmountSchema,
   relayerFee: AmountSchema,
   nonce: StringSchema,
+  orderEra: Type.String({ pattern: "^[0-9]+$" }),
 });
 
 export const QubicOverrideLockEventPayloadSchema = Type.Object({
@@ -25,6 +26,7 @@ export const QubicOverrideLockEventPayloadSchema = Type.Object({
   nonce: StringSchema,
   fromAddress: StringSchema,
   amount: AmountSchema,
+  orderEra: Type.String({ pattern: "^[0-9]+$" }),
 });
 
 export const QubicUnlockEventPayloadSchema = Type.Object({

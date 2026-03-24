@@ -28,6 +28,7 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     relay_attempts: 0,
     source_nonce: "nonce-1",
     source_payload: "{}",
+    order_era: 0,
   });
   await ordersRepository.create({
     id: makeId(2),
@@ -44,6 +45,7 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     relay_attempts: 0,
     source_nonce: "nonce-2",
     source_payload: "{}",
+    order_era: 0,
   });
   await ordersRepository.create({
     id: makeId(3),
@@ -61,6 +63,7 @@ async function seedOrders(app: Awaited<ReturnType<typeof build>>) {
     failure_reason_public: "Transaction failed",
     source_nonce: "nonce-3",
     source_payload: "{}",
+    order_era: 0,
   });
 }
 

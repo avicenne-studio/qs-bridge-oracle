@@ -40,6 +40,7 @@ export const OracleOrderSchema = Type.Object({
   relay_attempts: Type.Integer({ minimum: 0 }),
   source_nonce: StringSchema,
   source_payload: StringSchema,
+  order_era: Type.Integer({ minimum: 0 }),
   failure_reason_public: Type.Optional(Type.String({ maxLength: 255 })),
 });
 

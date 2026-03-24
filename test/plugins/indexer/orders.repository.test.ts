@@ -29,6 +29,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-101",
       source_payload: "{}",
+      order_era: 0,
     });
 
     assert.ok(created);
@@ -66,6 +67,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-201",
       source_payload: "{}",
+      order_era: 0,
     });
     const order2 = await repo.create({
       id: makeId(202),
@@ -82,6 +84,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-202",
       source_payload: "{}",
+      order_era: 0,
     });
     await repo.create({
       id: makeId(203),
@@ -98,6 +101,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-203",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const fetched = await repo.byIds([order2!.id, order1!.id, order2!.id]);
@@ -143,6 +147,7 @@ describe("ordersRepository", () => {
         relay_attempts: 0,
         source_nonce: `nonce-${i}`,
         source_payload: "{}",
+        order_era: 0,
       });
     }
 
@@ -161,6 +166,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-skip",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const consensus = await repo.findConsensusOrders();
@@ -188,6 +194,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-relay",
       source_payload: "{}",
+      order_era: 0,
     });
 
     await repo.create({
@@ -205,6 +212,7 @@ describe("ordersRepository", () => {
       relay_attempts: 2,
       source_nonce: "nonce-skip",
       source_payload: "{}",
+      order_era: 0,
     });
 
     await repo.create({
@@ -222,6 +230,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-nope",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const results = await repo.findReadyForRelay(2);
@@ -248,6 +257,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-301",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const updated = await repo.update(created!.id, { amount: "42" });
@@ -279,6 +289,7 @@ describe("ordersRepository", () => {
       relay_attempts: 1,
       source_nonce: "nonce-302",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const updated = await repo.update(created!.id, { status: "pending" });
@@ -307,6 +318,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-311",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const updated = await repo.markReadyForRelay(created!.id);
@@ -334,6 +346,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-3111",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const updated = await repo.markReadyForRelay(created!.id);
@@ -361,6 +374,7 @@ describe("ordersRepository", () => {
       relay_attempts: 1,
       source_nonce: "nonce-312",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const updated = await repo.markReadyForRelay(created!.id);
@@ -407,6 +421,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-401",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const removed = await repo.delete(created!.id);
@@ -443,6 +458,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-501",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const inserted = await repo.addSignatures(created!.id, [
@@ -475,6 +491,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-601",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const inserted = await repo.addSignatures(created!.id, []);
@@ -500,6 +517,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-701",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const notRelayable = await repo.create({
@@ -517,6 +535,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-702",
       source_payload: "{}",
+      order_era: 0,
     });
 
     await repo.addSignatures(relayable!.id, ["sig-a", "sig-b"]);
@@ -547,6 +566,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "nonce-901",
       source_payload: "{}",
+      order_era: 0,
     });
 
     await repo.addSignatures(created!.id, ["sig-x", "sig-y"]);
@@ -577,6 +597,7 @@ describe("ordersRepository", () => {
       relay_attempts: 0,
       source_nonce: "deadbeef",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const found = await repo.findBySourceNonce("deadbeef");

@@ -136,6 +136,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-1",
       source_payload: "{}",
+      order_era: 0,
     });
 
     await relayer.relayPending();
@@ -175,6 +176,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-11",
       source_payload: "{}",
+      order_era: 0,
     });
     await repo.create({
       id: makeId(12),
@@ -191,6 +193,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-12",
       source_payload: "{}",
+      order_era: 0,
     });
 
     const startedAt = Date.now();
@@ -239,6 +242,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-20",
       source_payload: "{}",
+      order_era: 0,
     });
 
     await relayer.relayPending();
@@ -266,6 +270,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-21",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -315,6 +320,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-22",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -364,6 +370,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-23",
       source_payload: "{}",
+      order_era: 0,
     };
 
     const { logger, logs } = makeRelayerLogger();
@@ -421,6 +428,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-24",
       source_payload: "{}",
+      order_era: 0,
     };
 
     const { logger, logs } = makeRelayerLogger();
@@ -500,6 +508,7 @@ describe("relayer plugin", () => {
       relay_attempts: 1,
       source_nonce: "nonce-2",
       source_payload: "{}",
+      order_era: 0,
     });
 
     await relayer.relayPending();
@@ -548,6 +557,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-5",
       source_payload: "{}",
+      order_era: 0,
     });
 
     await relayer.relayPending();
@@ -593,6 +603,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-4",
       source_payload: "{}",
+      order_era: 0,
     });
 
     await relayer.relayPending();
@@ -629,6 +640,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-3",
       source_payload: "{}",
+      order_era: 0,
     });
 
     await relayer.relayPending();
@@ -676,6 +688,7 @@ describe("relayer plugin", () => {
           amount: 1000n,
           relayerFee: 10n,
           nonce: hexToBytes(nonceHex),
+          orderEra: 0,
         }),
       )
       .digest();
@@ -702,6 +715,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: nonceHex,
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -795,6 +809,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-10",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -845,6 +860,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-11",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -895,6 +911,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-12",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -939,6 +956,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-13",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -983,6 +1001,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-14",
       source_payload: "{}",
+      order_era: 0,
     };
 
     const { logger, logs } = makeRelayerLogger();
@@ -1034,6 +1053,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-15",
       source_payload: "{}",
+      order_era: 0,
     };
 
     const { logger, logs } = makeRelayerLogger();
@@ -1105,6 +1125,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-16",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -1149,6 +1170,7 @@ describe("relayer plugin", () => {
       relay_attempts: 1,
       source_nonce: "nonce-60",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -1198,6 +1220,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-61",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -1249,6 +1272,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: nonceHex,
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -1302,6 +1326,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-18",
       source_payload: "{}",
+      order_era: 0,
     };
 
     const { logger, logs } = makeRelayerLogger();
@@ -1358,6 +1383,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-19",
       source_payload: "{}",
+      order_era: 0,
     };
 
     const { logger, logs } = makeRelayerLogger();
@@ -1414,6 +1440,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-17",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -1456,6 +1483,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-70",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -1510,6 +1538,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-71",
       source_payload: "{}",
+      order_era: 0,
     };
 
     let updatedWith: Record<string, unknown> | undefined;
@@ -1556,6 +1585,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-72",
       source_payload: "{}",
+      order_era: 0,
     };
 
     const { logger, logs } = makeRelayerLogger();
@@ -1610,6 +1640,7 @@ describe("relayer plugin", () => {
       relay_attempts: 0,
       source_nonce: "nonce-73",
       source_payload: "{}",
+      order_era: 0,
     };
 
     const { logger, logs } = makeRelayerLogger();

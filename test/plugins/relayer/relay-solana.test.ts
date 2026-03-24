@@ -96,6 +96,7 @@ function makeSolanaOrder(overrides: Partial<OracleOrder> = {}): OracleOrder {
     relay_attempts: 0,
     source_nonce: nonceHex,
     source_payload: "{}",
+    order_era: 0,
     ...overrides,
   };
 }
@@ -276,6 +277,7 @@ describe("relay-solana helpers", () => {
         amount: 1000n,
         relayerFee: 10n,
         nonce: hexToBytes(nonceHex),
+        orderEra: 0,
       })).digest();
       const sigBase64 = Buffer.from(ed25519Sign(digest, oracle.privateKey)).toString("base64");
 
