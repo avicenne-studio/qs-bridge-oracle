@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 
 export const QUBIC_TOKEN_ADDRESS = new Uint8Array(32);
 
-export const QSB_CONTRACT_INDEX = 26;
+export const QSB_CONTRACT_INDEX = 27;
 export const QUBIC_CONTRACT_ADDRESS_BYTES = (() => {
   const addr = new Uint8Array(32);
   addr[0] = QSB_CONTRACT_INDEX & 0xff;
@@ -44,8 +44,9 @@ export function qubicAddressToBytes(value: string): Uint8Array {
 export function qubicIdToBytes(s: string): Uint8Array {
   const str = s.toUpperCase();
   const len = str.length;
-  const segmentLength =
-    len === 60 ? 15 : len === 56 ? 14 : len === 52 ? 13 : 12;
+  // Standard 60-char identities: 4 × 14 data chars + 4 checksum chars (ignored).
+  // Shorter identities (48/52/56): no checksum, all chars are data.
+  const segmentLength = len === 60 ? 14 : len / 4;
   const publicKeyBytes = new Uint8Array(32);
   const view = new DataView(publicKeyBytes.buffer, 0);
   for (let i = 0; i < 4; i++) {

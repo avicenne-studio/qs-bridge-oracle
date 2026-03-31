@@ -1,10 +1,9 @@
 import fp from "fastify-plugin";
 import { FastifyInstance } from "fastify";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
-import { kUndiciClient, type UndiciClientService } from "../../infra/undici-client.js";
 import { kOrdersRepository, type OrdersRepository } from "../indexer/orders.repository.js";
 import { OracleOrder } from "../indexer/schemas/order.js";
-import { relayToQubic } from "./relay-qubic.js";
+import { type QubicRelayDeps, relayToQubic, buildQubicRelayDeps } from "./relay-qubic.js";
 import { type SolanaRelayDeps, relayToSolana, buildSolanaRelayDeps } from "./relay-solana.js";
 import { HttpError } from "../../infra/undici-client.js";
 import { type SolanaErrorLike, collectSolanaErrorCodes } from "../common/solana/errors.js";
@@ -74,18 +73,18 @@ async function relayOrder(
   deps: {
     ordersRepository: OrdersRepository;
     config: EnvConfig;
-    client: ReturnType<UndiciClientService["create"]>;
     logger: FastifyInstance["log"];
     solanaDeps: SolanaRelayDeps;
+    qubicDeps: QubicRelayDeps;
   },
 ) {
-  const { ordersRepository, config, client, logger, solanaDeps } = deps;
+  const { ordersRepository, config, logger, solanaDeps, qubicDeps } = deps;
   const nextAttempts = order.relay_attempts + 1;
 
   try {
     const result =
       order.dest === "qubic"
-        ? await relayToQubic(order, { config, client })
+        ? await relayToQubic(order, qubicDeps)
         : await relayToSolana(order, solanaDeps);
 
     await ordersRepository.update(order.id, {
@@ -183,12 +182,11 @@ async function relayOrder(
 export function createRelayerService(deps: {
   ordersRepository: OrdersRepository;
   config: EnvConfig;
-  undiciClient: UndiciClientService;
   logger: FastifyInstance["log"];
   solanaDeps: SolanaRelayDeps;
+  qubicDeps: QubicRelayDeps;
 }): RelayerService {
-  const { ordersRepository, config, undiciClient, logger, solanaDeps } = deps;
-  const client = undiciClient.create();
+  const { ordersRepository, config, logger, solanaDeps, qubicDeps } = deps;
 
   return {
     async relayPending() {
@@ -198,9 +196,9 @@ export function createRelayerService(deps: {
         await relayOrder(order, {
           ordersRepository,
           config,
-          client,
           logger,
           solanaDeps,
+          qubicDeps,
         });
         if (delayMs > 0 && index < candidates.length - 1) {
           await sleep(delayMs);
@@ -251,16 +249,17 @@ export default fp(
       fastify.log.info("Relayer disabled by configuration");
       return;
     }
-    const undiciClient = fastify.getDecorator<UndiciClientService>(kUndiciClient);
-
-    const solanaDeps = await buildSolanaRelayDeps(fastify, config, ordersRepository);
+    const [solanaDeps, qubicDeps] = await Promise.all([
+      buildSolanaRelayDeps(fastify, config, ordersRepository),
+      buildQubicRelayDeps(fastify, config, ordersRepository),
+    ]);
 
     const relayer = createRelayerService({
       ordersRepository,
       config,
-      undiciClient,
       logger: fastify.log,
       solanaDeps,
+      qubicDeps,
     });
 
     fastify.decorate(kRelayerService, relayer);

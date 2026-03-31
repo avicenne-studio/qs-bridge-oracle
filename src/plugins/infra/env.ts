@@ -19,6 +19,7 @@ export type EnvConfig = {
   SOLANA_RPC_URL: string;
   SOLANA_WS_URL: string;
   QUBIC_RPC_URL: string;
+  QUBIC_BROADCAST_RPC_URL: string;
   SOLANA_TX_COMMITMENT: "processed" | "confirmed" | "finalized";
   SOLANA_TX_RETRY_MAX_ATTEMPTS?: number;
   SOLANA_TX_RETRY_BASE_MS?: number;
@@ -121,6 +122,10 @@ const schema = {
     },
     QUBIC_RPC_URL: {
       type: "string",
+    },
+    QUBIC_BROADCAST_RPC_URL: {
+      type: "string",
+      default: "http://34.163.36.179:41841",
     },
     SOLANA_TX_COMMITMENT: {
       type: "string",
