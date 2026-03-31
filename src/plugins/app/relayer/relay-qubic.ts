@@ -6,6 +6,7 @@ import { Long } from "@qubic-lib/qubic-ts-library/dist/qubic-types/Long.js";
 import { QubicHelper } from "@qubic-lib/qubic-ts-library/dist/qubicHelper.js";
 import qubicCryptoModule from "@qubic-lib/qubic-ts-library";
 import type { FastifyInstance } from "fastify";
+import { nonceToBytes } from "../common/bytes.js";
 import type { EnvConfig } from "../../infra/env.js";
 import type { OracleOrder } from "../indexer/schemas/order.js";
 import type { OrdersRepository } from "../indexer/orders.repository.js";
@@ -54,16 +55,6 @@ export type QubicRelayDeps = {
 
 type RelayResult = { trxHash: string };
 
-function contractDestination(index: number): Uint8Array {
-  const buf = new Uint8Array(32);
-  let v = BigInt(index);
-  for (let i = 0; i < 8; i++) {
-    buf[i] = Number(v & 0xffn);
-    v >>= 8n;
-  }
-  return buf;
-}
-
 async function getCurrentTick(rpcUrl: string): Promise<number> {
   const res = await fetch(`${rpcUrl}/live/v1/tick-info`);
   if (!res.ok) throw new Error(`tick-info HTTP ${res.status}`);
@@ -97,10 +88,7 @@ function orderFromOracleOrder(order: OracleOrder): OrderFields {
   const fromBytes = qubicAddressToBytes(order.from);
   const toBytes = qubicAddressToBytes(order.to);
 
-  const nonceHex = order.source_nonce.replace(/^0x/, "");
-  const nonceBytes = new Uint8Array(32);
-  const rawNonce = Buffer.from(nonceHex, "hex");
-  nonceBytes.set(rawNonce.subarray(0, 32));
+  const nonceBytes = nonceToBytes(order.source_nonce);
 
   const networkIn = order.source === "qubic" ? QUBIC_NETWORK_ID : SOLANA_NETWORK_ID;
   const networkOut = order.dest === "qubic" ? QUBIC_NETWORK_ID : SOLANA_NETWORK_ID;
@@ -183,8 +171,7 @@ export async function relayToQubic(
   const tick = await getCurrentTick(rpcUrl);
   const targetTick = tick + TICK_OFFSET;
 
-  const destBytes = contractDestination(QSB_CONTRACT_INDEX);
-  const dest = new PublicKey(destBytes);
+  const dest = new PublicKey(QUBIC_CONTRACT_ADDRESS_BYTES);
 
   const payload = new DynamicPayload(unlockInput.length);
   payload.setPayload(unlockInput);

@@ -215,7 +215,6 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       originTrxHash,
       oracleAcceptToRelay,
     );
-    order.source_payload = serializeSourcePayload(buildSourcePayload(event));
     await ordersRepository.create(order);
     logger.info({ orderId }, "Solana outbound order stored");
   };
