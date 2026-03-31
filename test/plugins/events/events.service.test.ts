@@ -79,7 +79,7 @@ function createOverrideEventResponse() {
         nonce: hex32(9),
         payload: {
           toAddress: hex32(8),
-          relayerFee: "7",
+          relayerFee: "7000000000",
           nonce: hex32(9),
         },
         createdAt,
@@ -114,7 +114,7 @@ function createOverrideEventBytes() {
     encoder.encode({
       discriminator: 2,
       toAddress: new Uint8Array(32).fill(8),
-      relayerFee: 7n,
+      relayerFee: 7_000_000_000n,
       nonce: new Uint8Array(32).fill(9),
     }),
   );

@@ -274,8 +274,8 @@ describe("relay-solana helpers", () => {
         tokenOut: tokenMintBytes,
         fromAddress: hexToBytes(fromHex),
         toAddress: hexToBytes(toHex),
-        amount: 1000n,
-        relayerFee: 10n,
+        amount: 1_000_000_000_000n,
+        relayerFee: 10_000_000_000n,
         nonce: hexToBytes(nonceHex),
         orderEra: 0,
       })).digest();

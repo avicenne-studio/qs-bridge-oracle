@@ -49,6 +49,7 @@ import {
   TOKEN_PROGRAM_ADDRESS,
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
 } from "../common/solana/program.js";
+import { quToRawWqubic } from "../common/decimals.js";
 
 export type AddressLookupTable = Record<Address, Address[]>;
 
@@ -174,8 +175,8 @@ export async function relayToSolana(
   const networkOut = Network.Solana;
   const fromAddress = qubicAddressToBytes(order.from);
   const toAddress = solanaAddressToBytes(order.to);
-  const amount = BigInt(order.amount);
-  const relayerFee = BigInt(order.relayerFee);
+  const amount = quToRawWqubic(BigInt(order.amount));
+  const relayerFee = quToRawWqubic(BigInt(order.relayerFee));
   const nonce = nonceToBytes(order.source_nonce);
   const orderEra = order.order_era;
 

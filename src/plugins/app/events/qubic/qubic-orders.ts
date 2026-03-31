@@ -5,6 +5,7 @@ import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.
 import { type SignerService, type OrderInput } from "../../signer/signer.service.js";
 import { bytesToHex, nonceToBytes } from "../../common/bytes.js";
 import { orderIdFromSignature } from "../../common/order-id.js";
+import { quToRawWqubic } from "../../common/decimals.js";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../common/protocol.js";
 import { Network } from "../../common/schemas/common.js";
 import { QUBIC_TOKEN_ADDRESS } from "../../common/qubic/encoding.js";
@@ -50,8 +51,8 @@ function buildOrderToSign(
     tokenOut: new Uint8Array(addressEncoder.encode(address(tokenMint))),
     fromAddress: event.fromAddress,
     toAddress: event.toAddress,
-    amount: event.amount,
-    relayerFee: event.relayerFee,
+    amount: quToRawWqubic(event.amount),
+    relayerFee: quToRawWqubic(event.relayerFee),
     nonce: event.nonce,
     orderEra: event.orderEra,
   };
