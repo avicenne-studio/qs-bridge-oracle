@@ -6,7 +6,7 @@ import { Long } from "@qubic-lib/qubic-ts-library/dist/qubic-types/Long.js";
 import { QubicHelper } from "@qubic-lib/qubic-ts-library/dist/qubicHelper.js";
 import qubicCryptoModule from "@qubic-lib/qubic-ts-library";
 import type { FastifyInstance } from "fastify";
-import { nonceToBytes } from "../common/bytes.js";
+import { nonceToBytes, solanaAddressToBytes } from "../common/bytes.js";
 import type { EnvConfig } from "../../infra/env.js";
 import type { OracleOrder } from "../indexer/schemas/order.js";
 import type { OrdersRepository } from "../indexer/orders.repository.js";
@@ -23,6 +23,7 @@ import {
   QUBIC_TOKEN_ADDRESS,
   QUBIC_CONTRACT_ADDRESS_BYTES,
 } from "../common/qubic/encoding.js";
+import { address, getAddressEncoder } from "@solana/kit";
 import {
   serializeBridgeOrder,
 } from "../common/solana/program.js";
@@ -84,24 +85,24 @@ async function getOraclePublicKeys(rpcUrl: string): Promise<Uint8Array[]> {
   return keys;
 }
 
-function orderFromOracleOrder(order: OracleOrder): OrderFields {
-  const fromBytes = qubicAddressToBytes(order.from);
+const addressEncoder = getAddressEncoder();
+
+function orderFromOracleOrder(order: OracleOrder, tokenMint: string): OrderFields {
+  const fromBytes = solanaAddressToBytes(order.from);
   const toBytes = qubicAddressToBytes(order.to);
 
   const nonceBytes = nonceToBytes(order.source_nonce);
-
-  const networkIn = order.source === "qubic" ? QUBIC_NETWORK_ID : SOLANA_NETWORK_ID;
-  const networkOut = order.dest === "qubic" ? QUBIC_NETWORK_ID : SOLANA_NETWORK_ID;
+  const tokenMintBytes = new Uint8Array(addressEncoder.encode(address(tokenMint)));
 
   return {
     fromAddress: fromBytes,
     toAddress: toBytes,
-    tokenIn: QUBIC_TOKEN_ADDRESS,
+    tokenIn: tokenMintBytes,
     tokenOut: QUBIC_TOKEN_ADDRESS,
     amount: BigInt(order.amount),
     relayerFee: BigInt(order.relayerFee),
-    networkIn,
-    networkOut,
+    networkIn: SOLANA_NETWORK_ID,
+    networkOut: QUBIC_NETWORK_ID,
     nonce: nonceBytes,
     orderEra: order.order_era,
   };
@@ -157,7 +158,7 @@ export async function relayToQubic(
   const rpcUrl = deps.config.QUBIC_BROADCAST_RPC_URL;
 
   const sigs = await deps.ordersRepository.findSignatures(order.id);
-  const orderFields = orderFromOracleOrder(order);
+  const orderFields = orderFromOracleOrder(order, deps.config.TOKEN_MINT);
 
   const oracleKeys = await getOraclePublicKeys(rpcUrl);
   const matchedSigs = await matchSignaturesToOracles(sigs, oracleKeys, orderFields);

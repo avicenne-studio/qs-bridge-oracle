@@ -18,6 +18,10 @@ import {
 import { serializeBridgeOrder } from "../../../src/plugins/app/common/solana/program.js";
 import type { OracleOrder } from "../../../src/plugins/app/indexer/schemas/order.js";
 import { build, DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
+import { address, getAddressEncoder } from "@solana/kit";
+
+const addressEncoder = getAddressEncoder();
+const TOKEN_MINT_BYTES = new Uint8Array(addressEncoder.encode(address(DEFAULT_TEST_CONFIG.TOKEN_MINT)));
 
 type QubicCrypto = {
   schnorrq: {
@@ -148,7 +152,7 @@ async function signOrder(order: OracleOrder): Promise<string> {
     contractAddress: QUBIC_CONTRACT_ADDRESS_BYTES,
     networkIn,
     networkOut,
-    tokenIn: QUBIC_TOKEN_ADDRESS,
+    tokenIn: TOKEN_MINT_BYTES,
     tokenOut: QUBIC_TOKEN_ADDRESS,
     fromAddress: new Uint8Array(fromBytes),
     toAddress: new Uint8Array(toBytes),
@@ -241,30 +245,6 @@ describe("relay-qubic", () => {
         () => relayToQubic(order, deps),
         /Qubic broadcast failed/,
       );
-    });
-
-    it("succeeds with source qubic and dest solana (alternate network branches)", async (t) => {
-      const identity = await loadQubicIdentity();
-      const order = makeQubicOrder({ source: "qubic", dest: "solana" });
-      const sigBase64 = await signOrder(order);
-
-      const { url } = await startCustomRpcMock(t, {
-        oraclePublicKey: identity.publicKey,
-        broadcastResult: "success",
-      });
-
-      const deps: QubicRelayDeps = {
-        config: { ...DEFAULT_TEST_CONFIG, QUBIC_BROADCAST_RPC_URL: url, QUBIC_RPC_URL: url },
-        qubicSeed: QUBIC_FIXTURE_SEED,
-        qubicPublicKey: identity.publicKey,
-        ordersRepository: {
-          findSignatures: async () => [sigBase64],
-        } as unknown as QubicRelayDeps["ordersRepository"],
-        logger: noopLogger,
-      };
-
-      const result = await relayToQubic(order, deps);
-      assert.ok(result.trxHash.length > 0, "trxHash should be non-empty");
     });
 
     it("throws when tick-info endpoint returns an error", async (t) => {

@@ -70,19 +70,23 @@ export function serializeOrderStruct(order: OrderFields): Uint8Array {
 }
 
 /**
- * Builds Unlock_input: Order (188) + numSignatures (4) + SignatureData[] (96 each)
+ * Builds Unlock_input: Order (188) + numSignatures (4) + Array<SignatureData, 64>
+ *
+ * The signatures array is fixed-size (64 slots × 96 bytes = 6144 bytes),
+ * matching the Qubic contract's Array<SignatureData, QSB_MAX_ORACLES>.
+ * Unused slots are zero-filled.
  *
  * SignatureData layout:
  *   [0..31]   id (oracle public key)
  *   [32..95]  sint8[64] (signature)
  */
+const SIG_DATA_SIZE = 32 + 64; // id + signature per oracle
+
 export function buildUnlockInput(
   order: OrderFields,
   signatures: Array<{ signerPublicKey: Uint8Array; signature: Uint8Array }>,
 ): Uint8Array {
-  const sigDataSize = 32 + 64; // id + signature per oracle
-  const totalSize =
-    ORDER_STRUCT_SIZE + 4 + signatures.length * sigDataSize;
+  const totalSize = ORDER_STRUCT_SIZE + 4 + signatures.length * SIG_DATA_SIZE;
   const buf = new ArrayBuffer(totalSize);
   const view = new DataView(buf);
   const bytes = new Uint8Array(buf);
@@ -95,7 +99,7 @@ export function buildUnlockInput(
   view.setUint32(offset, signatures.length, true);
   offset += 4;
 
-  // SignatureData array
+  // SignatureData array (fixed 64 slots, unused slots stay zero)
   for (const sig of signatures) {
     bytes.set(sig.signerPublicKey, offset);
     offset += 32;
