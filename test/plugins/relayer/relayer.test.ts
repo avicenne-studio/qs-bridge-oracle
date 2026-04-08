@@ -1,4 +1,4 @@
-import { describe, it, TestContext } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
@@ -9,15 +9,12 @@ import {
   getAddressDecoder,
   type Address,
 } from "@solana/kit";
-import { build, DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
+import { DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
 import { mockLogMethod, makeLogger, type LoggerMocks } from "../../helpers/mocks/logger.js";
 import {
-  kOrdersRepository,
   type OrdersRepository,
 } from "../../../src/plugins/app/indexer/orders.repository.js";
 import {
-  kRelayerService,
-  type RelayerService,
   createRelayerService,
   startRelayer,
 } from "../../../src/plugins/app/relayer/relayer.js";
