@@ -15,7 +15,7 @@ import {
   QUBIC_CONTRACT_ADDRESS_BYTES,
   QUBIC_TOKEN_ADDRESS,
 } from "../../../src/plugins/app/common/qubic/encoding.js";
-import { serializeBridgeOrder } from "../../../src/plugins/app/common/solana/program.js";
+import { serializeQsbOrderMessage } from "../../../src/plugins/app/common/qubic/qsb-message.js";
 import type { OracleOrder } from "../../../src/plugins/app/indexer/schemas/order.js";
 import { build, DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
 import { address, getAddressEncoder } from "@solana/kit";
@@ -146,7 +146,7 @@ async function signOrder(order: OracleOrder): Promise<string> {
   const networkIn = order.source === "qubic" ? 1 : 2;
   const networkOut = order.dest === "qubic" ? 1 : 2;
 
-  const serialized = serializeBridgeOrder({
+  const serialized = serializeQsbOrderMessage({
     protocolName: PROTOCOL_NAME,
     protocolVersion: PROTOCOL_VERSION,
     contractAddress: QUBIC_CONTRACT_ADDRESS_BYTES,

@@ -24,9 +24,7 @@ import {
   QUBIC_CONTRACT_ADDRESS_BYTES,
 } from "../common/qubic/encoding.js";
 import { address, getAddressEncoder } from "@solana/kit";
-import {
-  serializeBridgeOrder,
-} from "../common/solana/program.js";
+import { serializeQsbOrderMessage } from "../common/qubic/qsb-message.js";
 import {
   PROTOCOL_NAME,
   PROTOCOL_VERSION,
@@ -115,7 +113,7 @@ async function matchSignaturesToOracles(
 ): Promise<Array<{ signerPublicKey: Uint8Array; signature: Uint8Array }>> {
   const crypto = await resolvedQubicCrypto;
 
-  const serialized = serializeBridgeOrder({
+  const serialized = serializeQsbOrderMessage({
     protocolName: PROTOCOL_NAME,
     protocolVersion: PROTOCOL_VERSION,
     contractAddress: QUBIC_CONTRACT_ADDRESS_BYTES,

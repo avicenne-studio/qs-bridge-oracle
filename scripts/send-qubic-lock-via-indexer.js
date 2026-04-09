@@ -10,7 +10,7 @@
  *   amount     = 100000
  *   relayerFee = 1000
  *   toAddress  = 8axvTLqKVh7yqFr63Eo5g6ERzBbnGYEU2t4PKcGyYXSu
- *   seed       = eraaastggldisjhoojaekgyimrsddjxbvgaawswfvnvaygqmusnkevv
+ *   seed       =
  */
 
 import { Buffer } from "node:buffer";
@@ -22,7 +22,7 @@ import { PublicKey } from "@qubic-lib/qubic-ts-library/dist/qubic-types/PublicKe
 import { Long } from "@qubic-lib/qubic-ts-library/dist/qubic-types/Long.js";
 import { QubicHelper } from "@qubic-lib/qubic-ts-library/dist/qubicHelper.js";
 
-const DEFAULT_SEED = "eraaastggldisjhoojaekgyimrsddjxbvgaawswfvnvaygqmusnkevv";
+const DEFAULT_SEED = "";
 const NODE_RPC_URL = process.env.QUBIC_BROADCAST_RPC_URL || "http://34.163.36.179:41841";
 const INDEXER_URL = process.env.QUBIC_INDEXER_URL || "http://34.163.36.179:3002";
 const CONTRACT_INDEX = 27;
@@ -76,7 +76,7 @@ const amount = parseInt(args[0] ?? "100000");
 const relayerFee = parseInt(args[1] ?? "1000");
 const toAddress = args[2] ?? "8axvTLqKVh7yqFr63Eo5g6ERzBbnGYEU2t4PKcGyYXSu";
 const seed = args[3] ?? DEFAULT_SEED;
-const nonce = randomInt(0, 0xFFFFFFFF);
+const nonce = randomInt(0, 0xffffffff);
 
 console.log(`\n=== QSB Lock via Indexer (testnet) ===`);
 console.log(`  Node RPC    : ${NODE_RPC_URL}`);
