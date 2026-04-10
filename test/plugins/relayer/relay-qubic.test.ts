@@ -195,6 +195,30 @@ describe("relay-qubic", () => {
       assert.ok(result.trxHash.length > 0, "trxHash should be non-empty");
     });
 
+    it("does not reuse an oracle for duplicate signatures", async (t) => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder();
+      const sigBase64 = await signOrder(order);
+
+      const { url } = await startCustomRpcMock(t, {
+        oraclePublicKey: identity.publicKey,
+        broadcastResult: "success",
+      });
+
+      const deps: QubicRelayDeps = {
+        config: { ...DEFAULT_TEST_CONFIG, QUBIC_BROADCAST_RPC_URL: url, QUBIC_RPC_URL: url },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64, sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      const result = await relayToQubic(order, deps);
+      assert.ok(result.trxHash.length > 0, "trxHash should be non-empty");
+    });
+
     it("throws when no signatures match any oracle", async (t) => {
       const identity = await loadQubicIdentity();
       const order = makeQubicOrder();

@@ -133,14 +133,18 @@ async function matchSignaturesToOracles(
   crypto.K12(serialized, digest, 32);
 
   const matched: Array<{ signerPublicKey: Uint8Array; signature: Uint8Array }> = [];
+  const usedOracles = new Set<string>();
 
   for (const sigBase64 of signatures) {
     const sigBytes = new Uint8Array(Buffer.from(sigBase64, "base64"));
     if (sigBytes.length !== 64) continue;
 
     for (const oracleKey of oracleKeys) {
+      const keyHex = Buffer.from(oracleKey).toString("hex");
+      if (usedOracles.has(keyHex)) continue;
       if (crypto.schnorrq.verify(oracleKey, digest, sigBytes) === 1) {
         matched.push({ signerPublicKey: oracleKey, signature: sigBytes });
+        usedOracles.add(keyHex);
         break;
       }
     }

@@ -55,6 +55,7 @@ const schema = {
     "SOLANA_RPC_URL",
     "SOLANA_WS_URL",
     "QUBIC_RPC_URL",
+    "QUBIC_BROADCAST_RPC_URL",
     "TOKEN_MINT",
     "SOLANA_TX_COMMITMENT",
     "RELAYER_FEE_SOLANA",
@@ -125,7 +126,6 @@ const schema = {
     },
     QUBIC_BROADCAST_RPC_URL: {
       type: "string",
-      default: "http://34.163.36.179:41841",
     },
     SOLANA_TX_COMMITMENT: {
       type: "string",
