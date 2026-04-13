@@ -19,6 +19,7 @@ export type EnvConfig = {
   SOLANA_RPC_URL: string;
   SOLANA_WS_URL: string;
   QUBIC_RPC_URL: string;
+  QUBIC_BROADCAST_RPC_URL: string;
   SOLANA_TX_COMMITMENT: "processed" | "confirmed" | "finalized";
   SOLANA_TX_RETRY_MAX_ATTEMPTS?: number;
   SOLANA_TX_RETRY_BASE_MS?: number;
@@ -54,6 +55,7 @@ const schema = {
     "SOLANA_RPC_URL",
     "SOLANA_WS_URL",
     "QUBIC_RPC_URL",
+    "QUBIC_BROADCAST_RPC_URL",
     "TOKEN_MINT",
     "SOLANA_TX_COMMITMENT",
     "RELAYER_FEE_SOLANA",
@@ -120,6 +122,9 @@ const schema = {
       type: "string",
     },
     QUBIC_RPC_URL: {
+      type: "string",
+    },
+    QUBIC_BROADCAST_RPC_URL: {
       type: "string",
     },
     SOLANA_TX_COMMITMENT: {

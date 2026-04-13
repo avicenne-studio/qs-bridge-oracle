@@ -5,6 +5,7 @@ import { type OverrideOutboundEvent } from "../../../../clients/js/types/overrid
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import { bytesToHex, hexToBytes } from "../../common/bytes.js";
 import { orderIdFromSignature } from "../../common/order-id.js";
+import { rawWqubicToQu } from "../../common/decimals.js";
 import {
   type SignerService,
   type OrderInput,
@@ -76,8 +77,8 @@ function createOrderFromOutboundEvent(
     dest: "qubic",
     from: bytesToHex(event.fromAddress),
     to: bytesToHex(event.toAddress),
-    amount: event.amount.toString(),
-    relayerFee: event.relayerFee.toString(),
+    amount: rawWqubicToQu(event.amount).toString(),
+    relayerFee: rawWqubicToQu(event.relayerFee).toString(),
     origin_trx_hash: originTrxHash,
     signature,
     status: "pending",
@@ -103,8 +104,8 @@ export function createFailedOrderFromOutboundEvent(
     dest: "qubic",
     from: bytesToHex(event.fromAddress),
     to: bytesToHex(event.toAddress),
-    amount: event.amount.toString(),
-    relayerFee: event.relayerFee.toString(),
+    amount: rawWqubicToQu(event.amount).toString(),
+    relayerFee: rawWqubicToQu(event.relayerFee).toString(),
     origin_trx_hash: signatureSeed,
     signature: signatureSeed,
     status: "failed",
@@ -125,8 +126,8 @@ function normalizeOutboundEvent(event: OutboundEvent): OrderInput {
     tokenOut: new Uint8Array(event.tokenOut),
     fromAddress: new Uint8Array(event.fromAddress),
     toAddress: new Uint8Array(event.toAddress),
-    amount: event.amount,
-    relayerFee: event.relayerFee,
+    amount: rawWqubicToQu(event.amount),
+    relayerFee: rawWqubicToQu(event.relayerFee),
     nonce: new Uint8Array(event.nonce),
     orderEra: event.orderEra,
   };
@@ -145,7 +146,7 @@ function buildNormalizedOrderFromOverride(
     fromAddress: hexToBytes(existing.from),
     toAddress: new Uint8Array(event.toAddress),
     amount: BigInt(existing.amount),
-    relayerFee: event.relayerFee,
+    relayerFee: rawWqubicToQu(event.relayerFee),
     nonce: hexToBytes(sourcePayload.nonce),
     orderEra: sourcePayload.orderEra,
   };
@@ -202,8 +203,8 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     const signature = await signerService.signUnlockOrderForQubic(normalized);
     logger.info({ orderId, signature }, "Solana outbound order signed");
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToQubic(
-      event.amount,
-      event.relayerFee,
+      rawWqubicToQu(event.amount),
+      rawWqubicToQu(event.relayerFee),
     );
 
     const order = createOrderFromOutboundEvent(
@@ -214,7 +215,6 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       originTrxHash,
       oracleAcceptToRelay,
     );
-    order.source_payload = serializeSourcePayload(buildSourcePayload(event));
     await ordersRepository.create(order);
     logger.info({ orderId }, "Solana outbound order stored");
   };
@@ -261,13 +261,13 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
     }
 
     const updatedTo = bytesToHex(event.toAddress);
-    const updatedRelayerFee = event.relayerFee.toString();
+    const updatedRelayerFee = rawWqubicToQu(event.relayerFee).toString();
     const updatedSignature = await signerService.signUnlockOrderForQubic(
       buildNormalizedOrderFromOverride(existing, sourcePayload, event),
     );
     const oracleAcceptToRelay = relayerFeeAcceptance.acceptRelayToQubic(
       BigInt(existing.amount),
-      event.relayerFee,
+      rawWqubicToQu(event.relayerFee),
     );
 
     await ordersRepository.update(existing.id, {

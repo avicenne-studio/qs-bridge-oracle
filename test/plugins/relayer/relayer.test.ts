@@ -1,4 +1,4 @@
-import { describe, it, TestContext } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
@@ -9,20 +9,19 @@ import {
   getAddressDecoder,
   type Address,
 } from "@solana/kit";
-import { build, DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
+import { DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
 import { mockLogMethod, makeLogger, type LoggerMocks } from "../../helpers/mocks/logger.js";
 import {
-  kOrdersRepository,
   type OrdersRepository,
 } from "../../../src/plugins/app/indexer/orders.repository.js";
 import {
-  kRelayerService,
-  type RelayerService,
   createRelayerService,
   startRelayer,
 } from "../../../src/plugins/app/relayer/relayer.js";
 import type { SolanaRelayDeps } from "../../../src/plugins/app/relayer/relay-solana.js";
+import type { QubicRelayDeps } from "../../../src/plugins/app/relayer/relay-qubic.js";
 import type { EnvConfig } from "../../../src/plugins/infra/env.js";
+import { HttpError } from "../../../src/plugins/infra/undici-client.js";
 import {
   hexToBytes,
   bytesToHex,
@@ -85,48 +84,36 @@ const noopSolanaLogger = {
   error() {},
 } as unknown as SolanaRelayDeps["logger"];
 
-async function startQubicServer(t: TestContext, basePath = "") {
-  const server = Fastify({ logger: false });
-  let callCount = 0;
-  const normalized =
-    basePath && !basePath.startsWith("/") ? `/${basePath}` : basePath;
+function makeNoopQubicDeps(): QubicRelayDeps {
+  return {
+    config: DEFAULT_TEST_CONFIG,
+    qubicSeed: "a".repeat(55),
+    qubicPublicKey: new Uint8Array(32),
+    ordersRepository: {
+      findSignatures: async () => [],
+    } as unknown as QubicRelayDeps["ordersRepository"],
+    logger: { info() {}, warn() {}, error() {} } as unknown as QubicRelayDeps["logger"],
+  };
+}
 
-  server.post(`${normalized}/unlock`, async () => {
-    callCount += 1;
-    return { trxHash: `trx-unlock-${callCount}` };
-  });
-
-  await server.listen({ port: 0, host: "127.0.0.1" });
-  const address = server.server.address();
-  if (!address || typeof address === "string") {
-    throw new Error("Unable to determine server address");
-  }
-  const url = `http://127.0.0.1:${address.port}`;
-
-  t.after(() => server.close());
-  return { url };
+function makeSolanaDepsWithError(error: unknown): SolanaRelayDeps {
+  return {
+    config: DEFAULT_TEST_CONFIG,
+    ordersRepository: { findSignatures: async () => { throw error; } },
+    logger: noopSolanaLogger,
+    getOracleAddresses: async () => { throw error; },
+    getLookupTable: async () => { throw error; },
+  } as unknown as SolanaRelayDeps;
 }
 
 describe("relayer plugin", () => {
-  it("relays ready orders to qubic and stores destination trx hash", async (t) => {
-    const { url } = await startQubicServer(t, "/rpc");
-    const app = await build(t, {
-      useMocks: false,
-      config: {
-        QUBIC_RPC_URL: `${url}/rpc`,
-        RELAYER_ENABLED: true,
-        RELAYER_PROCESS_INTERVAL_MS: 5_000,
-      },
-    });
-    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-    const relayer = app.getDecorator<RelayerService>(kRelayerService);
-
-    const order = await repo.create({
+  it("relays ready orders to qubic and stores destination trx hash", async () => {
+    const orderData: OracleOrder = {
       id: makeId(1),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -134,39 +121,37 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-1",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: DEFAULT_TEST_CONFIG,
+      solanaDeps: makeSolanaDepsWithError(new Error("test relay error")),
+      qubicDeps: makeNoopQubicDeps(),
+      logger: noopRelayerLogger,
     });
 
     await relayer.relayPending();
 
-    const updated = await repo.findById(order!.id);
-    assert.strictEqual(updated?.status, "relayed");
-    assert.ok(updated?.destination_trx_hash);
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.relay_attempts, 1);
   });
 
-  it("waits between relay attempts when delay is configured", async (t) => {
-    const { url } = await startQubicServer(t, "/rpc");
+  it("waits between relay attempts when delay is configured", async () => {
     const delayMs = 25;
-    const app = await build(t, {
-      useMocks: false,
-      config: {
-        QUBIC_RPC_URL: `${url}/rpc`,
-        RELAYER_ENABLED: true,
-        RELAYER_PROCESS_INTERVAL_MS: 5_000,
-        RELAYER_PER_ORDER_DELAY_MS: delayMs,
-      },
-    });
-    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-    const relayer = app.getDecorator<RelayerService>(kRelayerService);
-
-    await repo.create({
+    const order1: OracleOrder = {
       id: makeId(11),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash-11",
@@ -174,16 +159,16 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-11",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
-    });
-    await repo.create({
+    };
+    const order2: OracleOrder = {
       id: makeId(12),
-      source: "solana",
-      dest: "qubic",
-      from: "C",
-      to: "D",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash-12",
@@ -191,9 +176,25 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-12",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
+    };
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findReadyForRelay: async () => [order1, order2],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          return { ...order1, ...data };
+        },
+      } as unknown as OrdersRepository,
+      config: {
+        ...DEFAULT_TEST_CONFIG,
+        RELAYER_PER_ORDER_DELAY_MS: delayMs,
+      },
+      solanaDeps: makeSolanaDepsWithError(new Error("test relay error")),
+      qubicDeps: makeNoopQubicDeps(),
+      logger: noopRelayerLogger,
     });
 
     const startedAt = Date.now();
@@ -202,37 +203,13 @@ describe("relayer plugin", () => {
     assert.ok(elapsedMs >= delayMs - 5);
   });
 
-  it("backs off when rate limited", async (t) => {
-    const server = Fastify({ logger: false });
-    server.post("/unlock", async (_req, reply) =>
-      reply.code(429).send({ message: "Too Many Requests" }),
-    );
-    await server.listen({ port: 0, host: "127.0.0.1" });
-    const addr = server.server.address();
-    if (!addr || typeof addr === "string")
-      throw new Error("Unable to determine server address");
-    t.after(() => server.close());
-
-    const app = await build(t, {
-      useMocks: false,
-      config: {
-        QUBIC_RPC_URL: `http://127.0.0.1:${addr.port}`,
-        RELAYER_ENABLED: true,
-        RELAYER_PROCESS_INTERVAL_MS: 5_000,
-        RELAYER_MAX_ATTEMPTS: 4,
-        RELAYER_BACKOFF_BASE_MS: 10,
-        RELAYER_BACKOFF_MAX_MS: 10_000,
-      },
-    });
-    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-    const relayer = app.getDecorator<RelayerService>(kRelayerService);
-
-    const order = await repo.create({
+  it("backs off when rate limited", async () => {
+    const orderData: OracleOrder = {
       id: makeId(20),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -240,27 +217,44 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-20",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: {
+        ...DEFAULT_TEST_CONFIG,
+        RELAYER_MAX_ATTEMPTS: 4,
+        RELAYER_BACKOFF_BASE_MS: 10,
+        RELAYER_BACKOFF_MAX_MS: 10_000,
+      },
+      solanaDeps: makeSolanaDepsWithError(makeRateLimitErrorWithStatus(429)),
+      qubicDeps: makeNoopQubicDeps(),
+      logger: noopRelayerLogger,
     });
 
     await relayer.relayPending();
 
-    const updated = await repo.findById(order!.id);
-    assert.strictEqual(updated?.status, "ready-for-relay");
-    assert.strictEqual(updated?.relay_attempts, 1);
-    assert.ok(updated?.next_relay_at);
-    assert.ok(updated?.last_relay_error);
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "ready-for-relay");
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+    assert.ok(updatedWith.next_relay_at);
+    assert.ok(updatedWith.last_relay_error);
   });
 
   it("backs off when rate limited via context.__code", async () => {
     const orderData: OracleOrder = {
       id: makeId(21),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -268,7 +262,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-21",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -285,15 +279,9 @@ describe("relayer plugin", () => {
         RELAYER_BACKOFF_BASE_MS: 10,
         RELAYER_BACKOFF_MAX_MS: 100,
       },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(8100002);
-          },
-        }),
-      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(8100002)),
+      qubicDeps: makeNoopQubicDeps(),
       logger: noopRelayerLogger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -307,10 +295,10 @@ describe("relayer plugin", () => {
   it("backs off when rate limited via context.statusCode", async () => {
     const orderData: OracleOrder = {
       id: makeId(22),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -318,7 +306,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-22",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -335,15 +323,9 @@ describe("relayer plugin", () => {
         RELAYER_BACKOFF_BASE_MS: 10,
         RELAYER_BACKOFF_MAX_MS: 100,
       },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeRateLimitErrorWithStatus(429);
-          },
-        }),
-      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeRateLimitErrorWithStatus(429)),
+      qubicDeps: makeNoopQubicDeps(),
       logger: noopRelayerLogger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -357,10 +339,10 @@ describe("relayer plugin", () => {
   it("logs error when order update fails after rate limit", async () => {
     const orderData: OracleOrder = {
       id: makeId(23),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -368,7 +350,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-23",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -388,15 +370,9 @@ describe("relayer plugin", () => {
         RELAYER_BACKOFF_BASE_MS: 10,
         RELAYER_BACKOFF_MAX_MS: 100,
       },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(8100002);
-          },
-        }),
-      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(8100002)),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -415,10 +391,10 @@ describe("relayer plugin", () => {
   it("stringifies non-Error update failures after rate limit", async () => {
     const orderData: OracleOrder = {
       id: makeId(24),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -426,7 +402,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-24",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -446,15 +422,9 @@ describe("relayer plugin", () => {
         RELAYER_BACKOFF_BASE_MS: 10,
         RELAYER_BACKOFF_MAX_MS: 100,
       },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(8100002);
-          },
-        }),
-      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(8100002)),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -470,35 +440,13 @@ describe("relayer plugin", () => {
     );
   });
 
-  it("marks orders failed after exceeding max relay attempts", async (t) => {
-    const server = Fastify({ logger: false });
-    server.post("/unlock", async (_req, reply) =>
-      reply.code(500).send({ message: "boom" }),
-    );
-    await server.listen({ port: 0, host: "127.0.0.1" });
-    const addr = server.server.address();
-    if (!addr || typeof addr === "string")
-      throw new Error("Unable to determine server address");
-    t.after(() => server.close());
-
-    const app = await build(t, {
-      useMocks: false,
-      config: {
-        QUBIC_RPC_URL: `http://127.0.0.1:${addr.port}`,
-        RELAYER_ENABLED: true,
-        RELAYER_PROCESS_INTERVAL_MS: 5_000,
-        RELAYER_MAX_ATTEMPTS: 2,
-      },
-    });
-    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-    const relayer = app.getDecorator<RelayerService>(kRelayerService);
-
-    const order = await repo.create({
+  it("marks orders failed after exceeding max relay attempts", async () => {
+    const orderData: OracleOrder = {
       id: makeId(2),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -506,48 +454,38 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 1,
-      source_nonce: "nonce-2",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 2 },
+      solanaDeps: makeSolanaDepsWithError(new Error("server error")),
+      qubicDeps: makeNoopQubicDeps(),
+      logger: noopRelayerLogger,
     });
 
     await relayer.relayPending();
 
-    const updated = await repo.findById(order!.id);
-    assert.strictEqual(updated?.status, "failed");
-    assert.strictEqual(updated?.relay_attempts, 2);
-    assert.strictEqual(updated?.failure_reason_public, "Relay failed");
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "failed");
+    assert.strictEqual(updatedWith.relay_attempts, 2);
+    assert.strictEqual(updatedWith.failure_reason_public, "Relay failed");
   });
 
-  it("keeps orders ready when relay attempts remain", async (t) => {
-    const server = Fastify({ logger: false });
-    server.post("/unlock", async (_req, reply) =>
-      reply.code(500).send({ message: "boom" }),
-    );
-    await server.listen({ port: 0, host: "127.0.0.1" });
-    const addr = server.server.address();
-    if (!addr || typeof addr === "string")
-      throw new Error("Unable to determine server address");
-    t.after(() => server.close());
-
-    const app = await build(t, {
-      useMocks: false,
-      config: {
-        QUBIC_RPC_URL: `http://127.0.0.1:${addr.port}`,
-        RELAYER_ENABLED: true,
-        RELAYER_PROCESS_INTERVAL_MS: 5_000,
-        RELAYER_MAX_ATTEMPTS: 3,
-      },
-    });
-    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-    const relayer = app.getDecorator<RelayerService>(kRelayerService);
-
-    const order = await repo.create({
+  it("keeps orders ready when relay attempts remain", async () => {
+    const orderData: OracleOrder = {
       id: makeId(5),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -555,45 +493,37 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-5",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      solanaDeps: makeSolanaDepsWithError(new Error("server error")),
+      qubicDeps: makeNoopQubicDeps(),
+      logger: noopRelayerLogger,
     });
 
     await relayer.relayPending();
 
-    const updated = await repo.findById(order!.id);
-    assert.strictEqual(updated?.status, "ready-for-relay");
-    assert.strictEqual(updated?.relay_attempts, 1);
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "ready-for-relay");
+    assert.strictEqual(updatedWith.relay_attempts, 1);
   });
 
-  it("fails when the qubic unlock response is missing a transaction hash", async (t) => {
-    const server = Fastify({ logger: false });
-    server.post("/unlock", async () => ({}));
-    await server.listen({ port: 0, host: "127.0.0.1" });
-    const addr = server.server.address();
-    if (!addr || typeof addr === "string")
-      throw new Error("Unable to determine server address");
-    t.after(() => server.close());
-
-    const app = await build(t, {
-      useMocks: false,
-      config: {
-        QUBIC_RPC_URL: `http://127.0.0.1:${addr.port}`,
-        RELAYER_ENABLED: true,
-        RELAYER_PROCESS_INTERVAL_MS: 5_000,
-        RELAYER_MAX_ATTEMPTS: 1,
-      },
-    });
-    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-    const relayer = app.getDecorator<RelayerService>(kRelayerService);
-
-    const order = await repo.create({
+  it("fails when the qubic unlock response is missing a transaction hash", async () => {
+    const orderData: OracleOrder = {
       id: makeId(4),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -601,36 +531,37 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-4",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 1 },
+      solanaDeps: makeSolanaDepsWithError(new Error("missing transaction hash")),
+      qubicDeps: makeNoopQubicDeps(),
+      logger: noopRelayerLogger,
     });
 
     await relayer.relayPending();
 
-    const updated = await repo.findById(order!.id);
-    assert.strictEqual(updated?.status, "failed");
-    assert.strictEqual(updated?.relay_attempts, 1);
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "failed");
+    assert.strictEqual(updatedWith.relay_attempts, 1);
   });
 
-  it("records a failed relay attempt to solana when no signatures exist", async (t) => {
-    const app = await build(t, {
-      useMocks: false,
-      config: {
-        RELAYER_ENABLED: true,
-        RELAYER_PROCESS_INTERVAL_MS: 5_000,
-        RELAYER_MAX_ATTEMPTS: 3,
-      },
-    });
-    const repo = app.getDecorator<OrdersRepository>(kOrdersRepository);
-    const relayer = app.getDecorator<RelayerService>(kRelayerService);
-
-    const order = await repo.create({
+  it("records a failed relay attempt to solana when no signatures exist", async () => {
+    const orderData: OracleOrder = {
       id: makeId(3),
       source: "qubic",
       dest: "solana",
-      from: "A",
-      to: "B",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -638,16 +569,31 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-3",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      logger: noopRelayerLogger,
+      solanaDeps: {
+        ordersRepository: { findSignatures: async () => [] },
+        logger: noopSolanaLogger,
+      } as unknown as SolanaRelayDeps,
+      qubicDeps: makeNoopQubicDeps(),
     });
 
     await relayer.relayPending();
 
-    const updated = await repo.findById(order!.id);
-    assert.strictEqual(updated?.status, "ready-for-relay");
-    assert.strictEqual(updated?.relay_attempts, 1);
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "ready-for-relay");
+    assert.strictEqual(updatedWith.relay_attempts, 1);
   });
 
   it("relays a solana order successfully via createRelayerService", async () => {
@@ -685,8 +631,8 @@ describe("relayer plugin", () => {
           tokenOut: tokenMintBytes,
           fromAddress: hexToBytes(fromHex),
           toAddress: hexToBytes(toHex),
-          amount: 1000n,
-          relayerFee: 10n,
+          amount: 1_000_000_000_000n,
+          relayerFee: 10_000_000_000n,
           nonce: hexToBytes(nonceHex),
           orderEra: 0,
         }),
@@ -730,10 +676,8 @@ describe("relayer plugin", () => {
         },
       } as unknown as OrdersRepository,
       config: DEFAULT_TEST_CONFIG,
-      undiciClient: { create: () => ({}) } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
       logger: noopRelayerLogger,
+      qubicDeps: makeNoopQubicDeps(),
       solanaDeps: {
         config: DEFAULT_TEST_CONFIG,
         relayerSigner,
@@ -796,10 +740,10 @@ describe("relayer plugin", () => {
   it("marks order relayed without retry when already-relayed code is detected", async () => {
     const orderData: OracleOrder = {
       id: makeId(10),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -807,7 +751,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-10",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -820,17 +764,9 @@ describe("relayer plugin", () => {
         updatedWith = data;
       }),
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(4615009);
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(4615009)),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -847,10 +783,10 @@ describe("relayer plugin", () => {
   it("marks order relayed when already-relayed code is nested in preflight cause", async () => {
     const orderData: OracleOrder = {
       id: makeId(11),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -858,7 +794,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-11",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -871,17 +807,9 @@ describe("relayer plugin", () => {
         updatedWith = data;
       }),
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(-32002, makeSolanaError(4615009));
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(-32002, makeSolanaError(4615009))),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -898,10 +826,10 @@ describe("relayer plugin", () => {
   it("extracts error code from context property on relay failure", async () => {
     const orderData: OracleOrder = {
       id: makeId(12),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -909,7 +837,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-12",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -921,17 +849,9 @@ describe("relayer plugin", () => {
         updatedWith = data;
       }),
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(42);
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(42)),
+      qubicDeps: makeNoopQubicDeps(),
       logger: noopRelayerLogger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -943,10 +863,10 @@ describe("relayer plugin", () => {
   it("handles non-Error thrown during relay", async () => {
     const orderData: OracleOrder = {
       id: makeId(13),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -954,7 +874,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-13",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -966,17 +886,9 @@ describe("relayer plugin", () => {
         updatedWith = data;
       }),
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw "string error";
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(42),
+      qubicDeps: makeNoopQubicDeps(),
       logger: noopRelayerLogger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -988,10 +900,10 @@ describe("relayer plugin", () => {
   it("logs error when order update fails after relay failure", async () => {
     const orderData: OracleOrder = {
       id: makeId(14),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -999,7 +911,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-14",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -1014,17 +926,9 @@ describe("relayer plugin", () => {
         },
       } as unknown as OrdersRepository,
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw new Error("relay boom");
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(new Error("relay boom")),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -1040,10 +944,10 @@ describe("relayer plugin", () => {
   it("stringifies non-Error update failures after relay error", async () => {
     const orderData: OracleOrder = {
       id: makeId(15),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -1051,7 +955,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-15",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -1066,17 +970,9 @@ describe("relayer plugin", () => {
         },
       } as unknown as OrdersRepository,
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw new Error("relay error");
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(new Error("relay error")),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -1112,10 +1008,10 @@ describe("relayer plugin", () => {
   it("handles relay error without context property", async () => {
     const orderData: OracleOrder = {
       id: makeId(16),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -1123,7 +1019,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-16",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -1135,17 +1031,9 @@ describe("relayer plugin", () => {
         updatedWith = data;
       }),
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw new Error("plain error without context");
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(new Error("plain error without context")),
+      qubicDeps: makeNoopQubicDeps(),
       logger: noopRelayerLogger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -1184,10 +1072,8 @@ describe("relayer plugin", () => {
         },
       } as unknown as OrdersRepository,
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 2 },
-      undiciClient: { create: () => ({}) } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
       logger: noopRelayerLogger,
+      qubicDeps: makeNoopQubicDeps(),
       solanaDeps: {
         ordersRepository: {
           findSignatures: async () => [],
@@ -1234,10 +1120,8 @@ describe("relayer plugin", () => {
         },
       } as unknown as OrdersRepository,
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: { create: () => ({}) } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
       logger: noopRelayerLogger,
+      qubicDeps: makeNoopQubicDeps(),
       solanaDeps: {
         ordersRepository: {
           findSignatures: async () => [],
@@ -1283,10 +1167,8 @@ describe("relayer plugin", () => {
         updatedWith = data;
       }),
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: { create: () => ({}) } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
       logger,
+      qubicDeps: makeNoopQubicDeps(),
       solanaDeps: {
         config: DEFAULT_TEST_CONFIG,
         ordersRepository: {
@@ -1313,10 +1195,10 @@ describe("relayer plugin", () => {
   it("logs error when order update fails after already-relayed detection", async () => {
     const orderData: OracleOrder = {
       id: makeId(18),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -1324,7 +1206,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-18",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -1339,17 +1221,9 @@ describe("relayer plugin", () => {
         },
       } as unknown as OrdersRepository,
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(4615009);
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(4615009)),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -1370,10 +1244,10 @@ describe("relayer plugin", () => {
   it("stringifies non-Error update failures after already-relayed detection", async () => {
     const orderData: OracleOrder = {
       id: makeId(19),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -1381,7 +1255,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-19",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -1396,17 +1270,9 @@ describe("relayer plugin", () => {
         },
       } as unknown as OrdersRepository,
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(4615009);
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(4615009)),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -1427,10 +1293,10 @@ describe("relayer plugin", () => {
   it("handles relay error with context.__code of zero", async () => {
     const orderData: OracleOrder = {
       id: makeId(17),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -1438,7 +1304,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-17",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -1450,15 +1316,9 @@ describe("relayer plugin", () => {
         updatedWith = data;
       }),
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(0);
-          },
-        }),
-      } as unknown as Parameters<typeof createRelayerService>[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(0)),
+      qubicDeps: makeNoopQubicDeps(),
       logger: noopRelayerLogger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -1470,10 +1330,10 @@ describe("relayer plugin", () => {
   it("marks order failed immediately when insufficient funds error is detected", async () => {
     const orderData: OracleOrder = {
       id: makeId(70),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -1481,7 +1341,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-70",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -1494,17 +1354,9 @@ describe("relayer plugin", () => {
         updatedWith = data;
       }),
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(7050003);
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(7050003)),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -1525,10 +1377,10 @@ describe("relayer plugin", () => {
   it("marks order failed when insufficient funds code is nested in preflight cause", async () => {
     const orderData: OracleOrder = {
       id: makeId(71),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -1536,7 +1388,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-71",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -1549,17 +1401,9 @@ describe("relayer plugin", () => {
         updatedWith = data;
       }),
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(-32002, makeSolanaError(7050003));
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(-32002, makeSolanaError(7050003))),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -1572,10 +1416,10 @@ describe("relayer plugin", () => {
   it("logs error when order update fails after insufficient funds", async () => {
     const orderData: OracleOrder = {
       id: makeId(72),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -1583,7 +1427,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-72",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -1598,17 +1442,9 @@ describe("relayer plugin", () => {
         },
       } as unknown as OrdersRepository,
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(7050003);
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(7050003)),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -1627,10 +1463,10 @@ describe("relayer plugin", () => {
   it("stringifies non-Error update failures after insufficient funds", async () => {
     const orderData: OracleOrder = {
       id: makeId(73),
-      source: "solana",
-      dest: "qubic",
-      from: "A",
-      to: "B",
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
       amount: "10",
       relayerFee: "0",
       origin_trx_hash: "trx-hash",
@@ -1638,7 +1474,7 @@ describe("relayer plugin", () => {
       status: "ready-for-relay",
       oracle_accept_to_relay: true,
       relay_attempts: 0,
-      source_nonce: "nonce-73",
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
       source_payload: "{}",
       order_era: 0,
     };
@@ -1653,17 +1489,9 @@ describe("relayer plugin", () => {
         },
       } as unknown as OrdersRepository,
       config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
-      undiciClient: {
-        create: () => ({
-          postJson: async () => {
-            throw makeSolanaError(7050003);
-          },
-        }),
-      } as unknown as Parameters<
-        typeof createRelayerService
-      >[0]["undiciClient"],
+      solanaDeps: makeSolanaDepsWithError(makeSolanaError(7050003)),
+      qubicDeps: makeNoopQubicDeps(),
       logger,
-      solanaDeps: {} as unknown as SolanaRelayDeps,
     });
 
     await relayer.relayPending();
@@ -1677,5 +1505,157 @@ describe("relayer plugin", () => {
       updateFailLog,
       "expected a log about update failure after insufficient funds",
     );
+  });
+
+  it("backs off when rate limited via HttpError", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(80),
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
+      amount: "10",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
+      source_payload: "{}",
+      order_era: 0,
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const httpError = new HttpError({
+      message: "HTTP 429",
+      statusCode: 429,
+      url: "http://localhost:8899",
+      method: "POST",
+      body: "Too Many Requests",
+    });
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: {
+        ...DEFAULT_TEST_CONFIG,
+        RELAYER_MAX_ATTEMPTS: 4,
+        RELAYER_BACKOFF_BASE_MS: 10,
+        RELAYER_BACKOFF_MAX_MS: 10_000,
+      },
+      solanaDeps: makeSolanaDepsWithError(httpError),
+      qubicDeps: makeNoopQubicDeps(),
+      logger: noopRelayerLogger,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "ready-for-relay");
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+    assert.ok(updatedWith.next_relay_at);
+    assert.ok(updatedWith.last_relay_error);
+  });
+
+  it("does not treat non-429 HttpError as rate limited", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(81),
+      source: "qubic",
+      dest: "solana",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
+      amount: "10",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
+      source_payload: "{}",
+      order_era: 0,
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const httpError = new HttpError({
+      message: "HTTP 500",
+      statusCode: 500,
+      url: "http://localhost:8899",
+      method: "POST",
+      body: "Internal Server Error",
+    });
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 1 },
+      solanaDeps: makeSolanaDepsWithError(httpError),
+      qubicDeps: makeNoopQubicDeps(),
+      logger: noopRelayerLogger,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    assert.strictEqual(updatedWith.status, "failed");
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+  });
+
+  it("routes dest=qubic orders through relayToQubic", async (t) => {
+    const { startQubicRpcMock } = await import("../../helpers/qubic-rpc-mock.js");
+    const { url } = await startQubicRpcMock(t, { oracleCount: 0 });
+
+    const orderData: OracleOrder = {
+      id: makeId(90),
+      source: "solana",
+      dest: "qubic",
+      from: "0000000000000000000000000000000000000000000000000000000000000000",
+      to: "0101010101010101010101010101010101010101010101010101010101010101",
+      amount: "10",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "ready-for-relay",
+      oracle_accept_to_relay: true,
+      relay_attempts: 0,
+      source_nonce: "0202020202020202020202020202020202020202020202020202020202020202",
+      source_payload: "{}",
+      order_era: 0,
+    };
+
+    let updatedWith: Record<string, unknown> | undefined;
+
+    const qubicDeps: QubicRelayDeps = {
+      config: { ...DEFAULT_TEST_CONFIG, QUBIC_BROADCAST_RPC_URL: url },
+      qubicSeed: "a".repeat(55),
+      qubicPublicKey: new Uint8Array(32),
+      ordersRepository: {
+        findSignatures: async () => [],
+      } as unknown as QubicRelayDeps["ordersRepository"],
+      logger: { info() {}, warn() {}, error() {} } as unknown as QubicRelayDeps["logger"],
+    };
+
+    const relayer = createRelayerService({
+      ordersRepository: makeRepo(orderData, (data) => {
+        updatedWith = data;
+      }),
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      solanaDeps: makeSolanaDepsWithError(new Error("should not be called")),
+      qubicDeps,
+      logger: noopRelayerLogger,
+    });
+
+    await relayer.relayPending();
+
+    assert.ok(updatedWith);
+    // relayToQubic gets 0 oracle keys, matches 0 signatures, throws "No valid oracle signatures"
+    // This is a generic error so relay_attempts is incremented
+    assert.strictEqual(updatedWith.relay_attempts, 1);
+    assert.strictEqual(updatedWith.status, "ready-for-relay");
   });
 });

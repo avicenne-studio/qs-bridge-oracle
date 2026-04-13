@@ -54,8 +54,8 @@ function createOutboundEvent() {
     tokenOut: new Uint8Array(32).fill(2),
     fromAddress: new Uint8Array(32).fill(3),
     toAddress: new Uint8Array(32).fill(4),
-    amount: 10n,
-    relayerFee: 2n,
+    amount: 10_000_000_000n,
+    relayerFee: 2_000_000_000n,
     nonce,
     orderEra: 0,
   };
@@ -67,7 +67,7 @@ function createOverrideEvent() {
   return {
     discriminator: 2,
     toAddress: new Uint8Array(32).fill(9),
-    relayerFee: 7n,
+    relayerFee: 7_000_000_000n,
     nonce,
   };
 }

@@ -16,6 +16,7 @@ import {
   serializeBridgeOrder,
 } from "../common/solana/program.js";
 import { QUBIC_CONTRACT_ADDRESS_BYTES } from "../common/qubic/encoding.js";
+import { serializeQsbOrderMessage } from "../common/qubic/qsb-message.js";
 
 export type OrderInput = {
   networkIn: number;
@@ -66,7 +67,7 @@ function serializeOrderForQubic(order: OrderInput): Uint8Array {
   assertFixedBytes(order.fromAddress, "fromAddress", 32);
   assertFixedBytes(order.toAddress, "toAddress", 32);
   assertFixedBytes(order.nonce, "nonce", 32);
-  return serializeBridgeOrder({
+  return serializeQsbOrderMessage({
     protocolName: PROTOCOL_NAME,
     protocolVersion: PROTOCOL_VERSION,
     contractAddress: QUBIC_CONTRACT_ADDRESS_BYTES,
