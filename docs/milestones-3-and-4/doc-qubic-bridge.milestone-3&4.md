@@ -55,9 +55,6 @@ The on-chain Solana program (Rust) handles `outbound` (Solana → Qubic) and `in
 ### Helius
 Helius is used as a **resilient transaction poller** on the Hub side. It supplements the WebSocket listener for backfill scenarios (reconnects, missed events) and provides a reliable HTTP-based alternative when WS is unavailable. ([`helius-transaction-poller.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/app/listener/solana/helius-transaction-poller.ts))
 
-### Qubic Node
-No additional comment, read Hub and Oracle sections above.
-
 ---
 
 ## 2. Frontend
