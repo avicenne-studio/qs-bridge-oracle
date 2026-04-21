@@ -49,23 +49,19 @@ Tables auto-created by `src/plugins/infra/@knex.ts`:
 - `hub_event_cursors` — per-Hub incremental polling cursor.
 
 ## Event + Relay Pipeline
-```
-Hub /api/orders/events
-        │
-        ▼
-hub_events (events.service.ts)
-        │
-        ▼
-events-processor.ts  ──validates──▶  orders table  ──signed by signer.service.ts
-                                          │
-                              hub-signatures.service.ts polls
-                              Hub /api/orders/signatures
-                                          │  threshold met
-                                          ▼
-                                 ready-for-relay
-                                          │
-                                     relayer.ts
-                                 (relay-solana / relay-qubic)
+
+```mermaid
+flowchart TD
+    A["Hub /api/orders/events"] -->|"events.service.ts\n(cursor-based poll)"| B[(hub_events)]
+    B --> C["events-processor.ts\n(validate + map)"]
+    C -->|valid| D[(orders table)]
+    C -->|irrecoverable| E["failed order"]
+    D -->|"signer.service.ts"| D
+    D --> F["hub-signatures.service.ts\n(poll /api/orders/signatures)"]
+    F -->|"threshold met"| G["ready-for-relay"]
+    G --> H["relayer.ts"]
+    H --> I["relay-solana.ts"]
+    H --> J["relay-qubic.ts"]
 ```
 
 ## Routes
