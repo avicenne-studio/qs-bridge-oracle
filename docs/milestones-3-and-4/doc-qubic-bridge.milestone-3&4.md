@@ -4,8 +4,8 @@
 
 | Service | Repository |
 |---------|------------|
-| Hub (aggregator) | https://github.com/avicenne-studio/qs-bridge-hub |
-| Oracle (validator) | https://github.com/avicenne-studio/qs-bridge-oracle |
+| Hub | https://github.com/avicenne-studio/qs-bridge-hub |
+| Oracle | https://github.com/avicenne-studio/qs-bridge-oracle |
 | Frontend | https://github.com/avicenne-studio/qs-bridge-frontend |
 
 ---
