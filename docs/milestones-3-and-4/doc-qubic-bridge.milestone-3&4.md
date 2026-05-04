@@ -30,30 +30,30 @@ The **Qubic side code is written and integrated** — event polling, transaction
 > Source: https://github.com/avicenne-studio/qs-bridge-hub
 
 The Hub is the **only public-facing backend service**. It:
-- Listens to Solana program logs via WebSocket (primary + fallback) and to Helius for backfill; also polls the Qubic node for Qubic-side events. ([`listener/`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/app/listener))
-- Persists raw chain events in its SQLite `events` table. ([`events.repository.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/app/events/events.repository.ts))
-- Polls every oracle periodically (configurable interval + jitter) for health status and for the oracle's local order list. ([`oracle-service.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/app/oracle-service.ts))
-- Reconciles oracle responses: all oracles reporting the same order must agree on the payload; majority-vote determines the canonical status. ([`oracle-orders-reconciliation.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/app/indexer/oracle-orders-reconciliation.ts))
+- Listens to Solana program logs via WebSocket (primary + fallback) and to Helius for backfill; also polls the Qubic node for Qubic-side events. ([`listener/`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/app/listener))
+- Persists raw chain events in its SQLite `events` table. ([`events.repository.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/app/events/events.repository.ts))
+- Polls every oracle periodically (configurable interval + jitter) for health status and for the oracle's local order list. ([`oracle-service.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/app/oracle-service.ts))
+- Reconciles oracle responses: all oracles reporting the same order must agree on the payload; majority-vote determines the canonical status. ([`oracle-orders-reconciliation.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/app/indexer/oracle-orders-reconciliation.ts))
 - Aggregates oracle signatures and marks orders `ready-for-relay` once the configurable threshold (`ORACLE_SIGNATURE_THRESHOLD`) is met.
-- Exposes a public REST API consumed by the frontend and by third-party tooling. ([`routes/api/`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/routes/api))
+- Exposes a public REST API consumed by the frontend and by third-party tooling. ([`routes/api/`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/routes/api))
 
 ### Oracle network
 > Source: https://github.com/avicenne-studio/qs-bridge-oracle
 
 Each oracle is an **independent, replicated validator node**. It:
-- Accepts only requests signed by the Hub (`X-Hub-*` headers — see authentication below). ([`hub-verifier.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/plugins/app/hub/hub-verifier.ts))
-- Polls the Hub for new chain events (cursor-based, incremental). ([`events.service.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/plugins/app/events/events.service.ts))
-- Validates each event received from the Hub requesting chain-specific RPC (Solana or Qubic) and maps it into a local bridge order. ([`events-processor.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/plugins/app/events/events-processor.ts))
-- Signs valid orders with its Solana / Qubic private keys. ([`signer.service.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/plugins/app/signer/signer.service.ts))
-- Polls the Hub for the aggregated signature set; once the threshold is reached locally, marks its copy of the order `ready-for-relay`. ([`hub-signatures.service.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/plugins/app/hub/hub-signatures.service.ts))
-- Relays the on-chain transaction (Solana or Qubic) with exponential backoff and capped retry attempts. ([`relayer.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/plugins/app/relayer/relayer.ts))
-- Reports its order list and health status to the Hub on demand. ([`routes/api/`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/routes/api))
+- Accepts only requests signed by the Hub (`X-Hub-*` headers — see authentication below). ([`hub-verifier.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/plugins/app/hub/hub-verifier.ts))
+- Polls the Hub for new chain events (cursor-based, incremental). ([`events.service.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/plugins/app/events/events.service.ts))
+- Validates each event received from the Hub requesting chain-specific RPC (Solana or Qubic) and maps it into a local bridge order. ([`events-processor.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/plugins/app/events/events-processor.ts))
+- Signs valid orders with its Solana / Qubic private keys. ([`signer.service.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/plugins/app/signer/signer.service.ts))
+- Polls the Hub for the aggregated signature set; once the threshold is reached locally, marks its copy of the order `ready-for-relay`. ([`hub-signatures.service.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/plugins/app/hub/hub-signatures.service.ts))
+- Relays the on-chain transaction (Solana or Qubic) with exponential backoff and capped retry attempts. ([`relayer.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/plugins/app/relayer/relayer.ts))
+- Reports its order list and health status to the Hub on demand. ([`routes/api/`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/routes/api))
 
 ### Solana program
-The on-chain Solana program (Rust) handles `outbound` (Solana → Qubic) and `inbound` (Qubic → Solana) transfers, oracle management, and pause/unpause controls. Auto-generated TypeScript clients under `src/clients/js/` (Codama/Shank) are used by both Hub and Oracle — **do not hand-edit**. ([Hub client](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/clients/js) · [Oracle client](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/clients/js))
+The on-chain Solana program (Rust) handles `outbound` (Solana → Qubic) and `inbound` (Qubic → Solana) transfers, oracle management, and pause/unpause controls. Auto-generated TypeScript clients under `src/clients/js/` (Codama/Shank) are used by both Hub and Oracle — **do not hand-edit**. ([Hub client](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/clients/js) · [Oracle client](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/clients/js))
 
 ### Helius
-Helius is used as a **resilient transaction poller** on the Hub side. It supplements the WebSocket listener for backfill scenarios (reconnects, missed events) and provides a reliable HTTP-based alternative when WS is unavailable. ([`helius-transaction-poller.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/app/listener/solana/helius-transaction-poller.ts))
+Helius is used as a **resilient transaction poller** on the Hub side. It supplements the WebSocket listener for backfill scenarios (reconnects, missed events) and provides a reliable HTTP-based alternative when WS is unavailable. ([`helius-transaction-poller.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/app/listener/solana/helius-transaction-poller.ts))
 
 ---
 
@@ -67,7 +67,7 @@ React 19 + TypeScript + Vite application. The frontend is the entry point for en
 
 Three pages, each a self-contained domain under `src/domains/`:
 
-**Bridge** ([`bridge.page.tsx`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/domains/bridge/react/bridge.page.tsx))
+**Bridge** ([`bridge.page.tsx`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/domains/bridge/react/bridge.page.tsx))
 - Entry form for initiating a transfer (Solana → Qubic or Qubic → Solana).
 - Calls `POST /api/orders/estimate` (500 ms debounce) to show live fee breakdown before the user confirms.
 - On submit, builds and sends the on-chain transaction (Solana SPL instruction or Qubic lock payload).
@@ -77,46 +77,46 @@ Three pages, each a self-contained domain under `src/domains/`:
 ![Bridge form with fees panel](1-bridge-step-fees-panel.png)
 ![Bridge success confirmation](2-bridge-success.png)
 
-**Activity** ([`activity.page.tsx`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/domains/activity/react/activity.page.tsx))
+**Activity** ([`activity.page.tsx`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/domains/activity/react/activity.page.tsx))
 - Global paginated feed of all bridge orders (not filtered by wallet).
 - Displays stats (total orders, total locked), a TanStack React Table, and pagination.
-- Fetches `GET /api/orders` ordered descending (page size 5). ([`use-activity-orders.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/domains/activity/react/hooks/use-activity-orders.ts))
+- Fetches `GET /api/orders` ordered descending (page size 5). ([`use-activity-orders.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/domains/activity/react/hooks/use-activity-orders.ts))
 
-**History** ([`history.page.tsx`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/domains/history/react/history.page.tsx))
+**History** ([`history.page.tsx`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/domains/history/react/history.page.tsx))
 - Per-wallet order history, filtered by the connected Solana and/or Qubic addresses.
-- Rich filter panel: status, direction, source, destination, date range. ([`use-history-filters.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/domains/history/react/hooks/use-history-filters.ts))
-- Fetches `GET /api/orders?participant[]=<solana_hex>&participant[]=<qubic_hex>` with active filters applied. ([`use-history-orders.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/domains/history/react/hooks/use-history-orders.ts))
+- Rich filter panel: status, direction, source, destination, date range. ([`use-history-filters.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/domains/history/react/hooks/use-history-filters.ts))
+- Fetches `GET /api/orders?participant[]=<solana_hex>&participant[]=<qubic_hex>` with active filters applied. ([`use-history-orders.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/domains/history/react/hooks/use-history-orders.ts))
 
 ![History page with filters and pagination](3-frontend-history-flow.png)
 
 ### Hub API Client
 
-> [`lib/hub/hub-client.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/lib/hub/hub-client.ts)
+> [`lib/hub/hub-client.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/lib/hub/hub-client.ts)
 
 Base URL: `VITE_HUB_API_URL` env variable. Uses native `fetch()` with `AbortSignal`. Throws a typed `HubApiError(status, body)` on non-2xx responses.
 
 | Hook | Endpoint | Interval |
 |------|----------|----------|
-| [`useFeeEstimate`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/hooks/useFeeEstimate.ts) | `POST /api/orders/estimate` | On input change (500 ms debounce) |
-| [`useOrderTracking`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/hooks/useOrderTracking.ts) | `GET /api/orders/trx-hash/:hash` | 3 s until found, 10 s until finalized |
-| [`useBridgeHealth`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/hooks/useBridgeHealth.ts) | `GET /api/health/bridge` | 30 s |
-| [`useBridgeHealth`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/hooks/useBridgeHealth.ts) | `GET /api/health/oracles` | 60 s |
-| [`use-activity-orders`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/domains/activity/react/hooks/use-activity-orders.ts) | `GET /api/orders` | On page change |
-| [`use-history-orders`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/domains/history/react/hooks/use-history-orders.ts) | `GET /api/orders` | On page/filter change |
+| [`useFeeEstimate`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/hooks/useFeeEstimate.ts) | `POST /api/orders/estimate` | On input change (500 ms debounce) |
+| [`useOrderTracking`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/hooks/useOrderTracking.ts) | `GET /api/orders/trx-hash/:hash` | 3 s until found, 10 s until finalized |
+| [`useBridgeHealth`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/hooks/useBridgeHealth.ts) | `GET /api/health/bridge` | 30 s |
+| [`useBridgeHealth`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/hooks/useBridgeHealth.ts) | `GET /api/health/oracles` | 60 s |
+| [`use-activity-orders`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/domains/activity/react/hooks/use-activity-orders.ts) | `GET /api/orders` | On page change |
+| [`use-history-orders`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/domains/history/react/hooks/use-history-orders.ts) | `GET /api/orders` | On page/filter change |
 
 ### Wallet Integration
 
-**Solana** — via [Reown AppKit](https://reown.com/appkit) (formerly WalletConnect AppKit). ([`SolanaWalletProvider.tsx`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/providers/SolanaWalletProvider.tsx))
+**Solana** — via [Reown AppKit](https://reown.com/appkit) (formerly WalletConnect AppKit). ([`SolanaWalletProvider.tsx`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/providers/SolanaWalletProvider.tsx))
 - Supports all standard Solana wallets (Phantom, Backpack, etc.) via the AppKit modal.
 - Token balance polled every 30 s from `getParsedTokenAccountsByOwner()`.
-- Transaction signing and sending via `useSolanaProvider()`. ([`send.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/lib/bridge/solana/send.ts))
+- Transaction signing and sending via `useSolanaProvider()`. ([`send.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/lib/bridge/solana/send.ts))
 
-**Qubic** — via WalletConnect Sign protocol + local fallbacks. ([`QubicWalletProvider.tsx`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/providers/QubicWalletProvider.tsx))
+**Qubic** — via WalletConnect Sign protocol + local fallbacks. ([`QubicWalletProvider.tsx`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/providers/QubicWalletProvider.tsx))
 Four connection methods, each in its own modal tab:
-- **WalletConnect** — remote signing via WC pairing URI. ([`connectWalletConnect.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/lib/qubic/connectWalletConnect.ts))
-- **Seed phrase** — local import, signs locally in browser. ([`connectSeed.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/lib/qubic/connectSeed.ts))
-- **MetaMask Snap** — if available. ([`connectMetaMask.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/lib/qubic/connectMetaMask.ts))
-- **Vault file** — password-protected key file upload. ([`connectVault.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src/lib/qubic/connectVault.ts))
+- **WalletConnect** — remote signing via WC pairing URI. ([`connectWalletConnect.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/lib/qubic/connectWalletConnect.ts))
+- **Seed phrase** — local import, signs locally in browser. ([`connectSeed.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/lib/qubic/connectSeed.ts))
+- **MetaMask Snap** — if available. ([`connectMetaMask.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/lib/qubic/connectMetaMask.ts))
+- **Vault file** — password-protected key file upload. ([`connectVault.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src/lib/qubic/connectVault.ts))
 
 Session is persisted in `sessionStorage` and restored on page load.
 
@@ -125,7 +125,7 @@ Session is persisted in `sessionStorage` and restored on page load.
 All inter-service communication from Hub to Oracle is cryptographically authenticated to prevent malicious/spam requests.
 
 ### Signing (Hub side)
-> [`hub-signer.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/infra/hub-signer.ts)
+> [`hub-signer.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/infra/hub-signer.ts)
 
 For every outgoing request to an oracle, the Hub:
 1. Computes a **canonical string**:
@@ -137,7 +137,7 @@ For every outgoing request to an oracle, the Hub:
    nonce=<random-base64>
    bodyhash=<sha256-hex-of-body>
    ```
-2. Signs the canonical string with its **Ed25519/RSA private key** (PEM, from `HUB_KEYS_FILE`). ([`hub-keys.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/infra/hub-keys.ts))
+2. Signs the canonical string with its **Ed25519/RSA private key** (PEM, from `HUB_KEYS_FILE`). ([`hub-keys.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/infra/hub-keys.ts))
 3. Attaches the following HTTP headers to the request:
 
    | Header | Content |
@@ -150,17 +150,17 @@ For every outgoing request to an oracle, the Hub:
    | `X-Signature` | Base64-encoded signature over the canonical string |
 
 ### Verification (Oracle side)
-> [`hub-verifier.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/plugins/app/hub/hub-verifier.ts)
+> [`hub-verifier.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/plugins/app/hub/hub-verifier.ts)
 
 The oracle's `preValidation` Fastify hook rejects any `/api/*` request that fails any of these checks (in order):
 
 1. **Header schema** — all six `X-Hub-*` headers must be present and well-formed.
 2. **Timestamp skew** — `|now − X-Timestamp| ≤ 60 s`.
-3. **Nonce replay** — the `(hubId, kid, nonce)` triple must not already exist in the `hub_nonces` SQLite table. ([`hub-nonces.repository.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/plugins/app/hub/hub-nonces.repository.ts))
+3. **Nonce replay** — the `(hubId, kid, nonce)` triple must not already exist in the `hub_nonces` SQLite table. ([`hub-nonces.repository.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/plugins/app/hub/hub-nonces.repository.ts))
 4. **Body hash** — `X-Body-Hash` must match the SHA-256 of the actual request body.
 5. **Signature** — `X-Signature` must be a valid signature over the canonical string under the public key identified by `(hubId, kid)` in `HUB_KEYS_FILE`.
 
-A used nonce is immediately persisted. Nonces are periodically evicted by [`hub-nonces-cleaner.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/src/plugins/app/hub/hub-nonces-cleaner.ts).
+A used nonce is immediately persisted. Nonces are periodically evicted by [`hub-nonces-cleaner.ts`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/src/plugins/app/hub/hub-nonces-cleaner.ts).
 
 **Key rotation**: `HUB_KEYS_FILE` contains `current` and `next` key slots. The oracle accepts requests signed by either key, allowing seamless rotation without downtime.
 
@@ -169,15 +169,15 @@ A used nonce is immediately persisted. Nonces are periodically evicted by [`hub-
 ## 4. Orders Reconciliation & Signature Aggregation
 
 ### Reconciliation (Hub)
-> [`oracle-orders-reconciliation.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/app/indexer/oracle-orders-reconciliation.ts)
+> [`oracle-orders-reconciliation.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/app/indexer/oracle-orders-reconciliation.ts)
 
 When the Hub polls multiple oracles, it can receive conflicting order views. The reconciliation logic:
 - For each order ID, **all oracle payloads must be byte-identical** (amount, addresses, chain metadata). Any oracle reporting a divergent payload is flagged as inconsistent.
 - The canonical **status** is determined by majority vote across oracle responses.
-- Only orders that pass reconciliation are persisted or updated in the Hub's SQLite `orders` table. ([`orders.repository.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/app/indexer/orders.repository.ts))
+- Only orders that pass reconciliation are persisted or updated in the Hub's SQLite `orders` table. ([`orders.repository.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/app/indexer/orders.repository.ts))
 
 ### Signature threshold (`computeRequiredSignatures`)
-> [`oracle-service.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/app/oracle-service.ts)
+> [`oracle-service.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/app/oracle-service.ts)
 
 `ORACLE_SIGNATURE_THRESHOLD` is interpreted as:
 - A **fraction** (e.g. `0.6`) of `ORACLE_COUNT` when in [0, 1] → ceiling of `threshold × count` signatures required.
@@ -189,7 +189,7 @@ When the Hub polls multiple oracles, it can receive conflicting order views. The
 
 ## 5. Hub Public API
 
-> Source: [`routes/api/`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/routes/api)
+> Source: [`routes/api/`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/routes/api)
 
 The Hub exposes a versioned REST API at `/api`. Full interactive documentation is available at `/docs` (Swagger UI / OpenAPI 3).
 
@@ -198,7 +198,7 @@ All responses are JSON. TypeBox schemas enforce strict request and response vali
 ### Endpoints
 
 #### Orders
-> [`orders/index.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/routes/api/orders/index.ts)
+> [`orders/index.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/routes/api/orders/index.ts)
 
 **`GET /api/orders`** — Paginated order listing.
 
@@ -248,7 +248,7 @@ Response includes a `cursor` object (`{ createdAt, id }`) to pass as `created_af
 
 **`GET /api/orders/trx-hash/:hash`** — Fetch a single order by its origin transaction hash. Returns the order plus all collected oracle signatures.
 
-**`POST /api/orders/estimate`** — Estimate bridge fees before submitting a transfer. ([`fee-estimation/`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/plugins/app/fee-estimation))
+**`POST /api/orders/estimate`** — Estimate bridge fees before submitting a transfer. ([`fee-estimation/`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/plugins/app/fee-estimation))
 
 Body:
 ```json
@@ -260,7 +260,7 @@ Response:
 ```
 
 #### Health
-> [`health/index.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/routes/api/health/index.ts)
+> [`health/index.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/routes/api/health/index.ts)
 
 **`GET /api/health/bridge`** — Bridge pause status.
 ```json
@@ -277,7 +277,7 @@ Response:
 ```
 
 #### Keys
-> [`keys/index.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/src/routes/api/keys/index.ts)
+> [`keys/index.ts`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/src/routes/api/keys/index.ts)
 
 **`GET /api/keys`** — Hub public keys for verification tooling.
 ```json
@@ -298,10 +298,10 @@ The Hub API is a plain HTTP REST API — no SDK is required. Any HTTP client can
 ### 100% test coverage
 Both the Hub and Oracle enforce **100% line, branch, function, and statement coverage** via `c8`. The coverage gate is checked on every test run (`npm test`). Tests are written with the Node.js built-in `--test` runner, executed via `tsx`, and use in-memory SQLite so no external dependencies are required.
 
-- Hub tests: [`test/`](https://github.com/avicenne-studio/qs-bridge-hub/blob/main/test)
-- Oracle tests: [`test/`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/main/test)
+- Hub tests: [`test/`](https://github.com/avicenne-studio/qs-bridge-hub/blob/dev/test)
+- Oracle tests: [`test/`](https://github.com/avicenne-studio/qs-bridge-oracle/blob/dev/test)
 
-The frontend uses Vitest + Testing Library. ([`src/**/*.test.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/main/src))
+The frontend uses Vitest + Testing Library. ([`src/**/*.test.ts`](https://github.com/avicenne-studio/qs-bridge-frontend/blob/dev/src))
 
 ### Continuous Integration
 The CI pipeline runs on GitHub Actions and is **publicly visible**:
