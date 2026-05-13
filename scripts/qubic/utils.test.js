@@ -20,7 +20,7 @@ import {
 
 // ── contractAddressBytes ───────────────────────────────────────────────────
 
-test("contractAddressBytes: 32 bytes, index 27 at bytes [0..3] LE", () => {
+test("contractAddressBytes: 32 bytes, index 27 (explicit) at bytes [0..3] LE", () => {
   const addr = contractAddressBytes(27);
   assert.equal(addr.length, 32);
   assert.equal(addr[0], 27);
