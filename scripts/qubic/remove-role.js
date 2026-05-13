@@ -1,9 +1,9 @@
 /**
- * QSB AddRole — grants oracle or pauser role to an account.
+ * QSB RemoveRole — revokes oracle or pauser role from an account.
  * Must be called from the admin identity.
  *
  * Usage:
- *   node scripts/qubic/add-role.js <targetPublicId> --role oracle|pauser
+ *   node scripts/qubic/remove-role.js <targetPublicId> --role oracle|pauser
  *
  * Env:
  *   QUBIC_BOB_URL  Bob Node  (default: http://localhost:40420)
@@ -36,7 +36,7 @@ import {
   FUNC_GET_PAUSERS,
 } from "./utils.js";
 
-const PROC_ADD_ROLE = 12;
+const PROC_REMOVE_ROLE = 13;
 const ROLE_ORACLE = 1;
 const ROLE_PAUSER = 2;
 
@@ -45,7 +45,7 @@ const ROLE_PAUSER = 2;
 const args = process.argv.slice(2);
 const roleFlag = args.indexOf("--role");
 if (args.length < 1 || roleFlag === -1 || !args[roleFlag + 1]) {
-  console.error("Usage: node add-role.js <targetPublicId> --role oracle|pauser");
+  console.error("Usage: node remove-role.js <targetPublicId> --role oracle|pauser");
   process.exit(1);
 }
 
@@ -74,26 +74,26 @@ const bobUrl = resolveBobUrl();
 const { sKey: adminSeed } = await loadQubicKeys(keysPath);
 const { publicKey: adminPublicKey, publicId: adminPublicId } = await createQubicIdPackage(adminSeed);
 
-console.log(`\n=== QSB AddRole ===`);
+console.log(`\n=== QSB RemoveRole ===`);
 console.log(`  Admin  : ${adminPublicId}`);
 console.log(`  Target : ${targetPublicId}`);
 console.log(`  Role   : ${roleName}`);
 
-// ── pre-check: already registered? ───────────────────────────────────────────
+// ── pre-check: actually registered? ──────────────────────────────────────────
 
 const targetBytes = qubicIdToBytes(targetPublicId);
 const isBuf = await queryContractFunction(bobUrl, QSB_CONTRACT_INDEX, isFunc, targetBytes);
-const alreadyRegistered = isBuf.readUInt8(0) !== 0;
+const isRegistered = isBuf.readUInt8(0) !== 0;
 
-if (alreadyRegistered) {
-  console.log(`\n  Already registered as ${roleName} — no transaction sent.`);
+if (!isRegistered) {
+  console.log(`\n  Not registered as ${roleName} — no transaction sent.`);
   await printMembership(bobUrl, listFunc, listName);
   process.exit(0);
 }
 
-// ── send AddRole tx ───────────────────────────────────────────────────────────
+// ── send RemoveRole tx ────────────────────────────────────────────────────────
 
-// AddRole_input: id account (32 bytes) + uint8 role (1 byte) + padding[7]
+// RemoveRole_input: id account (32 bytes) + uint8 role (1 byte) + padding[7]
 const inputBytes = new Uint8Array(40);
 inputBytes.set(targetBytes, 0);
 inputBytes[32] = role;
@@ -111,7 +111,7 @@ const tx = new QubicTransaction()
   .setDestinationPublicKey(dest)
   .setAmount(new Long(0))
   .setTick(targetTick)
-  .setInputType(PROC_ADD_ROLE)
+  .setInputType(PROC_REMOVE_ROLE)
   .setInputSize(inputBytes.length)
   .setPayload(payload);
 
@@ -136,16 +136,16 @@ process.stdout.write("\n");
 // ── verify (poll until state is consistent) ───────────────────────────────────
 
 process.stdout.write("  Verifying");
-let confirmed = false;
+let stillRegistered = true;
 for (let i = 0; i < 10; i++) {
   await new Promise((r) => setTimeout(r, 1500));
   const verifyBuf = await queryContractFunction(bobUrl, QSB_CONTRACT_INDEX, isFunc, targetBytes);
-  confirmed = verifyBuf.readUInt8(0) !== 0;
-  if (confirmed) break;
+  stillRegistered = verifyBuf.readUInt8(0) !== 0;
+  if (!stillRegistered) break;
   process.stdout.write(".");
 }
 process.stdout.write("\n");
-console.log(`  is-${roleName}(target) : ${confirmed} ${confirmed ? "✓" : "✗ (tx may have failed)"}`);
+console.log(`  is-${roleName}(target) : ${stillRegistered} ${!stillRegistered ? "✓" : "✗ (tx may have failed)"}`);
 
 await printMembership(bobUrl, listFunc, listName);
 

@@ -42,6 +42,7 @@
     "qubic:get-filled-orders": "node scripts/qubic/get-filled-orders.js",
     "qubic:compute-order-hash": "node scripts/qubic/compute-order-hash.js",
     "qubic:add-role": "node scripts/qubic/add-role.js",
+    "qubic:remove-role": "node scripts/qubic/remove-role.js",
     "qubic:setup-contract": "node scripts/qubic/setup-contract.js",
     "qubic:test-utils": "node --test scripts/qubic/utils.test.js",
     "qubic:fake": "node scripts/qubic/fake/smart-contract.js",
