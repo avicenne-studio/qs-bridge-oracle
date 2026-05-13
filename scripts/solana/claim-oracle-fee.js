@@ -10,11 +10,11 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
 } from "@solana/kit";
-import { getClaimOracleFeeInstruction } from "../dist/clients/js/instructions/claimOracleFee.js";
-import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
-import { findOraclePda } from "../dist/clients/js/pdas/oracle.js";
-import { fetchGlobalState } from "../dist/clients/js/accounts/globalState.js";
-import { fetchOracle } from "../dist/clients/js/accounts/oracle.js";
+import { getClaimOracleFeeInstruction } from "../../dist/clients/js/instructions/claimOracleFee.js";
+import { findGlobalStatePda } from "../../dist/clients/js/pdas/globalState.js";
+import { findOraclePda } from "../../dist/clients/js/pdas/oracle.js";
+import { fetchGlobalState } from "../../dist/clients/js/accounts/globalState.js";
+import { fetchOracle } from "../../dist/clients/js/accounts/oracle.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
   TOKEN_PROGRAM_ADDRESS,
@@ -24,7 +24,7 @@ import {
   readKeypairBytes,
   resolveRpcUrl,
   resolveWsUrl,
-} from "./utils.js";
+} from "../shared/utils.js";
 
 const DEFAULT_ADMIN_KEYPAIR = "./.temp/solana-admin.json";
 

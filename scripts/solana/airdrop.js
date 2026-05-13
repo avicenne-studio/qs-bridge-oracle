@@ -7,7 +7,7 @@ import {
   createKeyPairSignerFromBytes,
   createSolanaRpc,
 } from "@solana/kit";
-import { resolveRpcUrl } from "./utils.js";
+import { resolveRpcUrl } from "../shared/utils.js";
 
 const DEFAULT_LAMPORTS = 1_000_000_000n;
 const DEFAULT_RETRIES = 5;

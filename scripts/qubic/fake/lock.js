@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { parseArgs } from "./utils.js";
+import { parseArgs } from "../../shared/utils.js";
 
 const DEFAULT_URL = "http://127.0.0.1:3015";
 const baseUrl = globalThis.process.env.FAKE_QUBIC_URL ?? DEFAULT_URL;
