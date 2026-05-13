@@ -18,8 +18,6 @@ import {
   encodeQsbOrderMessage,
 } from "./utils.js";
 
-// ── contractAddressBytes ───────────────────────────────────────────────────
-
 test("contractAddressBytes: 32 bytes, index 27 (explicit) at bytes [0..3] LE", () => {
   const addr = contractAddressBytes(27);
   assert.equal(addr.length, 32);

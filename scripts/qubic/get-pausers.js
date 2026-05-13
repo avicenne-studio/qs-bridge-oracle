@@ -8,7 +8,6 @@
  *   QUBIC_RPC_URL  Bob Node (default: http://localhost:40420)
  */
 
-import process from "node:process";
 import {
   QSB_CONTRACT_INDEX,
   resolveBobUrl,

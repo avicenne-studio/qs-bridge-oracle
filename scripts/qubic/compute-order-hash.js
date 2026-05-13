@@ -55,7 +55,7 @@ try {
   raw = JSON.parse(content);
 }
 
-function hexOrIdToBytes(value, fieldName) {
+function hexOrIdToBytes(value) {
   if (!value) return new Uint8Array(32);
   const s = String(value).trim();
   const hex = s.startsWith("0x") ? s.slice(2) : s;
@@ -83,8 +83,8 @@ function nonceToBytes32(nonce) {
 }
 
 const order = {
-  fromAddress: hexOrIdToBytes(raw.fromAddress, "fromAddress"),
-  toAddress: hexOrIdToBytes(raw.toAddress, "toAddress"),
+  fromAddress: hexOrIdToBytes(raw.fromAddress),
+  toAddress: hexOrIdToBytes(raw.toAddress),
   tokenIn: hexToBytes32(raw.tokenIn),
   tokenOut: hexToBytes32(raw.tokenOut),
   amount: BigInt(raw.amount ?? 0),
