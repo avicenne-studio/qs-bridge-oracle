@@ -29,6 +29,9 @@
     "solana:override-outbound-order": "node scripts/solana/override-outbound-order.js",
     "solana:create-lookup-table": "node --env-file=.env.local scripts/solana/create-lookup-table.js",
     "qubic:generate-keys": "node scripts/qubic/generate-keys.js",
+    "qubic:send-lock": "node scripts/qubic/send-lock.js",
+    "qubic:send-lock-via-indexer": "node scripts/qubic/send-lock-via-indexer.js",
+    "qubic:test-utils": "node --test scripts/qubic/utils.test.js",
     "qubic:fake": "node scripts/qubic/fake/smart-contract.js",
     "qubic:fake-lock": "node scripts/qubic/fake/lock.js",
     "qubic:fake-override-lock": "node scripts/qubic/fake/override-lock.js"
