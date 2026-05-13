@@ -7,7 +7,7 @@ This is the shortest path to add oracles and submit an inbound order on devnet u
 ```bash
 # mkdir -p .temp
 # for i in 1 2 3 4 5 6; do
-#   OUT=.temp/oracle-${i}.json node scripts/generate-solana-keypair.js > .temp/oracle-${i}.keys.json
+#   OUT=.temp/oracle-${i}.json node scripts/solana/generate-keypair.js > .temp/oracle-${i}.keys.json
 #   echo "oracle-${i} generated"
 # done
 ```
@@ -18,7 +18,7 @@ Each oracle needs a Qubic identity (55-char seed, publicId) for future Qubic sig
 
 ```bash
 # for i in 1 2 3 4 5 6; do
-#   OUT=.temp/oracle-${i}.qubic.json node scripts/generate-qubic-keys.js > .temp/oracle-${i}.qubic.keys.json
+#   OUT=.temp/oracle-${i}.qubic.json node scripts/qubic/generate-keys.js > .temp/oracle-${i}.qubic.keys.json
 #   echo "oracle-${i} qubic keys generated"
 # done
 ```
@@ -43,7 +43,7 @@ Each oracle needs a Qubic identity (55-char seed, publicId) for future Qubic sig
 ```bash
 # for i in 1 2 3 4 5 6; do
 #   PUB=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.temp/oracle-${i}.keys.json','utf8')).pKey)")
-#   npm run add-oracle -- "$PUB"
+#   npm run solana:add-oracle -- "$PUB"
 # done
 ```
 
@@ -52,7 +52,7 @@ Each oracle needs a Qubic identity (55-char seed, publicId) for future Qubic sig
 The inbound relay transaction exceeds the legacy 1232-byte limit. An Address Lookup Table (ALT) compresses account addresses into 1-byte indices. The script reads `SOLANA_RPC_URL` and `TOKEN_MINT` from `.env.local`, detects registered oracles on-chain automatically, and creates + extends the LUT in a single transaction.
 
 ```bash
-npm run create-lookup-table
+npm run solana:create-lookup-table
 ```
 
 Copy the printed address into `.env.local`:
@@ -91,13 +91,13 @@ NODE
 ## 6) Send an inbound order
 
 ```bash
-npm run send-inbound-order -- .temp/order.json .temp/oracle-keys.json .temp/oracle-1.json
+npm run solana:send-inbound-order -- .temp/order.json .temp/oracle-keys.json .temp/oracle-1.json
 ```
 
 Notes:
 
 - With 6 oracles on-chain, the script signs with 60% (4) by default.
-- You can override the signature count: `SIGNATURE_COUNT=4 npm run send-inbound-order -- ...`
+- You can override the signature count: `SIGNATURE_COUNT=4 npm run solana:send-inbound-order -- ...`
 - The script will create missing recipient/relayer ATAs automatically.
 
 ## 7) Send an outbound order (unlock/burn)
@@ -124,18 +124,20 @@ NODE
 Then send (user signs with the key that received tokens):
 
 ```bash
-npm run send-outbound-order -- .temp/outbound-order.json .temp/recipient.json
+npm run solana:send-outbound-order -- .temp/outbound-order.json .temp/recipient.json
 ```
 
 Override an existing outbound order (update relayer fee and/or destination):
 
 ```bash
-npm run override-outbound-order -- .temp/outbound-order.json .temp/recipient.json \
+npm run solana:override-outbound-order -- .temp/outbound-order.json .temp/recipient.json \
   --relayer-fee 2000 \
   --to-address 0x5555444444444444444444444444444444444444444444444444444444444444
 ```
 
-## 8) Fake Qubic smart contract (local simulation)
+## 8) Fake Qubic smart contract (local simulation) ⚠️ temporary
+
+> **This section is temporary.** The fake server and its helper scripts (`scripts/qubic/fake/`) will be removed once real Qubic local contract testing is in place.
 
 The fake Qubic contract runs a local Fastify server with:
 
@@ -150,19 +152,19 @@ Start it:
 
 ```bash
 # default: http://127.0.0.1:3015
-npm run fake-qubic
+npm run qubic:fake
 ```
 
 Optional overrides:
 
 ```bash
-FAKE_QUBIC_HOST=0.0.0.0 FAKE_QUBIC_PORT=3015 npm run fake-qubic
+FAKE_QUBIC_HOST=0.0.0.0 FAKE_QUBIC_PORT=3015 npm run qubic:fake
 ```
 
 ### Lock (Qubic -> Solana)
 
 ```bash
-npm run lock -- \
+npm run qubic:fake-lock -- \
   --from "ABCDEFGHIJKLMNOPQRSTUVWXABCDEFGHIJKLMNOPQRSTUVWX" \
   --to "<SOLANA_RECIPIENT_ADDRESS>" \
   --amount 1000000 \
@@ -172,7 +174,7 @@ npm run lock -- \
 ### Override lock
 
 ```bash
-npm run override-lock -- \
+npm run qubic:fake-override-lock -- \
   --to "0xdef" \
   --relayerFee 500 \
   --nonce 42
@@ -181,14 +183,14 @@ npm run override-lock -- \
 Point the scripts to a non-default server:
 
 ```bash
-FAKE_QUBIC_URL=http://127.0.0.1:3015 npm run lock -- --from "id(1,2,3,4)" --to "0xabc" --amount 1000 --relayerFee 10 --nonce 1
-FAKE_QUBIC_URL=http://127.0.0.1:3015 npm run override-lock -- --to "0xdef" --relayerFee 5 --nonce 1
+FAKE_QUBIC_URL=http://127.0.0.1:3015 npm run qubic:fake-lock -- --from "id(1,2,3,4)" --to "0xabc" --amount 1000 --relayerFee 10 --nonce 1
+FAKE_QUBIC_URL=http://127.0.0.1:3015 npm run qubic:fake-override-lock -- --to "0xdef" --relayerFee 5 --nonce 1
 ```
 
 ## 9) Claim protocol fee (protocol fee recipient only)
 
 ```bash
-npm run claim-protocol-fee -- .temp/protocol-fee-recipient.json
+npm run solana:claim-protocol-fee -- .temp/protocol-fee-recipient.json
 ```
 
 Note: this claims **protocol fee**, not oracle claimable balances.
@@ -219,17 +221,17 @@ export SOLANA_WS_URL=wss://api.devnet.solana.com
 The relayer and recipient addresses must exist (have a system account) before ATAs can be created. You can airdrop SOL to either an address or a keypair JSON:
 
 ```bash
-npm run airdrop-solana -- .temp/oracle-1.json
-npm run airdrop-solana -- .temp/recipient.json
+npm run solana:airdrop -- .temp/oracle-1.json
+npm run solana:airdrop -- .temp/recipient.json
 ```
 
 Default amount is 1 SOL (1_000_000_000 lamports). Override by passing lamports:
 
 ```bash
-npm run airdrop-solana -- .temp/recipient.json 10000000
+npm run solana:airdrop -- .temp/recipient.json 10000000
 ```
 
 ## Notes
 
-- `scripts/send-inbound-order.js` uses the token mint from global state, so `order.json` stays minimal.
+- `scripts/solana/send-inbound-order.js` uses the token mint from global state, so `order.json` stays minimal.
 - Ensure the relayer key has devnet SOL for fees.

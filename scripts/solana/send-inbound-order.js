@@ -19,12 +19,12 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
 } from "@solana/kit";
-import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
-import { findOraclePda } from "../dist/clients/js/pdas/oracle.js";
-import { findInboundOrderPda } from "../dist/clients/js/pdas/inboundOrder.js";
-import { getInboundInstruction } from "../dist/clients/js/instructions/inbound.js";
-import { QS_BRIDGE_PROGRAM_ADDRESS } from "../dist/clients/js/programs/qsBridge.js";
-import { fetchGlobalState } from "../dist/clients/js/accounts/globalState.js";
+import { findGlobalStatePda } from "../../dist/clients/js/pdas/globalState.js";
+import { findOraclePda } from "../../dist/clients/js/pdas/oracle.js";
+import { findInboundOrderPda } from "../../dist/clients/js/pdas/inboundOrder.js";
+import { getInboundInstruction } from "../../dist/clients/js/instructions/inbound.js";
+import { QS_BRIDGE_PROGRAM_ADDRESS } from "../../dist/clients/js/programs/qsBridge.js";
+import { fetchGlobalState } from "../../dist/clients/js/accounts/globalState.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
   RENT_SYSVAR_ADDRESS,
@@ -38,7 +38,7 @@ import {
   readJson,
   resolveRpcUrl,
   resolveWsUrl,
-} from "./utils.js";
+} from "../shared/utils.js";
 
 const ORACLE_THRESHOLD_PERCENT = 60;
 const DEFAULT_PROTOCOL_NAME = "QubicBridge";

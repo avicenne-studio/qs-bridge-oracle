@@ -9,9 +9,9 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
 } from "@solana/kit";
-import { getClaimProtocolFeeInstruction } from "../dist/clients/js/instructions/claimProtocolFee.js";
-import { findGlobalStatePda } from "../dist/clients/js/pdas/globalState.js";
-import { fetchGlobalState } from "../dist/clients/js/accounts/globalState.js";
+import { getClaimProtocolFeeInstruction } from "../../dist/clients/js/instructions/claimProtocolFee.js";
+import { findGlobalStatePda } from "../../dist/clients/js/pdas/globalState.js";
+import { fetchGlobalState } from "../../dist/clients/js/accounts/globalState.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
   TOKEN_PROGRAM_ADDRESS,
@@ -21,7 +21,7 @@ import {
   readKeypairBytes,
   resolveRpcUrl,
   resolveWsUrl,
-} from "./utils.js";
+} from "../shared/utils.js";
 
 async function main() {
   const protocolFeeRecipientKeyPath = process.argv[2];
