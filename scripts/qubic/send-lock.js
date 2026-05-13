@@ -17,7 +17,6 @@
  *   QUBIC_KEYS               path to { sKey, pKey? } JSON
  */
 
-import { Buffer } from "node:buffer";
 import { randomInt } from "node:crypto";
 import process from "node:process";
 import { QubicTransaction } from "@qubic-lib/qubic-ts-library/dist/qubic-types/QubicTransaction.js";
