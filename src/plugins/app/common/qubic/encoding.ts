@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 
 export const QUBIC_TOKEN_ADDRESS = new Uint8Array(32);
 
-export const QSB_CONTRACT_INDEX = 27;
+export const QSB_CONTRACT_INDEX = 28;
 export const QUBIC_CONTRACT_ADDRESS_BYTES = (() => {
   const addr = new Uint8Array(32);
   addr[0] = QSB_CONTRACT_INDEX & 0xff;
