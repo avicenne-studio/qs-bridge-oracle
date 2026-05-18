@@ -1,81 +1,158 @@
 /**
- * QSB Lock — sends a Lock transaction to the QubicSolanaBridge contract
- * via the Core Lite node, then polls Bob Node for event confirmation.
+ * QSB Lock — submit a Lock transaction to QubicSolanaBridge.
+ * Validates inputs, checks balance and duplicate nonce, broadcasts,
+ * waits for the target tick, then retrieves and prints the order hash.
  *
  * Usage:
- *   node scripts/qubic/send-lock.js [amount] [relayerFee] [toAddress] [seed]
+ *   node scripts/qubic/send-lock.js --amount <N> --to-address <addr> [options]
  *
- * Defaults:
- *   amount     = 100000
- *   relayerFee = 1000
- *   toAddress  = 8axvTLqKVh7yqFr63Eo5g6ERzBbnGYEU2t4PKcGyYXSu
- *   seed       = (reads from QUBIC_KEYS file if set)
+ * Required:
+ *   --amount <N>          Amount to lock in QU
+ *   --to-address <addr>   Destination Solana address (max 64 chars)
+ *
+ * Options:
+ *   --relayer-fee <N>     Relayer fee in QU; must be < amount (default: 0)
+ *   --network-out <N>     Destination network ID (default: 2 = Solana)
+ *   --nonce <N>           uint32 nonce; must be unused (default: random)
+ *   --dry-run             Print intent without broadcasting
  *
  * Env:
  *   QUBIC_BROADCAST_RPC_URL  Core Lite node  (default: http://localhost:41841)
  *   QUBIC_RPC_URL            Bob Node        (default: http://localhost:40420)
- *   QUBIC_KEYS               path to { sKey, pKey? } JSON
+ *   QUBIC_KEYS               path to { sKey } JSON (sender)
  */
 
 import { randomInt } from "node:crypto";
+import { Buffer } from "node:buffer";
 import process from "node:process";
+import { parseArgs } from "../shared/utils.js";
 import {
   QSB_CONTRACT_INDEX,
   SOLANA_NETWORK_ID,
   LOCK_INPUT_TYPE,
   resolveNodeRpcUrl,
   resolveBobUrl,
-  resolveQubicKeysPath,
+  requireQubicKeys,
   encodeLockInput,
-  loadQubicKeys,
-  createQubicIdPackage,
-  getCurrentTick,
-  getBalance,
   buildAndBroadcastTx,
+  waitForTick,
+  pollUntil,
+  getBalance,
+  queryContractFunction,
+  encodeGetLockedOrderInput,
+  decodeGetLockedOrderOutput,
+  FUNC_GET_LOCKED_ORDER,
 } from "./utils.js";
 
-const args = process.argv.slice(2);
-const amount = parseInt(args[0] ?? "100000");
-const relayerFee = parseInt(args[1] ?? "1000");
-const toAddress = args[2] ?? "8axvTLqKVh7yqFr63Eo5g6ERzBbnGYEU2t4PKcGyYXSu";
-const nonce = randomInt(0, 0xffffffff);
+// ── arg parsing ───────────────────────────────────────────────────────────────
+
+const parsed = parseArgs(process.argv, { startIndex: 2 });
+const isDryRun = parsed.dryRun === true;
+const amountArg = parsed.amount ?? null;
+const relayerFeeArg = parsed.relayerFee ?? "0";
+const toAddressArg = parsed.toAddress ?? null;
+const networkOutArg = parsed.networkOut ?? String(SOLANA_NETWORK_ID);
+const nonceArg = parsed.nonce ?? null;
+
+if (!amountArg) {
+  console.error("--amount is required.\nUsage: node send-lock.js --amount <N> --to-address <addr>");
+  process.exit(1);
+}
+if (!toAddressArg) {
+  console.error("--to-address is required.\nUsage: node send-lock.js --amount <N> --to-address <addr>");
+  process.exit(1);
+}
+
+const amount = parseInt(amountArg, 10);
+if (!Number.isInteger(amount) || amount <= 0) {
+  console.error(`Invalid --amount: "${amountArg}". Must be a positive integer.`);
+  process.exit(1);
+}
+
+const relayerFee = parseInt(relayerFeeArg, 10);
+if (!Number.isInteger(relayerFee) || relayerFee < 0) {
+  console.error(`Invalid --relayer-fee: "${relayerFeeArg}". Must be a non-negative integer.`);
+  process.exit(1);
+}
+if (relayerFee >= amount) {
+  console.error(`Invalid --relayer-fee: ${relayerFee} must be strictly less than --amount ${amount}.`);
+  process.exit(1);
+}
+
+const networkOut = parseInt(networkOutArg, 10);
+if (!Number.isInteger(networkOut) || networkOut < 1) {
+  console.error(`Invalid --network-out: "${networkOutArg}". Must be a positive integer.`);
+  process.exit(1);
+}
+
+const toAddress = toAddressArg.trim();
+if (toAddress.length === 0 || toAddress.length > 64) {
+  console.error(`Invalid --to-address: must be 1..64 characters.`);
+  process.exit(1);
+}
+
+let nonce;
+if (nonceArg !== null) {
+  nonce = parseInt(nonceArg, 10);
+  if (!Number.isInteger(nonce) || nonce < 0 || nonce > 0xffffffff) {
+    console.error(`Invalid --nonce: "${nonceArg}". Must be a uint32 (0..4294967295).`);
+    process.exit(1);
+  }
+} else {
+  nonce = randomInt(0, 0xffffffff);
+}
 
 const nodeRpcUrl = resolveNodeRpcUrl();
 const bobUrl = resolveBobUrl();
 
-// Resolve seed: CLI arg > QUBIC_KEYS file > empty (generate-keys first)
-let seed = args[3] ?? "";
-const keysPath = resolveQubicKeysPath();
-if (!seed && keysPath) {
-  const keys = await loadQubicKeys(keysPath);
-  seed = keys.sKey;
-}
+// ── setup ─────────────────────────────────────────────────────────────────────
 
-const { publicKey, publicId } = await createQubicIdPackage(seed);
+const { seed, publicKey, publicId } =
+  await requireQubicKeys("QUBIC_KEYS env var must point to the sender keys file.");
 
-console.log(`\n=== QSB Lock (local testnet) ===`);
-console.log(`  Node RPC    : ${nodeRpcUrl}`);
+console.log(`\n=== QSB Lock ===`);
+console.log(`  Caller      : ${publicId}`);
 console.log(`  Bob Node    : ${bobUrl}`);
-console.log(`  Contract    : ${QSB_CONTRACT_INDEX}`);
 console.log(`  Amount      : ${amount} QU`);
 console.log(`  Relayer fee : ${relayerFee} QU`);
 console.log(`  To (Solana) : ${toAddress}`);
+console.log(`  networkOut  : ${networkOut}`);
 console.log(`  Nonce       : ${nonce}`);
-console.log(`\n  Sender      : ${publicId}`);
+if (isDryRun) console.log(`  Mode        : DRY RUN`);
+
+// ── pre-check: balance ────────────────────────────────────────────────────────
 
 const balance = await getBalance(nodeRpcUrl, publicId);
-console.log(`  Balance     : ${balance ?? "unknown"} QU`);
+console.log(`\n  Balance (current) : ${balance ?? "unknown"} QU`);
 
-if (balance !== null && Number(balance) < amount) {
-  console.error(`\nInsufficient balance: ${balance} < ${amount}`);
+if (balance !== null && BigInt(balance) < BigInt(amount)) {
+  console.error(`\n  Insufficient balance: ${balance} < ${amount}`);
   process.exit(1);
 }
 
-const inputBytes = encodeLockInput(amount, relayerFee, toAddress, SOLANA_NETWORK_ID, nonce);
+// ── pre-check: duplicate nonce ────────────────────────────────────────────────
 
-const { txId, targetTick, result } = await buildAndBroadcastTx({
-  publicKey,
+const existingBuf = await queryContractFunction(
+  bobUrl, QSB_CONTRACT_INDEX, FUNC_GET_LOCKED_ORDER, encodeGetLockedOrderInput(nonce),
+);
+const { exists: alreadyExists } = decodeGetLockedOrderOutput(existingBuf);
+if (alreadyExists) {
+  console.error(`\n  Nonce ${nonce} already has a locked order — use a different nonce.`);
+  process.exit(1);
+}
+
+if (isDryRun) {
+  console.log(`\nWould send Lock tx (input type ${LOCK_INPUT_TYPE}, amount=${amount}, nonce=${nonce}).`);
+  process.exit(0);
+}
+
+// ── send Lock tx ──────────────────────────────────────────────────────────────
+
+const inputBytes = encodeLockInput(amount, relayerFee, toAddress, networkOut, nonce);
+
+const { targetTick } = await buildAndBroadcastTx({
   seed,
+  publicKey,
   inputType: LOCK_INPUT_TYPE,
   inputBytes,
   amount,
@@ -83,20 +160,24 @@ const { txId, targetTick, result } = await buildAndBroadcastTx({
   bobUrl,
 });
 
-console.log(`  Broadcast   :`, JSON.stringify(result));
+// ── wait for tick ─────────────────────────────────────────────────────────────
 
-// Poll for tick confirmation
-console.log(`\nWaiting for confirmation...`);
-const deadline = Date.now() + 90_000;
-while (Date.now() < deadline) {
-  await new Promise((r) => setTimeout(r, 3000));
-  const currentTick = await getCurrentTick(nodeRpcUrl);
-  if (currentTick >= targetTick) {
-    console.log(`\nTick ${currentTick} reached (target was ${targetTick}).`);
-    console.log(`Check tx status: curl ${bobUrl}/tx/${txId.toLowerCase()}`);
-    break;
+await waitForTick(nodeRpcUrl, targetTick);
+
+// ── verify ────────────────────────────────────────────────────────────────────
+
+let orderHash = null;
+await pollUntil(async () => {
+  const buf = await queryContractFunction(
+    bobUrl, QSB_CONTRACT_INDEX, FUNC_GET_LOCKED_ORDER, encodeGetLockedOrderInput(nonce),
+  );
+  const { exists, order } = decodeGetLockedOrderOutput(buf);
+  if (exists) {
+    orderHash = Buffer.from(order.orderHash).toString("hex");
+    return true;
   }
-  process.stdout.write(`\r  Waiting... (tick ${currentTick}/${targetTick})  `);
-}
+  return false;
+});
 
-console.log("\nDone.");
+console.log(`\n  Nonce      : ${nonce}`);
+console.log(`  Order hash : ${orderHash ?? "(not found)"} ${orderHash ? "✓" : "✗ (tx may have failed — check balance, paused state, or nonce collision)"}`);
