@@ -45,6 +45,8 @@
     "qubic:remove-role": "node scripts/qubic/remove-role.js",
     "qubic:pause": "node scripts/qubic/pause.js",
     "qubic:unpause": "node scripts/qubic/unpause.js",
+    "qubic:edit-oracle-threshold": "node scripts/qubic/edit-oracle-threshold.js",
+    "qubic:edit-fee-parameters": "node scripts/qubic/edit-fee-parameters.js",
     "qubic:setup-contract": "node scripts/qubic/setup-contract.js",
     "qubic:test-utils": "node --test scripts/qubic/utils.test.js",
     "qubic:fake": "node scripts/qubic/fake/smart-contract.js",
