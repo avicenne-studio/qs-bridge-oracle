@@ -112,29 +112,37 @@ export function encodeOrderStruct(order) {
 }
 
 /**
- * Serializes QSBOrderMessage (245 bytes) — the K12 hash pre-image for
- * oracle signatures. Matches QSBOrderMessage struct in
- * core-lite/src/contracts/QubicSolanaBridge.h.
+ * Serializes QSBOrderMessage (256 bytes) — the K12 hash pre-image for
+ * oracle signatures. Matches sizeof(QSBOrderMessage) in
+ * core-lite/src/contracts/QubicSolanaBridge.h with natural C++ alignment.
  *
- * Layout (packed, little-endian):
+ * The C++ compiler inserts 3 bytes of padding after contractAddress (to
+ * align uint32 networkIn to 4 bytes) and 4 bytes after toAddress (to align
+ * uint64 amount to 8 bytes), plus 4 bytes of trailing struct padding, making
+ * the actual sizeof 256 instead of the "logical" 245.
+ *
+ * Layout (natural alignment, little-endian):
  *   [0..3]     uint32    protocolNameLen    (= 11)
  *   [4..19]    uint8[16] protocolName       ("QubicBridge" + 5 zero bytes)
  *   [20..23]   uint32    protocolVersionLen (= 1)
  *   [24]       uint8     protocolVersion    (= 49, ASCII '1')
  *   [25..56]   uint8[32] contractAddress
- *   [57..60]   uint32    networkIn
- *   [61..64]   uint32    networkOut
- *   [65..96]   uint8[32] tokenIn
- *   [97..128]  uint8[32] tokenOut
- *   [129..160] uint8[32] fromAddress
- *   [161..192] uint8[32] toAddress
- *   [193..200] uint64    amount
- *   [201..208] uint64    relayerFee
- *   [209..240] uint8[32] nonce
- *   [241..244] uint32    orderEra
+ *   [57..59]   ---       3 bytes padding (align uint32 to 4)
+ *   [60..63]   uint32    networkIn
+ *   [64..67]   uint32    networkOut
+ *   [68..99]   uint8[32] tokenIn
+ *   [100..131] uint8[32] tokenOut
+ *   [132..163] uint8[32] fromAddress
+ *   [164..195] uint8[32] toAddress
+ *   [196..199] ---       4 bytes padding (align uint64 to 8)
+ *   [200..207] uint64    amount
+ *   [208..215] uint64    relayerFee
+ *   [216..247] uint8[32] nonce
+ *   [248..251] uint32    orderEra
+ *   [252..255] ---       4 bytes trailing padding
  */
 export function encodeQsbOrderMessage(msg) {
-  const buf = new ArrayBuffer(245);
+  const buf = new ArrayBuffer(256);
   const view = new DataView(buf);
   const bytes = new Uint8Array(buf);
   const nameBytes = new TextEncoder().encode(msg.protocolName);
@@ -144,16 +152,19 @@ export function encodeQsbOrderMessage(msg) {
   view.setUint32(off, 1, true); off += 4;
   bytes[off] = msg.protocolVersion.charCodeAt(0); off += 1;
   bytes.set(msg.contractAddress, off); off += 32;
+  off += 3; // padding: align uint32 networkIn to 4 bytes
   view.setUint32(off, msg.networkIn, true); off += 4;
   view.setUint32(off, msg.networkOut, true); off += 4;
   bytes.set(msg.tokenIn, off); off += 32;
   bytes.set(msg.tokenOut, off); off += 32;
   bytes.set(msg.fromAddress, off); off += 32;
   bytes.set(msg.toAddress, off); off += 32;
+  off += 4; // padding: align uint64 amount to 8 bytes
   view.setBigUint64(off, BigInt(msg.amount), true); off += 8;
   view.setBigUint64(off, BigInt(msg.relayerFee), true); off += 8;
   bytes.set(msg.nonce, off); off += 32;
   view.setUint32(off, msg.orderEra, true);
+  // [252..255] trailing padding (zeros, already zeroed by ArrayBuffer)
   return bytes;
 }
 
@@ -487,4 +498,127 @@ export async function pollUntil(check, { maxRetries = 10, interval = 1500 } = {}
   }
   process.stdout.write("\n");
   return result;
+}
+
+// ── Oracle signing helpers ─────────────────────────────────────────────────
+
+/**
+ * Lazy-load the Qubic WASM crypto module (SchnorrQ + K12).
+ * Cached after first call; the dynamic import is module-level cached by Node.
+ */
+let _qubicCryptoCache = null;
+async function getQubicCrypto() {
+  if (!_qubicCryptoCache) {
+    const mod = await import("@qubic-lib/qubic-ts-library/dist/index.js");
+    _qubicCryptoCache = await mod.default.default.crypto;
+  }
+  return _qubicCryptoCache;
+}
+
+/**
+ * Compute the canonical QSB order hash off-chain.
+ *
+ * Pre-image: 245-byte QSBOrderMessage → K12 → 32-byte digest (= OrderHash).
+ * Result matches on-chain FUNC_COMPUTE_ORDER_HASH.
+ *
+ * @param {object} order  Same shape as encodeOrderStruct input.
+ * @returns {Promise<Uint8Array>} 32-byte order hash.
+ */
+export async function computeQsbOrderHashOffchain(order) {
+  const msgBytes = encodeQsbOrderMessage({
+    protocolName: PROTOCOL_NAME,
+    protocolVersion: PROTOCOL_VERSION,
+    contractAddress: contractAddressBytes(),
+    networkIn: order.networkIn,
+    networkOut: order.networkOut,
+    tokenIn: order.tokenIn,
+    tokenOut: order.tokenOut,
+    fromAddress: order.fromAddress,
+    toAddress: order.toAddress,
+    amount: BigInt(order.amount),
+    relayerFee: BigInt(order.relayerFee),
+    nonce: order.nonce,
+    orderEra: order.orderEra,
+  });
+  const { K12 } = await getQubicCrypto();
+  const digest = new Uint8Array(32);
+  K12(msgBytes, digest, 32);
+  return digest;
+}
+
+/**
+ * Sign a QSB Order with a single oracle key (SchnorrQ over K12 digest).
+ *
+ * Flow: K12(QSBOrderMessage, 32) → digest → schnorrq.sign(sk, pk, digest)
+ * Matches qpi.signatureValidity(signer, digest, signature) in the contract.
+ *
+ * @param {object} order  Same shape as encodeOrderStruct input.
+ * @param {string} sKey   55-char Qubic seed (oracle's private seed).
+ * @returns {Promise<{signerPublicKey: Uint8Array, signature: Uint8Array}>}
+ */
+export async function signQsbOrder(order, sKey) {
+  const msgBytes = encodeQsbOrderMessage({
+    protocolName: PROTOCOL_NAME,
+    protocolVersion: PROTOCOL_VERSION,
+    contractAddress: contractAddressBytes(),
+    networkIn: order.networkIn,
+    networkOut: order.networkOut,
+    tokenIn: order.tokenIn,
+    tokenOut: order.tokenOut,
+    fromAddress: order.fromAddress,
+    toAddress: order.toAddress,
+    amount: BigInt(order.amount),
+    relayerFee: BigInt(order.relayerFee),
+    nonce: order.nonce,
+    orderEra: order.orderEra,
+  });
+  const helper = new QubicHelper();
+  const { privateKey, publicKey } = await helper.createIdPackage(sKey);
+  const { schnorrq, K12 } = await getQubicCrypto();
+  const digest = new Uint8Array(32);
+  K12(msgBytes, digest, 32);
+  const signature = schnorrq.sign(privateKey, publicKey, digest);
+  return {
+    signerPublicKey: new Uint8Array(publicKey),
+    signature: new Uint8Array(signature),
+  };
+}
+
+/**
+ * Encode Unlock_input matching sizeof(Unlock_input) C++ layout (natural alignment).
+ *
+ * sizeof(Order) = 192 (188 bytes data + 4 bytes trailing padding for id align-8).
+ * numSignatures (uint32) sits at offset 192.
+ * 4 bytes of padding follow to align Array<SignatureData,64> to 8 bytes.
+ * SignatureData entries (id:32 + sig:64 = 96 bytes each) start at offset 200.
+ *
+ * Layout:
+ *   [0..187]   Order struct data (encodeOrderStruct)
+ *   [188..191] 4 bytes trailing padding (zeros)
+ *   [192..195] uint32 numSignatures LE
+ *   [196..199] 4 bytes padding (zeros, align Array<SignatureData,64> to 8)
+ *   [200..]    SignatureData entries: id(32) + sig(64) each
+ *
+ * @param {object}   order       Same shape as encodeOrderStruct input.
+ * @param {Array<{signerPublicKey: Uint8Array, signature: Uint8Array}>} signatures
+ * @returns {Uint8Array}
+ */
+export function encodeUnlockInput(order, signatures) {
+  const SIG_ENTRY_SIZE = 96;
+  const SIG_START = 200;
+  const buf = new ArrayBuffer(SIG_START + signatures.length * SIG_ENTRY_SIZE);
+  const view = new DataView(buf);
+  const bytes = new Uint8Array(buf);
+  bytes.set(encodeOrderStruct(order), 0);
+  // [188..191] trailing padding of Order — already zero from ArrayBuffer
+  view.setUint32(192, signatures.length, true);
+  // [196..199] padding — already zero
+  let offset = SIG_START;
+  for (const sig of signatures) {
+    bytes.set(sig.signerPublicKey, offset);
+    offset += 32;
+    bytes.set(sig.signature, offset);
+    offset += 64;
+  }
+  return bytes;
 }

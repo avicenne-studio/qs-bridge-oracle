@@ -16,6 +16,9 @@ import {
   encodeLockInput,
   encodeOrderStruct,
   encodeQsbOrderMessage,
+  computeQsbOrderHashOffchain,
+  signQsbOrder,
+  encodeUnlockInput,
 } from "./utils.js";
 
 test("contractAddressBytes: 32 bytes, index 27 (explicit) at bytes [0..3] LE", () => {
@@ -147,8 +150,8 @@ const QSB_MSG = {
   orderEra: 2,
 };
 
-test("encodeQsbOrderMessage: exactly 245 bytes (QSBOrderMessage struct size)", () => {
-  assert.equal(encodeQsbOrderMessage(QSB_MSG).length, 245);
+test("encodeQsbOrderMessage: exactly 256 bytes (QSBOrderMessage sizeof with C++ alignment padding)", () => {
+  assert.equal(encodeQsbOrderMessage(QSB_MSG).length, 256);
 });
 
 test("encodeQsbOrderMessage: protocolNameLen = 11 at [0..3] LE", () => {
@@ -179,25 +182,114 @@ test("encodeQsbOrderMessage: contractAddress at [25..56]", () => {
   assert.deepEqual(bytes.slice(25, 57), QSB_MSG.contractAddress);
 });
 
-test("encodeQsbOrderMessage: networkIn at [57..60], networkOut at [61..64]", () => {
+test("encodeQsbOrderMessage: networkIn at [60..63], networkOut at [64..67] (after 3-byte padding)", () => {
   const bytes = encodeQsbOrderMessage(QSB_MSG);
   const view = new DataView(bytes.buffer);
-  assert.equal(view.getUint32(57, true), QSB_MSG.networkIn);
-  assert.equal(view.getUint32(61, true), QSB_MSG.networkOut);
+  assert.equal(view.getUint32(60, true), QSB_MSG.networkIn);
+  assert.equal(view.getUint32(64, true), QSB_MSG.networkOut);
 });
 
-test("encodeQsbOrderMessage: amount at [193..200] LE", () => {
+test("encodeQsbOrderMessage: amount at [200..207] LE (after 4-byte padding)", () => {
   const bytes = encodeQsbOrderMessage(QSB_MSG);
   const view = new DataView(bytes.buffer);
-  assert.equal(view.getBigUint64(193, true), QSB_MSG.amount);
+  assert.equal(view.getBigUint64(200, true), QSB_MSG.amount);
 });
 
-test("encodeQsbOrderMessage: orderEra at [241..244]", () => {
+test("encodeQsbOrderMessage: orderEra at [248..251]", () => {
   const bytes = encodeQsbOrderMessage(QSB_MSG);
   const view = new DataView(bytes.buffer);
-  assert.equal(view.getUint32(241, true), QSB_MSG.orderEra);
+  assert.equal(view.getUint32(248, true), QSB_MSG.orderEra);
 });
 
 test("encodeQsbOrderMessage: deterministic — two calls produce identical bytes", () => {
   assert.deepEqual(encodeQsbOrderMessage(QSB_MSG), encodeQsbOrderMessage(QSB_MSG));
+});
+
+// ── computeQsbOrderHashOffchain ────────────────────────────────────────────
+
+test("computeQsbOrderHashOffchain: returns 32-byte Uint8Array", async () => {
+  const hash = await computeQsbOrderHashOffchain(ORDER);
+  assert.ok(hash instanceof Uint8Array);
+  assert.equal(hash.length, 32);
+});
+
+test("computeQsbOrderHashOffchain: deterministic — two calls produce identical hash", async () => {
+  const h1 = await computeQsbOrderHashOffchain(ORDER);
+  const h2 = await computeQsbOrderHashOffchain(ORDER);
+  assert.deepEqual(h1, h2);
+});
+
+test("computeQsbOrderHashOffchain: different order produces different hash", async () => {
+  const other = { ...ORDER, amount: ORDER.amount + 1n };
+  const h1 = await computeQsbOrderHashOffchain(ORDER);
+  const h2 = await computeQsbOrderHashOffchain(other);
+  assert.notDeepEqual(h1, h2);
+});
+
+// ── signQsbOrder ──────────────────────────────────────────────────────────
+
+const TEST_SEED = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+test("signQsbOrder: returns signerPublicKey (32 bytes) and signature (64 bytes)", async () => {
+  const result = await signQsbOrder(ORDER, TEST_SEED);
+  assert.ok(result.signerPublicKey instanceof Uint8Array);
+  assert.equal(result.signerPublicKey.length, 32);
+  assert.ok(result.signature instanceof Uint8Array);
+  assert.equal(result.signature.length, 64);
+});
+
+test("signQsbOrder: deterministic — same key + order produce identical signature", async () => {
+  const r1 = await signQsbOrder(ORDER, TEST_SEED);
+  const r2 = await signQsbOrder(ORDER, TEST_SEED);
+  assert.deepEqual(r1.signerPublicKey, r2.signerPublicKey);
+  assert.deepEqual(r1.signature, r2.signature);
+});
+
+test("signQsbOrder: different order produces different signature", async () => {
+  const other = { ...ORDER, amount: ORDER.amount + 1n };
+  const r1 = await signQsbOrder(ORDER, TEST_SEED);
+  const r2 = await signQsbOrder(other, TEST_SEED);
+  assert.notDeepEqual(r1.signature, r2.signature);
+});
+
+test("signQsbOrder: different key produces different signerPublicKey", async () => {
+  const SEED2 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const r1 = await signQsbOrder(ORDER, TEST_SEED);
+  const r2 = await signQsbOrder(ORDER, SEED2);
+  assert.notDeepEqual(r1.signerPublicKey, r2.signerPublicKey);
+});
+
+// ── encodeUnlockInput ──────────────────────────────────────────────────────
+
+test("encodeUnlockInput: size = 200 + n*96 (192 Order + 4 numSigs + 4 pad + n*96)", async () => {
+  const sig = await signQsbOrder(ORDER, TEST_SEED);
+  const one = encodeUnlockInput(ORDER, [sig]);
+  assert.equal(one.length, 200 + 1 * 96);
+  const three = encodeUnlockInput(ORDER, [sig, sig, sig]);
+  assert.equal(three.length, 200 + 3 * 96);
+});
+
+test("encodeUnlockInput: Order bytes at [0..187] match encodeOrderStruct", async () => {
+  const sig = await signQsbOrder(ORDER, TEST_SEED);
+  const buf = encodeUnlockInput(ORDER, [sig]);
+  assert.deepEqual(buf.slice(0, 188), encodeOrderStruct(ORDER));
+});
+
+test("encodeUnlockInput: numSignatures uint32 LE at [192..195]", async () => {
+  const sig = await signQsbOrder(ORDER, TEST_SEED);
+  const buf = encodeUnlockInput(ORDER, [sig, sig]);
+  const view = new DataView(buf.buffer);
+  assert.equal(view.getUint32(192, true), 2);
+});
+
+test("encodeUnlockInput: signerPublicKey at [200..231] for first sig", async () => {
+  const sig = await signQsbOrder(ORDER, TEST_SEED);
+  const buf = encodeUnlockInput(ORDER, [sig]);
+  assert.deepEqual(buf.slice(200, 232), sig.signerPublicKey);
+});
+
+test("encodeUnlockInput: signature bytes at [232..295] for first sig", async () => {
+  const sig = await signQsbOrder(ORDER, TEST_SEED);
+  const buf = encodeUnlockInput(ORDER, [sig]);
+  assert.deepEqual(buf.slice(232, 296), sig.signature);
 });

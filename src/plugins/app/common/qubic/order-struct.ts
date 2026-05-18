@@ -70,35 +70,37 @@ export function serializeOrderStruct(order: OrderFields): Uint8Array {
 }
 
 /**
- * Builds Unlock_input: Order (188) + numSignatures (4) + SignatureData[] (96 each)
+ * Builds Unlock_input matching sizeof(Unlock_input) with natural C++ alignment.
  *
- * Only the provided signatures are serialized.
- * The contract reads up to numSignatures entries.
+ * sizeof(Order) = 192 (188 bytes data + 4 bytes trailing padding for id align-8).
+ * numSignatures (uint32) is at offset 192.
+ * 4 bytes of padding follow to align Array<SignatureData,64> to 8 bytes.
+ * SignatureData entries start at offset 200.
  *
- * SignatureData layout:
- *   [0..31]   id (oracle public key)
- *   [32..95]  sint8[64] (signature)
+ * Layout:
+ *   [0..187]   Order struct data
+ *   [188..191] 4 bytes trailing padding (zeros)
+ *   [192..195] uint32 numSignatures LE
+ *   [196..199] 4 bytes padding (zeros)
+ *   [200..]    SignatureData entries: id(32) + sig(64) = 96 bytes each
  */
 const SIG_DATA_SIZE = 32 + 64; // id + signature per oracle
+const SIG_START = 200; // offsetof(Unlock_input::signatures) = 200
 
 export function buildUnlockInput(
   order: OrderFields,
   signatures: Array<{ signerPublicKey: Uint8Array; signature: Uint8Array }>,
 ): Uint8Array {
-  const totalSize = ORDER_STRUCT_SIZE + 4 + signatures.length * SIG_DATA_SIZE;
-  const buf = new ArrayBuffer(totalSize);
+  const buf = new ArrayBuffer(SIG_START + signatures.length * SIG_DATA_SIZE);
   const view = new DataView(buf);
   const bytes = new Uint8Array(buf);
 
-  // Order struct
   bytes.set(serializeOrderStruct(order), 0);
-  let offset = ORDER_STRUCT_SIZE;
+  // [188..191] trailing Order padding — zeros from ArrayBuffer
+  view.setUint32(192, signatures.length, true);
+  // [196..199] alignment padding — zeros
 
-  // numSignatures
-  view.setUint32(offset, signatures.length, true);
-  offset += 4;
-
-  // SignatureData array
+  let offset = SIG_START;
   for (const sig of signatures) {
     bytes.set(sig.signerPublicKey, offset);
     offset += 32;
