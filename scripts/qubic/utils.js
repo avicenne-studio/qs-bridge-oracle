@@ -2,6 +2,10 @@ import { readFile } from "node:fs/promises";
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import { QubicHelper } from "@qubic-lib/qubic-ts-library/dist/qubicHelper.js";
+import { QubicTransaction } from "@qubic-lib/qubic-ts-library/dist/qubic-types/QubicTransaction.js";
+import { DynamicPayload } from "@qubic-lib/qubic-ts-library/dist/qubic-types/DynamicPayload.js";
+import { PublicKey } from "@qubic-lib/qubic-ts-library/dist/qubic-types/PublicKey.js";
+import { Long } from "@qubic-lib/qubic-ts-library/dist/qubic-types/Long.js";
 
 export const QSB_CONTRACT_INDEX = 28;
 export const PROTOCOL_NAME = "QubicBridge";
@@ -394,4 +398,93 @@ export async function broadcastViaBob(bobUrl, txBytes) {
     throw new Error(`broadcast failed: HTTP ${res.status} — ${errBody}`);
   }
   return res.json();
+}
+
+// ── Script helpers ─────────────────────────────────────────────────────────
+
+/** Load QUBIC_KEYS and derive publicKey/publicId; exit with an error if not set. */
+export async function requireQubicKeys(errorMsg = "QUBIC_KEYS env var must point to the keys file.") {
+  const keysPath = resolveQubicKeysPath();
+  if (!keysPath) {
+    console.error(errorMsg);
+    process.exit(1);
+  }
+  const { sKey: seed } = await loadQubicKeys(keysPath);
+  const { publicKey, publicId } = await createQubicIdPackage(seed);
+  return { seed, publicKey, publicId };
+}
+
+/**
+ * Build a QSB contract transaction, broadcast it via Bob Node, and log TX ID + tick.
+ * Pass `silent: true` to suppress the TX ID / tick log lines.
+ * Returns { txId, tick, targetTick, result }.
+ */
+export async function buildAndBroadcastTx({
+  seed,
+  publicKey,
+  inputType,
+  inputBytes = null,
+  amount = 0,
+  nodeRpcUrl,
+  bobUrl,
+  silent = false,
+}) {
+  const tick = await getCurrentTick(nodeRpcUrl);
+  if (tick === 0) { console.error("Node down (tick=0)"); process.exit(1); }
+  const targetTick = tick + TICK_OFFSET;
+
+  const dest = new PublicKey(contractAddressBytes());
+  let tx = new QubicTransaction()
+    .setSourcePublicKey(new PublicKey(publicKey))
+    .setDestinationPublicKey(dest)
+    .setAmount(new Long(amount))
+    .setTick(targetTick)
+    .setInputType(inputType)
+    .setInputSize(inputBytes?.length ?? 0);
+
+  if (inputBytes?.length) {
+    const dynPayload = new DynamicPayload(inputBytes.length);
+    dynPayload.setPayload(inputBytes);
+    tx = tx.setPayload(dynPayload);
+  }
+
+  const builtTx = await tx.build(seed);
+  const txId = tx.getId();
+
+  if (!silent) {
+    console.log(`\n  TX ID  : ${txId}`);
+    console.log(`  Tick   : ${tick} → ${targetTick}`);
+  }
+
+  const result = await broadcastViaBob(bobUrl, builtTx);
+  return { txId, tick, targetTick, result };
+}
+
+/** Animated dot-poll until the current tick reaches targetTick. */
+export async function waitForTick(nodeRpcUrl, targetTick, { timeout = 90_000, interval = 3000 } = {}) {
+  process.stdout.write("  Waiting...");
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, interval));
+    if ((await getCurrentTick(nodeRpcUrl)) >= targetTick) break;
+    process.stdout.write(".");
+  }
+  process.stdout.write("\n");
+}
+
+/**
+ * Animated dot-poll: call check() up to maxRetries times, stopping when it returns truthy.
+ * Returns the final value returned by check().
+ */
+export async function pollUntil(check, { maxRetries = 10, interval = 1500 } = {}) {
+  process.stdout.write("  Verifying");
+  let result;
+  for (let i = 0; i < maxRetries; i++) {
+    await new Promise((r) => setTimeout(r, interval));
+    result = await check();
+    if (result) break;
+    process.stdout.write(".");
+  }
+  process.stdout.write("\n");
+  return result;
 }
