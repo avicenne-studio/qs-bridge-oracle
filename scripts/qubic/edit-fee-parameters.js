@@ -20,21 +20,15 @@
  */
 
 import process from "node:process";
-import { QubicTransaction } from "@qubic-lib/qubic-ts-library/dist/qubic-types/QubicTransaction.js";
-import { DynamicPayload } from "@qubic-lib/qubic-ts-library/dist/qubic-types/DynamicPayload.js";
-import { PublicKey } from "@qubic-lib/qubic-ts-library/dist/qubic-types/PublicKey.js";
-import { Long } from "@qubic-lib/qubic-ts-library/dist/qubic-types/Long.js";
+import { parseArgs } from "../shared/utils.js";
 import {
   QSB_CONTRACT_INDEX,
-  TICK_OFFSET,
   resolveNodeRpcUrl,
   resolveBobUrl,
-  resolveQubicKeysPath,
-  contractAddressBytes,
-  loadQubicKeys,
-  createQubicIdPackage,
-  getCurrentTick,
-  broadcastViaBob,
+  requireQubicKeys,
+  buildAndBroadcastTx,
+  waitForTick,
+  pollUntil,
   qubicIdToBytes,
   bytesToQubicId,
   queryContractFunction,
@@ -48,19 +42,12 @@ const MAX_PROTOCOL_FEE = 100;
 
 // ── arg parsing ───────────────────────────────────────────────────────────────
 
-const rawArgs = process.argv.slice(2);
-const isDryRun = rawArgs.includes("--dry-run");
-const args = rawArgs.filter((a) => a !== "--dry-run");
-
-function flag(name) {
-  const i = args.indexOf(name);
-  return i !== -1 && args[i + 1] ? args[i + 1] : null;
-}
-
-const bpsFeeArg             = flag("--bps-fee");
-const protocolFeeArg        = flag("--protocol-fee");
-const protocolRecipientArg  = flag("--protocol-fee-recipient");
-const oracleRecipientArg    = flag("--oracle-fee-recipient");
+const parsed = parseArgs(process.argv, { startIndex: 2 });
+const isDryRun = parsed.dryRun === true;
+const bpsFeeArg            = parsed.bpsFee             ?? null;
+const protocolFeeArg       = parsed.protocolFee        ?? null;
+const protocolRecipientArg = parsed.protocolFeeRecipient ?? null;
+const oracleRecipientArg   = parsed.oracleFeeRecipient   ?? null;
 
 if (!bpsFeeArg && !protocolFeeArg && !protocolRecipientArg && !oracleRecipientArg) {
   console.error("At least one option must be provided.");
@@ -94,19 +81,13 @@ if (protocolFeeArg !== null) {
 const protocolFeeRecipientBytes = protocolRecipientArg ? qubicIdToBytes(protocolRecipientArg) : new Uint8Array(32);
 const oracleFeeRecipientBytes   = oracleRecipientArg   ? qubicIdToBytes(oracleRecipientArg)   : new Uint8Array(32);
 
-const keysPath = resolveQubicKeysPath();
-if (!keysPath) {
-  console.error("QUBIC_KEYS env var must point to the admin keys file.");
-  process.exit(1);
-}
-
 const nodeRpcUrl = resolveNodeRpcUrl();
 const bobUrl = resolveBobUrl();
 
 // ── setup ─────────────────────────────────────────────────────────────────────
 
-const { sKey: seed } = await loadQubicKeys(keysPath);
-const { publicKey, publicId } = await createQubicIdPackage(seed);
+const { seed, publicKey, publicId } =
+  await requireQubicKeys("QUBIC_KEYS env var must point to the admin keys file.");
 
 console.log(`\n=== QSB EditFeeParameters ===`);
 console.log(`  Caller   : ${publicId}`);
@@ -151,55 +132,29 @@ view.setUint32(68, protocolFee, true);
 
 // ── send tx ───────────────────────────────────────────────────────────────────
 
-const tick = await getCurrentTick(nodeRpcUrl);
-if (tick === 0) { console.error("Node down (tick=0)"); process.exit(1); }
-const targetTick = tick + TICK_OFFSET;
-
-const dest = new PublicKey(contractAddressBytes(QSB_CONTRACT_INDEX));
-const payload = new DynamicPayload(inputBytes.length);
-payload.setPayload(inputBytes);
-
-const tx = new QubicTransaction()
-  .setSourcePublicKey(new PublicKey(publicKey))
-  .setDestinationPublicKey(dest)
-  .setAmount(new Long(0))
-  .setTick(targetTick)
-  .setInputType(PROC_EDIT_FEE_PARAMETERS)
-  .setInputSize(inputBytes.length)
-  .setPayload(payload);
-
-const builtTx = await tx.build(seed);
-const txId = tx.getId();
-console.log(`\n  TX ID  : ${txId}`);
-console.log(`  Tick   : ${tick} → ${targetTick}`);
-
-await broadcastViaBob(bobUrl, builtTx);
+const { targetTick } = await buildAndBroadcastTx({
+  publicKey,
+  seed,
+  inputType: PROC_EDIT_FEE_PARAMETERS,
+  inputBytes,
+  nodeRpcUrl,
+  bobUrl,
+});
 
 // ── wait for tick ─────────────────────────────────────────────────────────────
 
-process.stdout.write("  Waiting...");
-const deadline = Date.now() + 90_000;
-while (Date.now() < deadline) {
-  await new Promise((r) => setTimeout(r, 3000));
-  if ((await getCurrentTick(nodeRpcUrl)) >= targetTick) break;
-  process.stdout.write(".");
-}
-process.stdout.write("\n");
+await waitForTick(nodeRpcUrl, targetTick);
 
 // ── verify ────────────────────────────────────────────────────────────────────
 
-process.stdout.write("  Verifying");
 let finalCfg = preCfg;
-for (let i = 0; i < 10; i++) {
-  await new Promise((r) => setTimeout(r, 1500));
+await pollUntil(async () => {
   const buf = await queryContractFunction(bobUrl, QSB_CONTRACT_INDEX, FUNC_GET_CONFIG, new Uint8Array(0));
   finalCfg = decodeGetConfigOutput(buf);
-  const bpsOk      = !bpsFeeArg      || finalCfg.bpsFee      === bpsFee;
-  const protoOk    = !protocolFeeArg  || finalCfg.protocolFee === protocolFee;
-  if (bpsOk && protoOk) break;
-  process.stdout.write(".");
-}
-process.stdout.write("\n");
+  const bpsOk   = !bpsFeeArg     || finalCfg.bpsFee      === bpsFee;
+  const protoOk = !protocolFeeArg || finalCfg.protocolFee === protocolFee;
+  return bpsOk && protoOk;
+});
 
 const finalProtocolId = await bytesToQubicId(finalCfg.protocolFeeRecipient);
 const finalOracleId   = await bytesToQubicId(finalCfg.oracleFeeRecipient);

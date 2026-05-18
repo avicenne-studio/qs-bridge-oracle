@@ -19,25 +19,19 @@
 
 import { randomInt } from "node:crypto";
 import process from "node:process";
-import { QubicTransaction } from "@qubic-lib/qubic-ts-library/dist/qubic-types/QubicTransaction.js";
-import { DynamicPayload } from "@qubic-lib/qubic-ts-library/dist/qubic-types/DynamicPayload.js";
-import { PublicKey } from "@qubic-lib/qubic-ts-library/dist/qubic-types/PublicKey.js";
-import { Long } from "@qubic-lib/qubic-ts-library/dist/qubic-types/Long.js";
 import {
   QSB_CONTRACT_INDEX,
   SOLANA_NETWORK_ID,
   LOCK_INPUT_TYPE,
-  TICK_OFFSET,
   resolveNodeRpcUrl,
   resolveBobUrl,
   resolveQubicKeysPath,
-  contractAddressBytes,
   encodeLockInput,
   loadQubicKeys,
   createQubicIdPackage,
   getCurrentTick,
   getBalance,
-  broadcastViaBob,
+  buildAndBroadcastTx,
 } from "./utils.js";
 
 const args = process.argv.slice(2);
@@ -56,6 +50,8 @@ if (!seed && keysPath) {
   seed = keys.sKey;
 }
 
+const { publicKey, publicId } = await createQubicIdPackage(seed);
+
 console.log(`\n=== QSB Lock via Bob Node (local testnet) ===`);
 console.log(`  Node RPC    : ${nodeRpcUrl}`);
 console.log(`  Bob Node    : ${bobUrl}`);
@@ -64,8 +60,6 @@ console.log(`  Amount      : ${amount} QU`);
 console.log(`  Relayer fee : ${relayerFee} QU`);
 console.log(`  To (Solana) : ${toAddress}`);
 console.log(`  Nonce       : ${nonce}`);
-
-const { publicKey, publicId } = await createQubicIdPackage(seed);
 console.log(`\n  Sender      : ${publicId}`);
 
 const balance = await getBalance(nodeRpcUrl, publicId);
@@ -76,37 +70,19 @@ if (balance !== null && Number(balance) < amount) {
   process.exit(1);
 }
 
-const tick = await getCurrentTick(nodeRpcUrl);
-if (tick === 0) {
-  console.error("\nNode appears to be down (tick = 0)");
-  process.exit(1);
-}
-const targetTick = tick + TICK_OFFSET;
-console.log(`  Current tick: ${tick} → target ${targetTick}`);
-
-const lockPayload = encodeLockInput(amount, relayerFee, toAddress, SOLANA_NETWORK_ID, nonce);
-
-const dest = new PublicKey(contractAddressBytes(QSB_CONTRACT_INDEX));
-const payload = new DynamicPayload(lockPayload.length);
-payload.setPayload(lockPayload);
-
-const tx = new QubicTransaction()
-  .setSourcePublicKey(new PublicKey(publicKey))
-  .setDestinationPublicKey(dest)
-  .setAmount(new Long(amount))
-  .setTick(targetTick)
-  .setInputType(LOCK_INPUT_TYPE)
-  .setInputSize(lockPayload.length)
-  .setPayload(payload);
-
-const builtTx = await tx.build(seed);
-const txId = tx.getId();
-
-console.log(`\n  TX ID       : ${txId}`);
+const inputBytes = encodeLockInput(amount, relayerFee, toAddress, SOLANA_NETWORK_ID, nonce);
 
 console.log(`\nBroadcasting via Bob Node...`);
-const broadcastResult = await broadcastViaBob(bobUrl, builtTx);
-console.log(`  Response    :`, JSON.stringify(broadcastResult));
+const { txId, targetTick, result } = await buildAndBroadcastTx({
+  publicKey,
+  seed,
+  inputType: LOCK_INPUT_TYPE,
+  inputBytes,
+  amount,
+  nodeRpcUrl,
+  bobUrl,
+});
+console.log(`  Response    :`, JSON.stringify(result));
 
 // Poll for tick confirmation then check Bob for the indexed event
 console.log(`\nWaiting for confirmation...`);

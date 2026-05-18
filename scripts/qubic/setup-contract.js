@@ -16,24 +16,19 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import process from "node:process";
-import { QubicTransaction } from "@qubic-lib/qubic-ts-library/dist/qubic-types/QubicTransaction.js";
-import { DynamicPayload } from "@qubic-lib/qubic-ts-library/dist/qubic-types/DynamicPayload.js";
-import { PublicKey } from "@qubic-lib/qubic-ts-library/dist/qubic-types/PublicKey.js";
-import { Long } from "@qubic-lib/qubic-ts-library/dist/qubic-types/Long.js";
 import {
   QSB_CONTRACT_INDEX,
-  TICK_OFFSET,
   resolveNodeRpcUrl,
   resolveBobUrl,
-  contractAddressBytes,
   loadQubicKeys,
   createQubicIdPackage,
-  getCurrentTick,
-  broadcastViaBob,
+  buildAndBroadcastTx,
+  waitForTick,
   qubicIdToBytes,
   queryContractFunction,
   decodeGetConfigOutput,
   FUNC_GET_CONFIG,
+  getCurrentTick,
 } from "./utils.js";
 
 const PROC_ADD_ROLE = 12;
@@ -100,37 +95,18 @@ async function sendAddRole(publicId, role, label) {
   inputBytes.set(qubicIdToBytes(publicId), 0);
   inputBytes[32] = role;
 
-  const tick = await getCurrentTick(nodeRpcUrl);
-  const targetTick = tick + TICK_OFFSET;
+  const { txId, targetTick, result } = await buildAndBroadcastTx({
+    publicKey: adminPublicKey,
+    seed: adminSeed,
+    inputType: PROC_ADD_ROLE,
+    inputBytes,
+    nodeRpcUrl,
+    bobUrl,
+    silent: true,
+  });
+  console.log(`  [${label}] tick=${targetTick} txId=${txId} → ${JSON.stringify(result)}`);
 
-  const dest = new PublicKey(contractAddressBytes(QSB_CONTRACT_INDEX));
-  const payload = new DynamicPayload(inputBytes.length);
-  payload.setPayload(inputBytes);
-
-  const tx = new QubicTransaction()
-    .setSourcePublicKey(new PublicKey(adminPublicKey))
-    .setDestinationPublicKey(dest)
-    .setAmount(new Long(0))
-    .setTick(targetTick)
-    .setInputType(PROC_ADD_ROLE)
-    .setInputSize(inputBytes.length)
-    .setPayload(payload);
-
-  const builtTx = await tx.build(adminSeed);
-  const txId = tx.getId();
-
-  const broadcastResult = await broadcastViaBob(bobUrl, builtTx);
-  console.log(`  [${label}] tick=${targetTick} txId=${txId} → ${JSON.stringify(broadcastResult)}`);
-
-  // Wait for tick to pass
-  const deadline = Date.now() + 90_000;
-  while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 3000));
-    const currentTick = await getCurrentTick(nodeRpcUrl);
-    if (currentTick >= targetTick) break;
-    process.stdout.write(`\r    waiting tick ${currentTick}/${targetTick}...  `);
-  }
-  process.stdout.write("\r                                    \r");
+  await waitForTick(nodeRpcUrl, targetTick);
 }
 
 console.log(`\nRegistering roles...`);
