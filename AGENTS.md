@@ -27,9 +27,10 @@ Entry point `src/server.ts` registers `src/app.ts`, which autoloads infra plugin
 - **Events pipeline**:
   1. `events.service.ts` — polls Hub `/api/orders/events` using per-Hub cursors stored in `hub_event_cursors`; appends new events to `hub_events`.
   2. `events-processor.ts` — validates and maps pending events into order records; retries up to `EVENT_MAX_RETRIES`; creates failed orders for irrecoverable `outbound`/`lock` events. Chain-specific validators live under `events/solana/` and `events/qubic/`.
-- **Signer**: `signer.service.ts` — loads Solana + Qubic keys from files and signs bridge orders.
+- **Signer**: `signer.service.ts` — loads Solana + Qubic keys from files and signs bridge orders; `schemas/keys.ts` validates key file structure.
 - **Hub signatures**: `hub-signatures.service.ts` — polls Hub `/api/orders/signatures`, stores new signatures in `order_signatures`, marks orders `ready-for-relay` once `ORACLE_SIGNATURE_THRESHOLD` is met.
 - **Relayer**: `relayer.ts` — processes `ready-for-relay` orders via `relay-solana.ts` / `relay-qubic.ts` with exponential backoff and per-order retry tracking; `relayer-fee-acceptance.ts` enforces minimum relayer fee floors before accepting relay.
+- **Common utilities** (`src/plugins/app/common/`): `bytes.ts`, `decimals.ts`, `order-id.ts`, `protocol.ts` — shared primitive helpers; `qubic/encoding.ts`, `qubic/order-struct.ts`, `qubic/qsb-message.ts` — Qubic binary codec; `solana/errors.ts`, `solana/program.ts` — Solana RPC error handling; `schemas/common.ts` — shared TypeBox fragments; `validation.ts` — TypeBox `ValidationService`.
 
 ## Hub → Oracle Authentication
 Every Hub → Oracle API request is verified by the oracle's `preValidation` hook:
@@ -77,7 +78,9 @@ All `/api/*` routes require valid `X-Hub-*` signed headers.
 ## Config & Ops
 Required env vars (see `src/plugins/infra/env.ts`): `HOST`, `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`, `HUB_URLS`, `HUB_KEYS_FILE`, `SOLANA_RPC_URL`, `SOLANA_WS_URL`, `QUBIC_RPC_URL`, `QUBIC_BROADCAST_RPC_URL`, `TOKEN_MINT`, `SOLANA_TX_COMMITMENT`, `SOLANA_LOOKUP_TABLE_ADDRESS`, `RELAYER_FEE_SOLANA`, `RELAYER_FEE_QUBIC`.
 
-Key tunables: `RELAYER_ENABLED`, `RELAYER_PROCESS_INTERVAL_MS`, `RELAYER_MAX_ATTEMPTS`, `RELAYER_BACKOFF_BASE_MS`, `RELAYER_BACKOFF_MAX_MS`, `EVENT_MAX_RETRIES`, `EVENTS_LOOKBACK_DAYS`, `ORACLE_SIGNATURE_THRESHOLD`, `ORACLE_ID`.
+Key tunables: `RELAYER_ENABLED`, `RELAYER_PROCESS_INTERVAL_MS`, `RELAYER_PER_ORDER_DELAY_MS`, `RELAYER_MAX_ATTEMPTS`, `RELAYER_BACKOFF_BASE_MS`, `RELAYER_BACKOFF_MAX_MS`, `EVENT_MAX_RETRIES`, `EVENTS_LOOKBACK_DAYS`, `EVENTS_PROCESS_INTERVAL_MS`, `ORACLE_SIGNATURE_THRESHOLD`, `ORACLE_ID`, `SOLANA_MAX_PRIORITY_FEE`, `SOLANA_TX_RETRY_MAX_ATTEMPTS`, `SOLANA_TX_RETRY_BASE_MS`, `SOLANA_TX_RETRY_MAX_MS`.
+
+`ORACLE_SIGNATURE_THRESHOLD` in the Oracle is an **integer count** (minimum 1, default 2) — the number of oracle signatures required before an order is marked `ready-for-relay`. This differs from the Hub, where it is a **ratio** (e.g. 0.6) combined with `ORACLE_COUNT`.
 
 Generated Solana client code lives under `src/clients/js/` — do not hand-edit; regenerate with `npm run idl:codama`.
 
