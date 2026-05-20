@@ -45,8 +45,6 @@ import {
   resolveNodeRpcUrl,
   resolveBobUrl,
   requireQubicKeys,
-  loadQubicKeys,
-  resolveQubicKeysPath,
   buildAndBroadcastTx,
   waitForTick,
   pollUntil,

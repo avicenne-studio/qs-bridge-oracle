@@ -30,9 +30,6 @@ import {
   fetchLogRange,
   parseQSBLogEntry,
   bytesToQubicId,
-  QSB_LOG_LOCK,
-  QSB_LOG_OVERRIDE_LOCK,
-  QSB_LOG_UNLOCK,
   QSB_REASON,
 } from "./utils.js";
 

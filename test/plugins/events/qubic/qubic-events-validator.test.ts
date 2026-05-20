@@ -1,26 +1,54 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Value } from "@sinclair/typebox/value";
-import type { TSchema } from "@sinclair/typebox";
+import { Buffer } from "node:buffer";
 import {
   createQubicEventValidator,
-  createDefaultQubicTransactionFetcher,
-  type QubicTransactionFetcher,
 } from "../../../../src/plugins/app/events/qubic/qubic-events-validator.js";
+import {
+  FUNC_GET_LOCKED_ORDER,
+  encodeGetLockedOrderInput,
+  type QubicContractClient,
+} from "../../../../src/plugins/infra/qubic-contract-client.js";
+
+// Build a GetLockedOrder_output hex (176 bytes):
+//   [0]       bit exists
+//   [1..7]    padding
+//   [8..175]  LockedOrderEntry (168 bytes)
+function buildLockedOrderHex(opts: {
+  exists?: boolean;
+  sender?: string;   // 64-char hex (32 bytes)
+  amount?: bigint;
+  relayerFee?: bigint;
+  networkOut?: number;
+  nonce?: number;
+  active?: boolean;
+} = {}): string {
+  const buf = Buffer.alloc(176);
+  buf.writeUInt8(opts.exists !== false ? 1 : 0, 0);
+  const off = 8;
+  buf.set(Buffer.from(opts.sender ?? "aa".repeat(32), "hex"), off);
+  buf.writeBigUInt64LE(opts.amount ?? 1000n, off + 32);
+  buf.writeBigUInt64LE(opts.relayerFee ?? 10n, off + 40);
+  buf.writeUInt32LE(opts.networkOut ?? 2, off + 48);
+  buf.writeUInt32LE(opts.nonce ?? 42, off + 52);
+  buf.writeUInt8(opts.active !== false ? 1 : 0, off + 160);
+  return buf.toString("hex");
+}
 
 const baseEvent = {
   id: 1,
-  signature: "trx-hash",
+  signature: "orderhashhex",
   slot: null,
   chain: "qubic" as const,
   type: "lock" as const,
   nonce: "42",
   payload: {
-    fromAddress: "id(1,2,3,4)",
-    toAddress: "0xabc",
-    amount: "10",
-    relayerFee: "1",
+    fromAddress: "aa".repeat(32),
+    toAddress: "SolanaAddressHere",
+    amount: "1000",
+    relayerFee: "10",
     nonce: "42",
+    orderEra: "0",
   },
   createdAt: "2024-01-01 00:00:00",
 };
@@ -32,151 +60,85 @@ const logger = {
   error: () => {},
 };
 
-const validation = {
-  isValid<T>(schema: TSchema, value: unknown): value is T {
-    return Value.Check(schema, value);
-  },
-  assertValid<T>(_schema: TSchema, _value: unknown, _prefix: string): asserts _value is T {
-    void _schema;
-    void _value;
-    void _prefix;
-  },
-};
+function makeClient(respond: () => Promise<string>): QubicContractClient {
+  return { queryContractFunction: () => respond() };
+}
 
-test("qubic event validator accepts matching transactions", async () => {
-  const fetchTransaction: QubicTransactionFetcher = async () => ({
-    trxHash: "trx-hash",
-    matches: true,
-  });
-  const validator = createQubicEventValidator({
-    fetchTransaction,
-    logger,
-    validation,
-  });
-
+test("qubic event validator accepts a matching lock order", async () => {
+  const client = makeClient(async () => buildLockedOrderHex());
+  const validator = createQubicEventValidator({ contractClient: client, logger });
   await validator.validate(baseEvent);
 });
 
-test("qubic event validator rejects mismatched transactions", async () => {
-  const fetchTransaction: QubicTransactionFetcher = async () => ({
-    trxHash: "trx-hash",
-    matches: false,
-  });
-  const validator = createQubicEventValidator({
-    fetchTransaction,
-    logger,
-    validation,
-  });
-
-  await assert.rejects(
-    () => validator.validate(baseEvent),
-    /Transaction events do not match hub payload/
-  );
+test("qubic event validator passes the correct nonce to the contract client", async () => {
+  let capturedFunc: number | undefined;
+  let capturedInput: string | undefined;
+  const client: QubicContractClient = {
+    async queryContractFunction(funcNumber, inputHex) {
+      capturedFunc = funcNumber;
+      capturedInput = inputHex;
+      return buildLockedOrderHex();
+    },
+  };
+  const validator = createQubicEventValidator({ contractClient: client, logger });
+  await validator.validate(baseEvent);
+  assert.strictEqual(capturedFunc, FUNC_GET_LOCKED_ORDER);
+  assert.strictEqual(capturedInput, encodeGetLockedOrderInput(42));
 });
 
-test("qubic event validator reports missing transactions", async () => {
-  const fetchTransaction: QubicTransactionFetcher = async () => {
-    throw new Error("HTTP 404");
-  };
-  const validator = createQubicEventValidator({
-    fetchTransaction,
-    logger,
-    validation,
-  });
-
-  await assert.rejects(
-    () => validator.validate(baseEvent),
-    /Transaction not found/
-  );
+test("qubic event validator throws when order is not found", async () => {
+  const client = makeClient(async () => buildLockedOrderHex({ exists: false }));
+  const validator = createQubicEventValidator({ contractClient: client, logger });
+  await assert.rejects(() => validator.validate(baseEvent), /Order not found/);
 });
 
-test("qubic event validator rethrows unexpected fetch errors", async () => {
-  const fetchTransaction: QubicTransactionFetcher = async () => {
-    throw new Error("boom");
-  };
-  const validator = createQubicEventValidator({
-    fetchTransaction,
-    logger,
-    validation,
-  });
+test("qubic event validator throws on amount mismatch", async () => {
+  const client = makeClient(async () => buildLockedOrderHex({ amount: 999n }));
+  const validator = createQubicEventValidator({ contractClient: client, logger });
+  await assert.rejects(() => validator.validate(baseEvent), /Order amount mismatch/);
+});
 
+test("qubic event validator throws on relayerFee mismatch", async () => {
+  const client = makeClient(async () => buildLockedOrderHex({ relayerFee: 9n }));
+  const validator = createQubicEventValidator({ contractClient: client, logger });
+  await assert.rejects(() => validator.validate(baseEvent), /Order relayerFee mismatch/);
+});
+
+test("qubic event validator throws on networkOut mismatch", async () => {
+  const client = makeClient(async () => buildLockedOrderHex({ networkOut: 3 }));
+  const validator = createQubicEventValidator({ contractClient: client, logger });
+  await assert.rejects(() => validator.validate(baseEvent), /Order networkOut mismatch/);
+});
+
+test("qubic event validator throws on sender mismatch", async () => {
+  const client = makeClient(async () => buildLockedOrderHex({ sender: "bb".repeat(32) }));
+  const validator = createQubicEventValidator({ contractClient: client, logger });
+  await assert.rejects(() => validator.validate(baseEvent), /Order sender mismatch/);
+});
+
+test("qubic event validator rethrows contract query errors", async () => {
+  const client: QubicContractClient = {
+    async queryContractFunction() {
+      throw new Error("boom");
+    },
+  };
+  const validator = createQubicEventValidator({ contractClient: client, logger });
   await assert.rejects(() => validator.validate(baseEvent), /boom/);
 });
 
-test("qubic event validator handles non-error throws", async () => {
-  const fetchTransaction: QubicTransactionFetcher = async () => {
-    throw "boom";
+test("qubic event validator accepts override-lock event with matching fields", async () => {
+  const client = makeClient(async () => buildLockedOrderHex());
+  const validator = createQubicEventValidator({ contractClient: client, logger });
+  await validator.validate({ ...baseEvent, type: "override-lock" as const });
+});
+
+test("qubic event validator skips field checks for unlock events", async () => {
+  const client = makeClient(async () => buildLockedOrderHex());
+  const validator = createQubicEventValidator({ contractClient: client, logger });
+  const unlockEvent = {
+    ...baseEvent,
+    type: "unlock" as const,
+    payload: { toAddress: "SolanaAddressHere", amount: "1000", nonce: "42" },
   };
-  const validator = createQubicEventValidator({
-    fetchTransaction,
-    logger,
-    validation,
-  });
-
-  await assert.rejects(() => validator.validate(baseEvent));
-});
-
-test("qubic event validator rejects invalid transaction responses", async () => {
-  const fetchTransaction: QubicTransactionFetcher = async () => ({
-    trxHash: "trx-hash",
-    matches: "nope" as never,
-  });
-  const validator = createQubicEventValidator({
-    fetchTransaction,
-    logger,
-    validation,
-  });
-
-  await assert.rejects(
-    () => validator.validate(baseEvent),
-    /Transaction response invalid/
-  );
-});
-
-test("default qubic transaction fetcher builds transaction paths", async () => {
-  let captured: { origin?: string; path?: string } = {};
-  const client = {
-    async getJson(origin: string, path: string) {
-      captured = { origin, path };
-      return { trxHash: "trx-hash", matches: true };
-    },
-  } as never;
-
-  const fetcher = createDefaultQubicTransactionFetcher(
-    client,
-    "http://127.0.0.1:3015"
-  );
-
-  await fetcher(baseEvent.signature, {
-    type: baseEvent.type,
-    nonce: baseEvent.nonce,
-    payload: baseEvent.payload,
-  });
-
-  assert.strictEqual(captured.origin, "http://127.0.0.1:3015");
-  assert.ok(captured.path?.startsWith("/transactions/trx-hash?expected="));
-});
-
-test("default qubic transaction fetcher trims trailing slashes", async () => {
-  let captured: { origin?: string; path?: string } = {};
-  const client = {
-    async getJson(origin: string, path: string) {
-      captured = { origin, path };
-      return { trxHash: "trx-hash", matches: true };
-    },
-  } as never;
-
-  const fetcher = createDefaultQubicTransactionFetcher(
-    client,
-    "http://127.0.0.1:3015/api/"
-  );
-
-  await fetcher(baseEvent.signature, {
-    type: baseEvent.type,
-    nonce: baseEvent.nonce,
-    payload: baseEvent.payload,
-  });
-
-  assert.strictEqual(captured.origin, "http://127.0.0.1:3015");
-  assert.ok(captured.path?.startsWith("/api/transactions/trx-hash?expected="));
+  await validator.validate(unlockEvent);
 });
