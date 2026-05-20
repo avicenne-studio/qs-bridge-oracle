@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import Fastify from "fastify";
 
+import { UndiciClient } from "../../../src/plugins/infra/undici-client.js";
 import {
-  queryContractFunction,
+  createQubicContractClient,
   decodeGetLockedOrder,
   decodeGetOracles,
   decodeGetLockedOrders,
@@ -12,11 +13,8 @@ import {
   FUNC_GET_LOCKED_ORDER,
   FUNC_GET_ORACLES,
   FUNC_GET_LOCKED_ORDERS,
-} from "../../../../src/plugins/app/common/qubic/contract-client.js";
+} from "../../../src/plugins/infra/qubic-contract-client.js";
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-/** Build a raw LockedOrderEntry buffer (168 bytes) with known values. */
 function buildLockedOrderEntryBuf(opts: {
   sender?: Uint8Array;
   amount?: bigint;
@@ -30,35 +28,23 @@ function buildLockedOrderEntryBuf(opts: {
   active?: boolean;
 } = {}): Buffer {
   const buf = Buffer.alloc(168);
-  const sender = opts.sender ?? new Uint8Array(32).fill(0xaa);
-  const amount = opts.amount ?? 1000n;
-  const relayerFee = opts.relayerFee ?? 10n;
-  const networkOut = opts.networkOut ?? 2;
-  const nonce = opts.nonce ?? 42;
-  const toAddrStr = opts.toAddress ?? "SolanaAddressHere";
-  const orderHash = opts.orderHash ?? new Uint8Array(32).fill(0xff);
-  const lockEpoch = opts.lockEpoch ?? 100;
-  const orderEra = opts.orderEra ?? 0;
-  const active = opts.active ?? true;
-
-  buf.set(sender, 0);
-  buf.writeBigUInt64LE(amount, 32);
-  buf.writeBigUInt64LE(relayerFee, 40);
-  buf.writeUInt32LE(networkOut, 48);
-  buf.writeUInt32LE(nonce, 52);
-  buf.write(toAddrStr.slice(0, 64), 56, "ascii");
-  buf.set(orderHash, 120);
-  buf.writeUInt32LE(lockEpoch, 152);
-  buf.writeUInt32LE(orderEra, 156);
-  buf.writeUInt8(active ? 1 : 0, 160);
+  buf.set(opts.sender ?? new Uint8Array(32).fill(0xaa), 0);
+  buf.writeBigUInt64LE(opts.amount ?? 1000n, 32);
+  buf.writeBigUInt64LE(opts.relayerFee ?? 10n, 40);
+  buf.writeUInt32LE(opts.networkOut ?? 2, 48);
+  buf.writeUInt32LE(opts.nonce ?? 42, 52);
+  buf.write((opts.toAddress ?? "SolanaAddressHere").slice(0, 64), 56, "ascii");
+  buf.set(opts.orderHash ?? new Uint8Array(32).fill(0xff), 120);
+  buf.writeUInt32LE(opts.lockEpoch ?? 100, 152);
+  buf.writeUInt32LE(opts.orderEra ?? 0, 156);
+  buf.writeUInt8(opts.active !== false ? 1 : 0, 160);
   return buf;
 }
 
-/** Start a Fastify mock server and return its URL. */
 async function startMockServer(
   t: import("node:test").TestContext,
   handler: (body: unknown) => unknown,
-): Promise<string> {
+) {
   const server = Fastify({ logger: false });
   server.post("/querySmartContract", async (req) => handler(req.body));
   await server.listen({ port: 0, host: "127.0.0.1" });
@@ -68,20 +54,17 @@ async function startMockServer(
   return `http://127.0.0.1:${addr.port}`;
 }
 
-// ── decodeGetOracles ──────────────────────────────────────────────────────────
-
 describe("decodeGetOracles", () => {
   it("returns an empty array when count is 0", () => {
     const buf = Buffer.alloc(8 + 64 * 32);
     buf.writeUInt32LE(0, 0);
-    const keys = decodeGetOracles(buf.toString("hex"));
-    assert.strictEqual(keys.length, 0);
+    assert.strictEqual(decodeGetOracles(buf.toString("hex")).length, 0);
   });
 
   it("reads two keys starting at byte offset 8", () => {
     const key1 = new Uint8Array(32).fill(0x01);
     const key2 = new Uint8Array(32).fill(0x02);
-    // Layout: u32 count (4B) + u32 padding (4B) + key1 (32B) + key2 (32B)
+    // u32 count (4B) + u32 padding (4B, id is 8-byte aligned) + key1 (32B) + key2 (32B)
     const buf = Buffer.alloc(8 + 64 * 32);
     buf.writeUInt32LE(2, 0);
     buf.set(key1, 8);
@@ -92,8 +75,6 @@ describe("decodeGetOracles", () => {
     assert.deepStrictEqual(keys[1], key2, "second key must match bytes 40–71");
   });
 });
-
-// ── decodeGetLockedOrder ──────────────────────────────────────────────────────
 
 describe("decodeGetLockedOrder", () => {
   it("returns null when exists is 0", () => {
@@ -115,7 +96,7 @@ describe("decodeGetLockedOrder", () => {
       orderEra: 1,
       active: true,
     });
-    // GetLockedOrder_output: bit(1) + pad(7) + entry(168) = 176 bytes
+    // bit(1) + pad(7) + entry(168) = 176 bytes
     const buf = Buffer.alloc(176);
     buf.writeUInt8(1, 0);
     buf.set(entry, 8);
@@ -134,14 +115,12 @@ describe("decodeGetLockedOrder", () => {
   });
 });
 
-// ── decodeGetLockedOrders ─────────────────────────────────────────────────────
-
 describe("decodeGetLockedOrders", () => {
   it("decodes totalActive, returned and entries", () => {
     const entry = buildLockedOrderEntryBuf({ nonce: 99, amount: 7777n, active: true });
     const buf = Buffer.alloc(8 + 64 * 168);
-    buf.writeUInt32LE(5, 0);   // totalActive
-    buf.writeUInt32LE(1, 4);   // returned
+    buf.writeUInt32LE(5, 0);  // totalActive
+    buf.writeUInt32LE(1, 4);  // returned
     buf.set(entry, 8);
 
     const result = decodeGetLockedOrders(buf.toString("hex"));
@@ -162,8 +141,6 @@ describe("decodeGetLockedOrders", () => {
   });
 });
 
-// ── encodeGetLockedOrderInput ─────────────────────────────────────────────────
-
 describe("encodeGetLockedOrderInput", () => {
   it("encodes nonce as 4-byte LE hex", () => {
     const hex = encodeGetLockedOrderInput(42);
@@ -173,12 +150,12 @@ describe("encodeGetLockedOrderInput", () => {
   });
 });
 
-// ── queryContractFunction ─────────────────────────────────────────────────────
-
 describe("queryContractFunction", () => {
   it("returns data hex on success", async (t) => {
     const url = await startMockServer(t, () => ({ data: "deadbeef" }));
-    const result = await queryContractFunction(url, FUNC_GET_ORACLES, "");
+    const client = new UndiciClient();
+    t.after(() => client.close());
+    const result = await createQubicContractClient(client, url).queryContractFunction(FUNC_GET_ORACLES, "");
     assert.strictEqual(result, "deadbeef");
   });
 
@@ -193,16 +170,20 @@ describe("queryContractFunction", () => {
     const url = `http://127.0.0.1:${(addr as import("node:net").AddressInfo).port}`;
     t.after(() => server.close());
 
+    const client = new UndiciClient();
+    t.after(() => client.close());
     await assert.rejects(
-      () => queryContractFunction(url, FUNC_GET_ORACLES, ""),
+      () => createQubicContractClient(client, url).queryContractFunction(FUNC_GET_ORACLES, ""),
       /querySmartContract HTTP 502/,
     );
   });
 
   it("throws after max retries when always pending", async (t) => {
     const url = await startMockServer(t, () => ({ error: "pending" }));
+    const client = new UndiciClient();
+    t.after(() => client.close());
     await assert.rejects(
-      () => queryContractFunction(url, FUNC_GET_LOCKED_ORDER, encodeGetLockedOrderInput(1)),
+      () => createQubicContractClient(client, url).queryContractFunction(FUNC_GET_LOCKED_ORDER, encodeGetLockedOrderInput(1)),
       /still pending after/,
     );
   }, { timeout: 10_000 });
@@ -213,15 +194,19 @@ describe("queryContractFunction", () => {
       calls++;
       return calls === 1 ? { error: "pending" } : { data: "aabb" };
     });
-    const result = await queryContractFunction(url, FUNC_GET_LOCKED_ORDERS, "0000000040000000");
+    const client = new UndiciClient();
+    t.after(() => client.close());
+    const result = await createQubicContractClient(client, url).queryContractFunction(FUNC_GET_LOCKED_ORDERS, "0000000040000000");
     assert.strictEqual(result, "aabb");
     assert.strictEqual(calls, 2);
   });
 
   it("throws on unexpected response shape", async (t) => {
     const url = await startMockServer(t, () => ({ unexpected: true }));
+    const client = new UndiciClient();
+    t.after(() => client.close());
     await assert.rejects(
-      () => queryContractFunction(url, FUNC_GET_ORACLES, ""),
+      () => createQubicContractClient(client, url).queryContractFunction(FUNC_GET_ORACLES, ""),
       /unexpected response/,
     );
   });
