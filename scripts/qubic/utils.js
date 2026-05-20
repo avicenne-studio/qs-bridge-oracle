@@ -411,6 +411,223 @@ export async function broadcastViaBob(bobUrl, txBytes) {
   return res.json();
 }
 
+// ── Bob log event constants ────────────────────────────────────────────────
+
+// Bob stores LOG_INFO() output as CONTRACT_INFORMATION_MESSAGE (type 6)
+const CONTRACT_INFO_LOG_TYPE = 6;
+
+// QSB contract log type IDs (matches QubicSolanaBridge.h constants)
+export const QSB_LOG_LOCK = 1;
+export const QSB_LOG_OVERRIDE_LOCK = 2;
+export const QSB_LOG_UNLOCK = 3;
+export const QSB_LOG_PAUSED = 4;
+export const QSB_LOG_UNPAUSED = 5;
+export const QSB_LOG_ADMIN_TRANSFERRED = 6;
+export const QSB_LOG_THRESHOLD_UPDATED = 7;
+export const QSB_LOG_ROLE_GRANTED = 8;
+export const QSB_LOG_ROLE_REVOKED = 9;
+export const QSB_LOG_FEE_PARAMETERS_UPDATED = 10;
+
+// Reason codes from QubicSolanaBridge.h
+export const QSB_REASON = {
+  NONE: 0, PAUSED: 1, INVALID_AMOUNT: 2, INSUFFICIENT_REWARD: 3,
+  NONCE_USED: 4, NO_SPACE: 5, NOT_SENDER: 6, BAD_RELAYER_FEE: 7,
+  NO_ORACLES: 8, THRESHOLD_FAILED: 9, ALREADY_FILLED: 10,
+  INVALID_SIGNATURE: 11, DUPLICATE_SIGNER: 12, NOT_ADMIN: 13,
+  NOT_ADMIN_OR_PAUSER: 14, INVALID_THRESHOLD: 15, ROLE_EXISTS: 16,
+  ROLE_MISSING: 17, INVALID_FEE_PARAMS: 18, TRANSFER_FAILED: 19,
+  ERA_MISMATCH: 20,
+};
+
+// ── Bob log API helpers ────────────────────────────────────────────────────
+
+/** Fetch transaction info from Bob Node (found, executed, logIdFrom, logIdTo, tick). */
+export async function getTxInfo(bobUrl, txHash) {
+  const res = await fetch(`${bobUrl}/tx/${encodeURIComponent(txHash)}`);
+  if (!res.ok) throw new Error(`GET /tx/${txHash} HTTP ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Fetch current sync status from Bob Node.
+ * Returns { epoch, currentIndexingTick, currentFetchingTick, isSyncing, ... }.
+ * Bob's actual field name is `currentProcessingEpoch`; normalised to `epoch` here.
+ */
+export async function getBobStatus(bobUrl) {
+  const res = await fetch(`${bobUrl}/status`);
+  if (!res.ok) throw new Error(`GET /status HTTP ${res.status}`);
+  const body = await res.json();
+  return { epoch: body.currentProcessingEpoch ?? body.epoch ?? 0, ...body };
+}
+
+/**
+ * Fetch raw log entries for a log-ID range in a given epoch.
+ * Returns a JSON array of Bob log entry objects.
+ * Each entry has: ok, type, epoch, tick, logId, body.{scIndex, scLogType, content}.
+ */
+export async function fetchLogRange(bobUrl, epoch, logIdFrom, logIdTo) {
+  const res = await fetch(`${bobUrl}/log/${epoch}/${logIdFrom}/${logIdTo}`);
+  if (!res.ok) throw new Error(`GET /log/${epoch}/${logIdFrom}/${logIdTo} HTTP ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Search ticks containing QSB log events using Bob's POST /findLog.
+ * Returns an array of tick numbers. Note: Bob may only index logType >= 100000;
+ * if this returns empty, fall back to state polling via queryContractFunction.
+ *
+ * @param {string} bobUrl
+ * @param {number} fromTick
+ * @param {number} toTick
+ * @param {number} logType  QSB_LOG_LOCK (1), QSB_LOG_UNLOCK (3), etc.
+ * @param {string} [topic1]  Wildcard identity (default: null identity)
+ * @param {string} [topic2]
+ * @param {string} [topic3]
+ */
+export async function findQSBLogTicks(
+  bobUrl,
+  fromTick,
+  toTick,
+  logType,
+  topic1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaafxib",
+  topic2 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaafxib",
+  topic3 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaafxib",
+) {
+  const res = await fetch(`${bobUrl}/findLog`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fromTick,
+      toTick,
+      scIndex: QSB_CONTRACT_INDEX,
+      logType,
+      topic1,
+      topic2,
+      topic3,
+    }),
+  });
+  if (!res.ok) throw new Error(`POST /findLog HTTP ${res.status}`);
+  return res.json();
+}
+
+// ── QSB log content parsers ────────────────────────────────────────────────
+
+/**
+ * Parse Lock or OverrideLock log content bytes (168B after the 8-byte header).
+ *
+ * Bob strips the first 8 bytes (_contractIndex + _type) into scIndex/scLogType.
+ * The remaining content reflects QSBLogLockMessage offset 8 onward:
+ *   [0..31]    id        from      (Qubic public key, 32B)
+ *   [32..95]   u8[64]    to        (Solana address ASCII, zero-padded)
+ *   [96..103]  u64 LE    amount
+ *   [104..111] u64 LE    relayerFee
+ *   [112..115] u32 LE    networkOut
+ *   [116..119] u32 LE    nonce
+ *   [120..151] u8[32]    orderHash
+ *   [152]      u8        success
+ *   [153]      u8        reasonCode
+ *   [154..155] --        padding (align u32)
+ *   [156..159] u32 LE    orderEra
+ */
+function parseLockContent(contentHex) {
+  const buf = Buffer.from(contentHex, "hex");
+  return {
+    from: buf.slice(0, 32),
+    to: buf.slice(32, 96),
+    amount: buf.readBigUInt64LE(96),
+    relayerFee: buf.readBigUInt64LE(104),
+    networkOut: buf.readUInt32LE(112),
+    nonce: buf.readUInt32LE(116),
+    orderHash: buf.slice(120, 152),
+    success: buf.readUInt8(152) !== 0,
+    reasonCode: buf.readUInt8(153),
+    orderEra: buf.readUInt32LE(156),
+  };
+}
+
+/**
+ * Parse Unlock log content bytes (128B after the 8-byte header).
+ *
+ * QSBLogUnlockMessage offset 8 onward:
+ *   [0..31]    u8[32]    orderHash
+ *   [32..63]   id        toAddress (Qubic public key, 32B)
+ *   [64..71]   u64 LE    amount
+ *   [72..79]   u64 LE    relayerFee
+ *   [80..111]  id        relayer   (oracle that submitted Unlock)
+ *   [112]      u8        success
+ *   [113]      u8        reasonCode
+ *   [114..115] --        padding (align u32)
+ *   [116..119] u32 LE    orderEra
+ */
+function parseUnlockContent(contentHex) {
+  const buf = Buffer.from(contentHex, "hex");
+  return {
+    orderHash: buf.slice(0, 32),
+    toAddress: buf.slice(32, 64),
+    amount: buf.readBigUInt64LE(64),
+    relayerFee: buf.readBigUInt64LE(72),
+    relayer: buf.slice(80, 112),
+    success: buf.readUInt8(112) !== 0,
+    reasonCode: buf.readUInt8(113),
+    orderEra: buf.readUInt32LE(116),
+  };
+}
+
+/**
+ * Parse a single Bob log entry into a typed QSB event object.
+ *
+ * Returns null if the entry is not a QSB CONTRACT_INFORMATION_MESSAGE.
+ * The returned `data` field for Lock/OverrideLock has: from, to, amount,
+ * relayerFee, networkOut, nonce, orderHash, success, reasonCode, orderEra.
+ * For Unlock: orderHash, toAddress, amount, relayerFee, relayer, success,
+ * reasonCode, orderEra.
+ *
+ * Tip: convert raw id buffers to strings with bytesToQubicId(); convert
+ * the `to` buffer with Buffer.from(data.to).toString("ascii").replace(/\0+$/, "").
+ *
+ * @param {object} entry  A Bob log entry from fetchLogRange() or GET /log/…
+ * @returns {{ event, logType, logId, tick, epoch, data } | null}
+ */
+export function parseQSBLogEntry(entry) {
+  if (!entry?.ok || entry.type !== CONTRACT_INFO_LOG_TYPE) return null;
+  const { scIndex, scLogType, content } = entry.body ?? {};
+  if (scIndex !== QSB_CONTRACT_INDEX || typeof content !== "string") return null;
+
+  const base = { logType: scLogType, logId: entry.logId, tick: entry.tick, epoch: entry.epoch };
+
+  switch (scLogType) {
+    case QSB_LOG_LOCK:          return { ...base, event: "lock", data: parseLockContent(content) };
+    case QSB_LOG_OVERRIDE_LOCK: return { ...base, event: "override-lock", data: parseLockContent(content) };
+    case QSB_LOG_UNLOCK:        return { ...base, event: "unlock", data: parseUnlockContent(content) };
+    default:                    return { ...base, event: "unknown", data: { contentHex: content } };
+  }
+}
+
+/**
+ * Fetch and parse all QSB log events for a single transaction.
+ *
+ * @param {string}   bobUrl   Bob Node base URL
+ * @param {string}   txHash   Transaction hash
+ * @param {number}   epoch    Epoch that contains this transaction (required for GET /log)
+ * @param {function} [onEvent]  Optional callback(event) called for each parsed QSB event
+ * @returns {Promise<Array>}  All parsed QSB events (Lock, OverrideLock, Unlock, unknown)
+ */
+export async function fetchQSBLogsForTx(bobUrl, txHash, epoch, onEvent) {
+  const txInfo = await getTxInfo(bobUrl, txHash);
+  if (!txInfo.found || !txInfo.executed) return [];
+  if (txInfo.logIdFrom < 0 || txInfo.logIdTo < 0) return [];
+
+  const rawEntries = await fetchLogRange(bobUrl, epoch, txInfo.logIdFrom, txInfo.logIdTo);
+  const events = [];
+  for (const entry of rawEntries) {
+    const parsed = parseQSBLogEntry(entry);
+    if (!parsed) continue;
+    if (onEvent) onEvent(parsed);
+    events.push(parsed);
+  }
+  return events;
+}
+
 // ── Script helpers ─────────────────────────────────────────────────────────
 
 /** Load QUBIC_KEYS and derive publicKey/publicId; exit with an error if not set. */
