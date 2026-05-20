@@ -8,6 +8,7 @@ import qubicCryptoModule from "@qubic-lib/qubic-ts-library";
 import {
   relayToQubic,
   buildQubicRelayDeps,
+  getOraclePublicKeys,
   type QubicRelayDeps,
 } from "../../../src/plugins/app/relayer/relay-qubic.js";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../../src/plugins/app/common/protocol.js";
@@ -100,10 +101,11 @@ async function startCustomRpcMock(
     if (querySmartContractResult === "fail") {
       return reply.code(502).send("bad gateway");
     }
-    const buf = Buffer.alloc(4 + 64 * 32);
+    const buf = Buffer.alloc(8 + 64 * 32);
     if (opts.oraclePublicKey) {
       buf.writeUInt32LE(1, 0);
-      buf.set(opts.oraclePublicKey, 4);
+      // bytes 4-7: natural-alignment padding (already zeroed)
+      buf.set(opts.oraclePublicKey, 8);
     } else {
       buf.writeUInt32LE(0, 0);
     }
@@ -346,6 +348,31 @@ describe("relay-qubic", () => {
         () => relayToQubic(order, deps),
         { message: "No valid oracle signatures could be matched" },
       );
+    });
+  });
+
+  describe("getOraclePublicKeys", () => {
+    it("reads the first key at byte offset 8, skipping count and alignment padding", async (t) => {
+      // Layout: u32 count (4 bytes) | 4-byte padding | Array<id> (32 bytes each)
+      const key = new Uint8Array(32).fill(0xab);
+      const buf = Buffer.alloc(8 + 32);
+      buf.writeUInt32LE(1, 0);
+      // bytes 4-7: alignment padding (zeroed)
+      buf.set(key, 8);
+
+      const server = Fastify({ logger: false });
+      server.post("/live/v1/querySmartContract", async () => ({
+        responseData: buf.toString("base64"),
+      }));
+      await server.listen({ port: 0, host: "127.0.0.1" });
+      const addr = server.server.address();
+      if (!addr || typeof addr === "string") throw new Error("no address");
+      const url = `http://127.0.0.1:${addr.port}`;
+      t.after(() => server.close());
+
+      const keys = await getOraclePublicKeys(url);
+      assert.strictEqual(keys.length, 1);
+      assert.deepStrictEqual(keys[0], key, "first key must match bytes 8–39");
     });
   });
 

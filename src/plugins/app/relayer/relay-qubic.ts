@@ -61,7 +61,7 @@ async function getCurrentTick(rpcUrl: string): Promise<number> {
   return body.tick;
 }
 
-async function getOraclePublicKeys(rpcUrl: string): Promise<Uint8Array[]> {
+export async function getOraclePublicKeys(rpcUrl: string): Promise<Uint8Array[]> {
   const res = await fetch(`${rpcUrl}/live/v1/querySmartContract`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -78,7 +78,7 @@ async function getOraclePublicKeys(rpcUrl: string): Promise<Uint8Array[]> {
   const count = data.readUInt32LE(0);
   const keys: Uint8Array[] = [];
   for (let i = 0; i < count; i++) {
-    keys.push(new Uint8Array(data.subarray(4 + i * 32, 4 + (i + 1) * 32)));
+    keys.push(new Uint8Array(data.subarray(8 + i * 32, 8 + (i + 1) * 32)));
   }
   return keys;
 }
