@@ -23,7 +23,6 @@ export default async function serviceApp(
     dir: path.join(import.meta.dirname, "plugins/infra"),
     options: {},
   });
-
   // This loads all your application plugins defined in plugins/app
   // those should be support plugins that are reused
   // through your application

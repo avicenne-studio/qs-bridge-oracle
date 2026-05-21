@@ -32,7 +32,7 @@ export const QubicOverrideLockEventPayloadSchema = Type.Object({
 export const QubicUnlockEventPayloadSchema = Type.Object({
   toAddress: StringSchema,
   amount: AmountSchema,
-  nonce: StringSchema,
+  nonce: Type.Literal(""),
 });
 
 export const QubicEventPayloadSchema = Type.Union([
