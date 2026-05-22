@@ -18,8 +18,20 @@ type PersistedSignature = {
 };
 type StoredOrder = OracleOrder;
 type CreateOrder = OracleOrder;
-type UpdateOrder = Partial<Omit<OracleOrder, "destination_trx_hash" | "failure_reason_public" | "next_relay_at" | "last_relay_error">> & {
+type UpdateOrder = Partial<
+  Omit<
+    OracleOrder,
+    | "destination_trx_hash"
+    | "destination_order_hash"
+    | "destination_target_tick"
+    | "failure_reason_public"
+    | "next_relay_at"
+    | "last_relay_error"
+  >
+> & {
   destination_trx_hash?: string | null;
+  destination_order_hash?: string | null;
+  destination_target_tick?: number | null;
   failure_reason_public?: string | null;
   next_relay_at?: string | null;
   last_relay_error?: string | null;
@@ -36,6 +48,11 @@ function normalizeOrderRow(row: StoredOrder): StoredOrder {
     oracle_accept_to_relay: Boolean(row.oracle_accept_to_relay),
     relay_attempts: Number(row.relay_attempts),
     order_era: Number(row.order_era),
+    destination_order_hash: row.destination_order_hash ?? undefined,
+    destination_target_tick:
+      row.destination_target_tick === null || row.destination_target_tick === undefined
+        ? undefined
+        : Number(row.destination_target_tick),
     failure_reason_public: row.failure_reason_public ?? undefined,
     next_relay_at: row.next_relay_at ?? undefined,
     last_relay_error: row.last_relay_error ?? undefined,
@@ -121,6 +138,7 @@ function createRepository(fastify: FastifyInstance) {
         .whereIn("status", [
           "pending",
           "ready-for-relay",
+          "transaction-broadcasted",
           "relayed",
           "finalized",
           "failed",
@@ -145,6 +163,19 @@ function createRepository(fastify: FastifyInstance) {
             "<=",
             knex.fn.now()
           );
+        })
+        .orderBy("id", "asc")
+        .limit(limit);
+
+      return rows.map((row) => normalizeOrderRow(row as StoredOrder));
+    },
+
+    async findBroadcastedQubicOrders(limit = MAX_READY_FOR_RELAY) {
+      const rows = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
+        .select("*")
+        .where({
+          dest: "qubic",
+          status: "transaction-broadcasted",
         })
         .orderBy("id", "asc")
         .limit(limit);
@@ -251,6 +282,15 @@ function createRepository(fastify: FastifyInstance) {
         .first();
       return row ? normalizeOrderRow(row as StoredOrder) : null;
     },
+
+    async findByDestinationOrderHash(destinationOrderHash: string) {
+      const row = await knex<PersistedOrder>(ORDERS_TABLE_NAME)
+        .select("*")
+        .where("destination_order_hash", destinationOrderHash)
+        .first();
+      return row ? normalizeOrderRow(row as StoredOrder) : null;
+    },
+
   };
 }
 

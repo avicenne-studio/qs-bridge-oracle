@@ -54,6 +54,19 @@ async function startMockServer(
   return `http://127.0.0.1:${addr.port}`;
 }
 
+async function startGetServer(
+  t: import("node:test").TestContext,
+  route: string,
+  handler: () => unknown,
+) {
+  const server = Fastify({ logger: false });
+  server.get(route, async () => handler());
+  await server.listen({ port: 0, host: "127.0.0.1" });
+  const addr = server.server.address() as import("node:net").AddressInfo;
+  t.after(() => server.close());
+  return `http://127.0.0.1:${addr.port}`;
+}
+
 describe("decodeGetOracles", () => {
   it("returns an empty array when count is 0", () => {
     const buf = Buffer.alloc(8 + 64 * 32);
@@ -223,6 +236,87 @@ describe("queryContractFunction", () => {
     await assert.rejects(
       () => createQubicContractClient(client, url).queryContractFunction(FUNC_GET_ORACLES, ""),
       (err: Error) => !err.message.startsWith("querySmartContract HTTP"),
+    );
+  });
+});
+
+describe("getBobStatus", () => {
+  it("reads epoch from currentProcessingEpoch", async (t) => {
+    const url = await startGetServer(t, "/status", () => ({ currentProcessingEpoch: 42, currentFetchingTick: 100, currentIndexingTick: 99 }));
+    const client = new UndiciClient();
+    t.after(() => client.close());
+    const result = await createQubicContractClient(client, url).getBobStatus();
+    assert.strictEqual(result.epoch, 42);
+    assert.strictEqual(result.tick, 100);
+    assert.strictEqual(result.fetchingTick, 100);
+    assert.strictEqual(result.indexingTick, 99);
+  });
+
+  it("falls back to epoch field when currentProcessingEpoch is absent", async (t) => {
+    const url = await startGetServer(t, "/status", () => ({ epoch: 7, tick: 50 }));
+    const client = new UndiciClient();
+    t.after(() => client.close());
+    const result = await createQubicContractClient(client, url).getBobStatus();
+    assert.strictEqual(result.epoch, 7);
+    assert.strictEqual(result.tick, 50);
+    assert.strictEqual(result.fetchingTick, 50);
+    assert.strictEqual(result.indexingTick, 50);
+  });
+
+  it("defaults epoch and tick to 0 when fields are absent", async (t) => {
+    const url = await startGetServer(t, "/status", () => ({}));
+    const client = new UndiciClient();
+    t.after(() => client.close());
+    const result = await createQubicContractClient(client, url).getBobStatus();
+    assert.strictEqual(result.epoch, 0);
+    assert.strictEqual(result.tick, 0);
+    assert.strictEqual(result.fetchingTick, 0);
+    assert.strictEqual(result.indexingTick, 0);
+  });
+});
+
+describe("broadcastTransaction", () => {
+  it("resolves on a successful broadcast", async (t) => {
+    const server = Fastify({ logger: false });
+    server.post("/broadcastTransaction", async () => ({ transactionId: "abc", peersBroadcasted: 3 }));
+    await server.listen({ port: 0, host: "127.0.0.1" });
+    const addr = server.server.address() as import("node:net").AddressInfo;
+    const url = `http://127.0.0.1:${addr.port}`;
+    t.after(() => server.close());
+
+    const client = new UndiciClient();
+    t.after(() => client.close());
+    await assert.doesNotReject(() => createQubicContractClient(client, url).broadcastTransaction("deadbeef"));
+  });
+
+  it("throws with 'Qubic broadcast failed' on HTTP error", async (t) => {
+    const server = Fastify({ logger: false });
+    server.post("/broadcastTransaction", async (_req, reply) => reply.code(500).send("error"));
+    await server.listen({ port: 0, host: "127.0.0.1" });
+    const addr = server.server.address() as import("node:net").AddressInfo;
+    const url = `http://127.0.0.1:${addr.port}`;
+    t.after(() => server.close());
+
+    const client = new UndiciClient();
+    t.after(() => client.close());
+    await assert.rejects(
+      () => createQubicContractClient(client, url).broadcastTransaction("deadbeef"),
+      /Qubic broadcast failed: HTTP 500/,
+    );
+  });
+
+  it("re-throws non-HTTP errors unchanged", async (t) => {
+    const server = Fastify({ logger: false });
+    await server.listen({ port: 0, host: "127.0.0.1" });
+    const addr = server.server.address() as import("node:net").AddressInfo;
+    const url = `http://127.0.0.1:${addr.port}`;
+    await server.close();
+
+    const client = new UndiciClient();
+    t.after(() => client.close());
+    await assert.rejects(
+      () => createQubicContractClient(client, url).broadcastTransaction("deadbeef"),
+      (err: Error) => !err.message.startsWith("Qubic broadcast failed"),
     );
   });
 });

@@ -19,6 +19,14 @@ export function createInMemoryOrders(initial: OracleOrder[] = []) {
       }
       return null;
     },
+    async findByDestinationOrderHash(destinationOrderHash: string) {
+      for (const order of store.values()) {
+        if (order.destination_order_hash === destinationOrderHash) {
+          return order;
+        }
+      }
+      return null;
+    },
     async create(order: OracleOrder) {
       store.set(order.id, order);
       return order;

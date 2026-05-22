@@ -28,9 +28,10 @@
  *   --dry-run    Compute hash, sign, print payouts — no broadcast.
  *
  * Env:
- *   QUBIC_BROADCAST_RPC_URL  Core Lite node  (default: http://localhost:41841)
+ *   QUBIC_NODE_URL  Core Lite node  (default: http://localhost:41841)
  *   QUBIC_RPC_URL            Bob Node        (default: http://localhost:40420)
  *   QUBIC_KEYS               Relayer key file { sKey } (required unless --dry-run)
+ *   QUBIC_INVOCATION_REWARD  Invocation reward attached to the unlock tx (default: 1)
  */
 
 import { readFile } from "node:fs/promises";
@@ -116,8 +117,11 @@ function hexToBytes32(value) {
 }
 
 function nonceToBytes32(nonce) {
-  if (typeof nonce === "string" && /^[0-9a-fA-F]{64}$/.test(nonce)) {
-    return new Uint8Array(Buffer.from(nonce, "hex"));
+  if (typeof nonce === "string") {
+    const hex = nonce.startsWith("0x") ? nonce.slice(2) : nonce;
+    if (/^[0-9a-fA-F]{64}$/.test(hex)) {
+      return new Uint8Array(Buffer.from(hex, "hex"));
+    }
   }
   const n = (Number(nonce) >>> 0);
   const out = new Uint8Array(32);
@@ -182,6 +186,7 @@ for (const [i, entry] of oracleKeysList.entries()) {
 
 const nodeRpcUrl = resolveNodeRpcUrl();
 const bobUrl = resolveBobUrl();
+const invocationReward = BigInt(process.env.QUBIC_INVOCATION_REWARD ?? "1");
 
 // ── Relayer keys (not needed for dry-run validation, but load early to fail fast) ──
 
@@ -282,13 +287,13 @@ if (isDryRun) {
 
 const inputBytes = encodeUnlockInput(order, signatures);
 
-// amount=0: any invocation reward is immediately refunded by the contract
+// Unlock needs a non-zero invocation reward on Qubic.
 const { targetTick } = await buildAndBroadcastTx({
   seed: relayer.seed,
   publicKey: relayer.publicKey,
   inputType: UNLOCK_INPUT_TYPE,
   inputBytes,
-  amount: 0,
+  amount: invocationReward,
   nodeRpcUrl,
   bobUrl,
 });

@@ -6,6 +6,7 @@ import {
 } from "../../../../src/plugins/app/events/qubic/qubic-events-validator.js";
 import {
   FUNC_GET_LOCKED_ORDER,
+  FUNC_IS_ORDER_FILLED,
   encodeGetLockedOrderInput,
   type QubicContractClient,
 } from "../../../../src/plugins/infra/qubic-contract-client.js";
@@ -61,7 +62,9 @@ const logger = {
 };
 
 function makeClient(respond: () => Promise<string>): QubicContractClient {
-  return { queryContractFunction: () => respond() };
+  return {
+    queryContractFunction: () => respond(),
+  };
 }
 
 test("qubic event validator accepts a matching lock order", async () => {
@@ -133,12 +136,44 @@ test("qubic event validator accepts override-lock event with matching fields", a
 });
 
 test("qubic event validator skips field checks for unlock events", async () => {
-  const client = makeClient(async () => buildLockedOrderHex());
+  let capturedFunc: number | undefined;
+  let capturedInput: string | undefined;
+  const client: QubicContractClient = {
+    async queryContractFunction(funcNumber, inputHex) {
+      capturedFunc = funcNumber;
+      capturedInput = inputHex;
+      return "01";
+    },
+  };
   const validator = createQubicEventValidator({ contractClient: client, logger });
   const unlockEvent = {
     ...baseEvent,
+    signature: "ab".repeat(32),
     type: "unlock" as const,
-    payload: { toAddress: "SolanaAddressHere", amount: "1000", nonce: "42" },
+    nonce: "",
+    payload: { toAddress: "0".repeat(64), amount: "0", nonce: "" },
   };
   await validator.validate(unlockEvent);
+  assert.strictEqual(capturedFunc, FUNC_IS_ORDER_FILLED);
+  assert.strictEqual(capturedInput, "ab".repeat(32));
+});
+
+test("qubic event validator throws when unlock order hash is not filled", async () => {
+  const client: QubicContractClient = {
+    async queryContractFunction() {
+      return "00";
+    },
+  };
+  const validator = createQubicEventValidator({ contractClient: client, logger });
+  await assert.rejects(
+    () =>
+      validator.validate({
+        ...baseEvent,
+        signature: "cd".repeat(32),
+        type: "unlock" as const,
+        nonce: "",
+        payload: { toAddress: "0".repeat(64), amount: "0", nonce: "" },
+      }),
+    /Order not filled/,
+  );
 });

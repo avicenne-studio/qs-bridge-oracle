@@ -6,6 +6,7 @@ import {
   kQubicContractClient,
   type QubicContractClient,
   FUNC_GET_LOCKED_ORDER,
+  FUNC_IS_ORDER_FILLED,
   encodeGetLockedOrderInput,
   decodeGetLockedOrder,
 } from "../../../infra/qubic-contract-client.js";
@@ -31,6 +32,25 @@ export function createQubicEventValidator(deps: {
 
   return {
     async validate(event: QubicStoredEvent) {
+      if (event.type === "unlock") {
+        let hex: string;
+        try {
+          hex = await contractClient.queryContractFunction(
+            FUNC_IS_ORDER_FILLED,
+            event.signature,
+          );
+        } catch (error) {
+          logger.warn({ err: error }, "Qubic contract query failed");
+          throw error;
+        }
+
+        const filled = Buffer.from(hex, "hex")[0] !== 0;
+        if (!filled) {
+          throw new Error("Order not filled");
+        }
+        return;
+      }
+
       const nonce = Number(event.nonce);
       let hex: string;
       try {

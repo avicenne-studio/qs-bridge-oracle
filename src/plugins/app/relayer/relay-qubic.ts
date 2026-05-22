@@ -18,7 +18,6 @@ import {
   type OrderFields,
 } from "../common/qubic/order-struct.js";
 import {
-  QSB_CONTRACT_INDEX,
   qubicAddressToBytes,
   QUBIC_TOKEN_ADDRESS,
   QUBIC_CONTRACT_ADDRESS_BYTES,
@@ -29,9 +28,27 @@ import {
   PROTOCOL_NAME,
   PROTOCOL_VERSION,
 } from "../common/protocol.js";
+import {
+  kQubicContractClient,
+  type QubicContractClient,
+  FUNC_GET_ORACLES,
+  FUNC_IS_ORDER_FILLED,
+  decodeGetOracles,
+} from "../../infra/qubic-contract-client.js";
+
+export class QubicDefinitiveRelayFailure extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "QubicDefinitiveRelayFailure";
+  }
+}
 
 const UNLOCK_INPUT_TYPE = 3;
 const TICK_OFFSET = 5;
+const FILL_POLL_INTERVAL_MS = 2000;
+// Safety ceiling: if the target tick never arrives (Bob lagging, node stalled),
+// stop polling after this many attempts rather than blocking forever.
+const FILL_POLL_MAX_ATTEMPTS = 60; // ~120s
 const QUBIC_NETWORK_ID = 1;
 const SOLANA_NETWORK_ID = 2;
 
@@ -46,44 +63,34 @@ const resolvedQubicCrypto = (qubicCryptoModule as unknown as { default: { crypto
 
 export type QubicRelayDeps = {
   config: EnvConfig;
+  contractClient: QubicContractClient;
   qubicSeed: string;
   qubicPublicKey: Uint8Array;
   ordersRepository: OrdersRepository;
   logger: FastifyInstance["log"];
+  getCurrentTick?: () => Promise<number>;
+  pollIntervalMs?: number;
+  pollMaxAttempts?: number;
 };
 
-type RelayResult = { trxHash: string };
-
-async function getCurrentTick(rpcUrl: string): Promise<number> {
-  const res = await fetch(`${rpcUrl}/live/v1/tick-info`);
-  if (!res.ok) throw new Error(`tick-info HTTP ${res.status}`);
-  const body = (await res.json()) as { tick: number };
-  return body.tick;
-}
-
-export async function getOraclePublicKeys(rpcUrl: string): Promise<Uint8Array[]> {
-  const res = await fetch(`${rpcUrl}/live/v1/querySmartContract`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contractIndex: QSB_CONTRACT_INDEX,
-      inputType: 7,
-      inputHex: "",
-    }),
-  });
-  if (!res.ok) throw new Error(`GetOracles HTTP ${res.status}`);
-  const body = (await res.json()) as { responseData: string };
-  const data = Buffer.from(body.responseData, "base64");
-
-  const count = data.readUInt32LE(0);
-  const keys: Uint8Array[] = [];
-  for (let i = 0; i < count; i++) {
-    keys.push(new Uint8Array(data.subarray(8 + i * 32, 8 + (i + 1) * 32)));
-  }
-  return keys;
-}
+export type QubicPreparedRelay = {
+  trxHash: string;
+  orderHash: string;
+  targetTick: number;
+};
 
 const addressEncoder = getAddressEncoder();
+
+async function getCurrentNodeTick(nodeUrl: string): Promise<number> {
+  const res = await fetch(`${nodeUrl}/live/v1/tick-info`);
+  if (!res.ok) throw new Error(`tick-info HTTP ${res.status}`);
+  const body = (await res.json()) as { tick?: number; tickInfo?: { tick?: number } };
+  const tick = body.tick ?? body.tickInfo?.tick;
+  if (typeof tick !== "number" || !Number.isFinite(tick)) {
+    throw new Error(`tick-info: unexpected response: ${JSON.stringify(body)}`);
+  }
+  return tick;
+}
 
 function orderFromOracleOrder(order: OracleOrder, tokenMint: string): OrderFields {
   const fromBytes = solanaAddressToBytes(order.from);
@@ -110,7 +117,7 @@ async function matchSignaturesToOracles(
   signatures: string[],
   oracleKeys: Uint8Array[],
   orderFields: OrderFields,
-): Promise<Array<{ signerPublicKey: Uint8Array; signature: Uint8Array }>> {
+): Promise<{ matched: Array<{ signerPublicKey: Uint8Array; signature: Uint8Array }>; orderHash: Uint8Array }> {
   const crypto = await resolvedQubicCrypto;
 
   const serialized = serializeQsbOrderMessage({
@@ -129,8 +136,8 @@ async function matchSignaturesToOracles(
     orderEra: orderFields.orderEra,
   });
 
-  const digest = new Uint8Array(32);
-  crypto.K12(serialized, digest, 32);
+  const orderHash = new Uint8Array(32);
+  crypto.K12(serialized, orderHash, 32);
 
   const matched: Array<{ signerPublicKey: Uint8Array; signature: Uint8Array }> = [];
   const usedOracles = new Set<string>();
@@ -142,7 +149,7 @@ async function matchSignaturesToOracles(
     for (const oracleKey of oracleKeys) {
       const keyHex = Buffer.from(oracleKey).toString("hex");
       if (usedOracles.has(keyHex)) continue;
-      if (crypto.schnorrq.verify(oracleKey, digest, sigBytes) === 1) {
+      if (crypto.schnorrq.verify(oracleKey, orderHash, sigBytes) === 1) {
         matched.push({ signerPublicKey: oracleKey, signature: sigBytes });
         usedOracles.add(keyHex);
         break;
@@ -150,29 +157,53 @@ async function matchSignaturesToOracles(
     }
   }
 
-  return matched;
+  return { matched, orderHash };
 }
 
-export async function relayToQubic(
+async function resolveQubicRelayMaterial(
   order: OracleOrder,
   deps: QubicRelayDeps,
-): Promise<RelayResult> {
-  const rpcUrl = deps.config.QUBIC_BROADCAST_RPC_URL;
-
+): Promise<{
+  matchedSigs: Array<{ signerPublicKey: Uint8Array; signature: Uint8Array }>;
+  orderHashHex: string;
+  currentTick: number;
+  orderFields: OrderFields;
+}> {
+  const { contractClient } = deps;
   const sigs = await deps.ordersRepository.findSignatures(order.id);
   const orderFields = orderFromOracleOrder(order, deps.config.TOKEN_MINT);
 
-  const oracleKeys = await getOraclePublicKeys(rpcUrl);
-  const matchedSigs = await matchSignaturesToOracles(sigs, oracleKeys, orderFields);
+  const oracleKeysHex = await contractClient.queryContractFunction(FUNC_GET_ORACLES, "");
+  const oracleKeys = decodeGetOracles(oracleKeysHex);
+  const { matched: matchedSigs, orderHash } = await matchSignaturesToOracles(sigs, oracleKeys, orderFields);
 
   if (matchedSigs.length === 0) {
     throw new Error("No valid oracle signatures could be matched");
   }
 
-  const unlockInput = buildUnlockInput(orderFields, matchedSigs);
+  const currentTick =
+    deps.getCurrentTick !== undefined
+      ? await deps.getCurrentTick()
+      : (await contractClient.getBobStatus()).tick;
 
-  const tick = await getCurrentTick(rpcUrl);
-  const targetTick = tick + TICK_OFFSET;
+  return {
+    matchedSigs,
+    orderHashHex: Buffer.from(orderHash).toString("hex"),
+    currentTick,
+    orderFields,
+  };
+}
+
+export async function relayToQubic(
+  order: OracleOrder,
+  deps: QubicRelayDeps,
+): Promise<QubicPreparedRelay> {
+  const { contractClient } = deps;
+  const { matchedSigs, orderHashHex, currentTick, orderFields } =
+    await resolveQubicRelayMaterial(order, deps);
+
+  const unlockInput = buildUnlockInput(orderFields, matchedSigs);
+  const targetTick = currentTick + TICK_OFFSET;
 
   const dest = new PublicKey(QUBIC_CONTRACT_ADDRESS_BYTES);
 
@@ -182,7 +213,7 @@ export async function relayToQubic(
   const tx = new QubicTransaction()
     .setSourcePublicKey(new PublicKey(deps.qubicPublicKey))
     .setDestinationPublicKey(dest)
-    .setAmount(new Long(0))
+    .setAmount(new Long(deps.config.QUBIC_INVOCATION_REWARD))
     .setTick(targetTick)
     .setInputType(UNLOCK_INPUT_TYPE)
     .setInputSize(unlockInput.length)
@@ -192,20 +223,55 @@ export async function relayToQubic(
   const hexData = Buffer.from(builtTx).toString("hex");
   const txId = tx.getId();
 
-  // Broadcast via the indexer — it captures the event AND forwards to the node
-  const indexerUrl = deps.config.QUBIC_RPC_URL;
-  const broadcastRes = await fetch(`${indexerUrl}/broadcastTransaction`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: hexData }),
-  });
+  await contractClient.broadcastTransaction(hexData);
 
-  if (!broadcastRes.ok) {
-    const errBody = await broadcastRes.text().catch(() => "");
-    throw new Error(`Qubic broadcast failed: HTTP ${broadcastRes.status} — ${errBody}`);
+  return {
+    trxHash: txId,
+    orderHash: orderHashHex,
+    targetTick,
+  };
+}
+
+export async function finalizeQubicRelay(
+  order: OracleOrder,
+  deps: QubicRelayDeps,
+): Promise<{ trxHash: string; orderHash: string }> {
+  const { contractClient } = deps;
+  const orderHashHex =
+    order.destination_order_hash ??
+    (await resolveQubicRelayMaterial(order, deps)).orderHashHex;
+  const targetTick = order.destination_target_tick;
+  if (targetTick === undefined) {
+    throw new Error("Missing destination_target_tick for broadcasted Qubic relay");
   }
 
-  return { trxHash: txId };
+  // Poll until the contract confirms the fill.
+  // Bob can fetch a tick before its indexed contract state reflects that tick.
+  // Treating currentFetchingTick > targetTick as definitive can therefore race
+  // a successful unlock and mislabel it as expired. Only fail once indexed
+  // state has advanced past targetTick and the order is still not filled.
+  const pollIntervalMs = deps.pollIntervalMs ?? FILL_POLL_INTERVAL_MS;
+  const pollMaxAttempts = deps.pollMaxAttempts ?? FILL_POLL_MAX_ATTEMPTS;
+  for (let attempt = 0; attempt < pollMaxAttempts; attempt++) {
+    if (pollIntervalMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, pollIntervalMs));
+    const [result, bobStatus] = await Promise.all([
+      contractClient.queryContractFunction(FUNC_IS_ORDER_FILLED, orderHashHex),
+      contractClient.getBobStatus(),
+    ]);
+    const filled = Buffer.from(result, "hex")[0] !== 0;
+    if (filled) {
+      return {
+        trxHash: order.destination_trx_hash ?? "",
+        orderHash: orderHashHex,
+      };
+    }
+    if (bobStatus.indexingTick > targetTick) {
+      throw new QubicDefinitiveRelayFailure(
+        `Qubic unlock definitively failed: target tick ${targetTick} passed (indexing ${bobStatus.indexingTick}, fetching ${bobStatus.fetchingTick}), order not filled (orderHash: ${orderHashHex})`,
+      );
+    }
+  }
+  throw new Error(`Qubic unlock timed out after ${pollMaxAttempts} attempts — Bob may be stalled (orderHash: ${orderHashHex})`);
 }
 
 export async function buildQubicRelayDeps(
@@ -215,6 +281,7 @@ export async function buildQubicRelayDeps(
 ): Promise<QubicRelayDeps> {
   const fileManager = fastify.getDecorator<FileManager>(kFileManager);
   const validation: ValidationService = fastify.getDecorator<ValidationService>(kValidation);
+  const contractClient = fastify.getDecorator<QubicContractClient>(kQubicContractClient);
 
   const raw: unknown = await fileManager.readJsonFile("QubicRelaySigner", config.QUBIC_KEYS);
   validation.assertValid<SignerKeys>(SignerKeysSchema, raw, "QubicRelaySigner");
@@ -225,9 +292,11 @@ export async function buildQubicRelayDeps(
 
   return {
     config,
+    contractClient,
     qubicSeed: keys.sKey,
     qubicPublicKey: publicKey,
     ordersRepository,
     logger: fastify.log,
+    getCurrentTick: () => getCurrentNodeTick(config.QUBIC_NODE_URL),
   };
 }

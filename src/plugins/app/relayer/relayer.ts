@@ -3,7 +3,13 @@ import { FastifyInstance } from "fastify";
 import { kEnvConfig, type EnvConfig } from "../../infra/env.js";
 import { kOrdersRepository, type OrdersRepository } from "../indexer/orders.repository.js";
 import { OracleOrder } from "../indexer/schemas/order.js";
-import { type QubicRelayDeps, relayToQubic, buildQubicRelayDeps } from "./relay-qubic.js";
+import {
+  type QubicRelayDeps,
+  relayToQubic,
+  finalizeQubicRelay,
+  buildQubicRelayDeps,
+  QubicDefinitiveRelayFailure,
+} from "./relay-qubic.js";
 import { type SolanaRelayDeps, relayToSolana, buildSolanaRelayDeps } from "./relay-solana.js";
 import { HttpError } from "../../infra/undici-client.js";
 import { type SolanaErrorLike, collectSolanaErrorCodes } from "../common/solana/errors.js";
@@ -82,10 +88,30 @@ async function relayOrder(
   const nextAttempts = order.relay_attempts + 1;
 
   try {
-    const result =
-      order.dest === "qubic"
-        ? await relayToQubic(order, qubicDeps)
-        : await relayToSolana(order, solanaDeps);
+    if (order.dest === "qubic") {
+      const result = await relayToQubic(order, qubicDeps);
+      await ordersRepository.update(order.id, {
+        relay_attempts: nextAttempts,
+        status: "transaction-broadcasted",
+        destination_trx_hash: result.trxHash,
+        destination_order_hash: result.orderHash,
+        destination_target_tick: result.targetTick,
+        next_relay_at: null,
+        last_relay_error: null,
+      });
+      logger.info(
+        {
+          orderId: order.id,
+          trxHash: result.trxHash,
+          orderHash: result.orderHash,
+          targetTick: result.targetTick,
+        },
+        "Qubic transaction broadcasted",
+      );
+      return;
+    }
+
+    const result = await relayToSolana(order, solanaDeps);
 
     await ordersRepository.update(order.id, {
       status: "relayed",
@@ -158,6 +184,27 @@ async function relayOrder(
       }
       return;
     }
+    if (error instanceof QubicDefinitiveRelayFailure) {
+      logger.error(
+        { orderId: order.id, relayError: payload },
+        "Relay failed: Qubic transaction expired",
+      );
+      try {
+        await ordersRepository.update(order.id, {
+          relay_attempts: nextAttempts,
+          status: "failed",
+          failure_reason_public: "Qubic transaction expired",
+          last_relay_error: payload.message,
+        });
+      } catch (updateErr) {
+        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+        logger.error(
+          { orderId: order.id, updateError: msg },
+          "Failed to update order after Qubic definitive failure",
+        );
+      }
+      return;
+    }
 
     logger.error({ orderId: order.id, relayError: payload }, "Relay failed");
     const shouldFail = nextAttempts >= config.RELAYER_MAX_ATTEMPTS;
@@ -179,6 +226,71 @@ async function relayOrder(
   }
 }
 
+async function finalizeBroadcastedQubicOrder(
+  order: OracleOrder,
+  deps: {
+    ordersRepository: OrdersRepository;
+    logger: FastifyInstance["log"];
+    qubicDeps: QubicRelayDeps;
+  },
+) {
+  const { ordersRepository, logger, qubicDeps } = deps;
+
+  try {
+    const result = await finalizeQubicRelay(order, qubicDeps);
+    await ordersRepository.update(order.id, {
+      status: "relayed",
+      destination_trx_hash: result.trxHash || order.destination_trx_hash || null,
+      destination_order_hash: result.orderHash,
+      next_relay_at: null,
+      last_relay_error: null,
+    });
+    logger.info(
+      { orderId: order.id, orderHash: result.orderHash },
+      "Qubic relay confirmed from contract state",
+    );
+  } catch (error) {
+    const payload = toRelayErrorPayload(error);
+    if (error instanceof QubicDefinitiveRelayFailure) {
+      logger.error(
+        { orderId: order.id, relayError: payload },
+        "Qubic broadcast definitively failed",
+      );
+      try {
+        await ordersRepository.update(order.id, {
+          status: "failed",
+          failure_reason_public: "Qubic transaction expired",
+          last_relay_error: payload.message,
+          next_relay_at: null,
+        });
+      } catch (updateErr) {
+        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+        logger.error(
+          { orderId: order.id, updateError: msg },
+          "Failed to update order after broadcasted Qubic definitive failure",
+        );
+      }
+      return;
+    }
+
+    logger.warn(
+      { orderId: order.id, relayError: payload },
+      "Qubic broadcast still pending confirmation",
+    );
+    try {
+      await ordersRepository.update(order.id, {
+        last_relay_error: payload.message,
+      });
+    } catch (updateErr) {
+      const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+      logger.error(
+        { orderId: order.id, updateError: msg },
+        "Failed to update order after pending Qubic confirmation",
+      );
+    }
+  }
+}
+
 export function createRelayerService(deps: {
   ordersRepository: OrdersRepository;
   config: EnvConfig;
@@ -190,6 +302,22 @@ export function createRelayerService(deps: {
 
   return {
     async relayPending() {
+      const broadcastedFinder = (
+        ordersRepository as OrdersRepository & {
+          findBroadcastedQubicOrders?: (limit?: number) => Promise<OracleOrder[]>;
+        }
+      ).findBroadcastedQubicOrders;
+      const broadcasted = broadcastedFinder
+        ? await broadcastedFinder.call(ordersRepository)
+        : [];
+      for (const order of broadcasted) {
+        await finalizeBroadcastedQubicOrder(order, {
+          ordersRepository,
+          logger,
+          qubicDeps,
+        });
+      }
+
       const candidates = await ordersRepository.findReadyForRelay(config.RELAYER_MAX_ATTEMPTS);
       const delayMs = config.RELAYER_PER_ORDER_DELAY_MS;
       for (const [index, order] of candidates.entries()) {
@@ -270,6 +398,6 @@ export default fp(
   },
   {
     name: "relayer",
-    dependencies: ["env", "orders-repository", "undici-client", "signer-service", "validation"],
+    dependencies: ["env", "orders-repository", "undici-client", "signer-service", "validation", "qubic-contract-client"],
   },
 );

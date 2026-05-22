@@ -20,7 +20,7 @@ export const DEFAULT_NODE_RPC_URL = "http://localhost:41841";
 export const DEFAULT_BOB_URL = "http://localhost:40420";
 
 export function resolveNodeRpcUrl() {
-  return process.env.QUBIC_BROADCAST_RPC_URL ?? DEFAULT_NODE_RPC_URL;
+  return process.env.QUBIC_NODE_URL ?? DEFAULT_NODE_RPC_URL;
 }
 
 export function resolveBobUrl() {

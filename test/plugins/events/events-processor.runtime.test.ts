@@ -372,9 +372,9 @@ test("processor handles qubic override events", async (t) => {
   }, 2_000);
 });
 
-test("processor stores destination transaction hash for qubic unlock events", async (t) => {
+test("processor finalizes solana-to-qubic orders from qubic unlock events", async (t) => {
   const intervalMs = 50;
-  const unlockNonce = hex32(90);
+  const orderHash = "ab".repeat(32);
 
   const app = await build(t, {
     config: { EVENTS_PROCESS_INTERVAL_MS: intervalMs },
@@ -390,41 +390,49 @@ test("processor stores destination transaction hash for qubic unlock events", as
 
   await ordersRepo.create({
     id: "00000000-0000-4000-8000-000000000999",
-    source: "qubic",
-    dest: "solana",
+    source: "solana",
+    dest: "qubic",
     from: hex32(91),
     to: hex32(92),
     amount: "10",
     relayerFee: "1",
     origin_trx_hash: "trx-lock",
     signature: "sig",
-    status: "pending",
+    status: "relayed",
     oracle_accept_to_relay: true,
-    relay_attempts: 0,
-    source_nonce: unlockNonce,
+    relay_attempts: 1,
+    source_nonce: hex32(90),
     source_payload: JSON.stringify({ v: 1 }),
     order_era: 0,
+    destination_trx_hash: "qubic-unlock-tx",
+    destination_order_hash: orderHash,
+    destination_target_tick: 1234,
   });
 
   await repo.upsert({
     hubUrl: "http://hub-1",
-    signature: "trx-unlock",
+    signature: orderHash,
     slot: null,
     chain: "qubic",
     type: "unlock",
-    nonce: unlockNonce,
+    nonce: "",
     payload: {
-      toAddress: hex32(92),
-      amount: "10",
-      nonce: unlockNonce,
+      toAddress: "0".repeat(64),
+      amount: "0",
+      nonce: "",
     },
     createdAt: "2024-01-01 00:00:00",
   });
 
   await waitFor(async () => {
-    const order = await ordersRepo.findBySourceNonce(unlockNonce);
-    return order?.destination_trx_hash === "trx-unlock";
+    const order = await ordersRepo.findById("00000000-0000-4000-8000-000000000999");
+    return order?.status === "finalized";
   }, 2_000);
+
+  const order = await ordersRepo.findById("00000000-0000-4000-8000-000000000999");
+  assert.ok(order);
+  assert.strictEqual(order?.status, "finalized");
+  assert.strictEqual(order?.destination_trx_hash, "qubic-unlock-tx");
 });
 
 test("processor finalizes order for solana inbound events", async (t) => {

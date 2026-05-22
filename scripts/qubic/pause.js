@@ -6,7 +6,7 @@
  *   node scripts/qubic/pause.js [--dry-run]
  *
  * Env:
- *   QUBIC_BROADCAST_RPC_URL  Core Lite node  (default: http://localhost:41841)
+ *   QUBIC_NODE_URL  Core Lite node  (default: http://localhost:41841)
  *   QUBIC_RPC_URL            Bob Node        (default: http://localhost:40420)
  *   QUBIC_KEYS               path to { sKey } JSON (admin or pauser)
  */

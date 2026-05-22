@@ -251,25 +251,25 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
     );
 
     const sourceNonce = bytesToHex(event.nonce);
-    const existing = await ordersRepository.findBySourceNonce(sourceNonce);
+    const destinationOrderHash = meta?.signature;
+    const existing =
+      (destinationOrderHash
+        ? await ordersRepository.findByDestinationOrderHash(destinationOrderHash)
+        : null) ??
+      (sourceNonce.length > 0
+        ? await ordersRepository.findBySourceNonce(sourceNonce)
+        : null);
     if (!existing) {
       logger.warn(
-        { sourceNonce },
+        { sourceNonce, destinationOrderHash },
         "Qubic unlock event received for unknown order",
       );
       return;
     }
 
-    if (!meta?.signature) {
-      logger.warn(
-        { orderId: existing.id },
-        "Qubic unlock event missing signature",
-      );
-      return;
-    }
-
     await ordersRepository.update(existing.id, {
-      destination_trx_hash: meta.signature,
+      destination_order_hash:
+        destinationOrderHash ?? existing.destination_order_hash,
       status: "finalized",
     });
 

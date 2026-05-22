@@ -216,7 +216,15 @@ export function createSolanaOrderHandlers(deps: SolanaOrderDependencies) {
       oracleAcceptToRelay,
     );
     await ordersRepository.create(order);
-    logger.info({ orderId }, "Solana outbound order stored");
+    logger.info(
+      {
+        orderId,
+        oracleAcceptToRelay,
+        rawWqubicAmountToQu: rawWqubicToQu(event.amount),
+        rawWqubicRelayerFeeToQu: rawWqubicToQu(event.relayerFee),
+      },
+      "Solana outbound order stored",
+    );
   };
 
   const handleOverrideOutboundEvent = async (

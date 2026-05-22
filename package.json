@@ -17,7 +17,7 @@
     "lint": "eslint --ignore-pattern=dist",
     "lint:fix": "npm run lint -- --fix",
     "simulated": "node dist/server.js",
-    "simulate": "node scripts/shared/simulation.js",
+    "simulation": "node scripts/shared/simulation.js",
     "solana:generate-keypair": "node scripts/solana/generate-keypair.js",
     "solana:airdrop": "node scripts/solana/airdrop.js",
     "solana:add-oracle": "node scripts/solana/add-oracle.js",

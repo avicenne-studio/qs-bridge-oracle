@@ -57,7 +57,7 @@ function mapUnlockPayload(payload: QubicUnlockEventPayload): QubicUnlockEvent {
   return {
     toAddress: solanaAddressToBytes(payload.toAddress),
     amount: toU64BigInt(payload.amount, "amount"),
-    nonce: nonceToBytes(payload.nonce),
+    nonce: payload.nonce.length === 0 ? new Uint8Array() : nonceToBytes(payload.nonce),
   };
 }
 

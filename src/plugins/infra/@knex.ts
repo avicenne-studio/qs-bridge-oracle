@@ -62,6 +62,8 @@ export default fp(
           table.string("relayerFee").notNullable().defaultTo("0");
           table.string("origin_trx_hash", 255).notNullable();
           table.string("destination_trx_hash", 255).nullable();
+          table.string("destination_order_hash", 64).nullable();
+          table.integer("destination_target_tick").nullable();
           table.string("source_nonce").notNullable().unique();
           table.string("source_payload").notNullable();
           table.integer("order_era").notNullable().defaultTo(0);
@@ -76,6 +78,24 @@ export default fp(
             .defaultTo(knexInstance.fn.now());
           table.timestamp("next_relay_at", { useTz: false }).nullable();
           table.string("last_relay_error").nullable();
+        });
+      }
+      const hasDestinationOrderHash = await knexInstance.schema.hasColumn(
+        ORDERS_TABLE_NAME,
+        "destination_order_hash",
+      );
+      if (!hasDestinationOrderHash) {
+        await knexInstance.schema.alterTable(ORDERS_TABLE_NAME, (table) => {
+          table.string("destination_order_hash", 64).nullable();
+        });
+      }
+      const hasDestinationTargetTick = await knexInstance.schema.hasColumn(
+        ORDERS_TABLE_NAME,
+        "destination_target_tick",
+      );
+      if (!hasDestinationTargetTick) {
+        await knexInstance.schema.alterTable(ORDERS_TABLE_NAME, (table) => {
+          table.integer("destination_target_tick").nullable();
         });
       }
       const hasSignaturesTable = await knexInstance.schema.hasTable(

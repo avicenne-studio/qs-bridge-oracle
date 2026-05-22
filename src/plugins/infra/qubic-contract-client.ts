@@ -11,6 +11,7 @@ const LOCKED_ORDER_ENTRY_SIZE = 168;
 
 export const FUNC_GET_CONFIG = 1;
 export const FUNC_GET_LOCKED_ORDER = 4;
+export const FUNC_IS_ORDER_FILLED = 5;
 export const FUNC_GET_ORACLES = 7;
 export const FUNC_GET_LOCKED_ORDERS = 9;
 export const FUNC_GET_FILLED_ORDERS = 10;
@@ -30,6 +31,8 @@ export type LockedOrder = {
 
 export type QubicContractClient = {
   queryContractFunction(funcNumber: number, inputHex: string): Promise<string>;
+  getBobStatus(): Promise<{ epoch: number; tick: number; fetchingTick: number; indexingTick: number }>;
+  broadcastTransaction(hexData: string): Promise<void>;
 };
 
 export const kQubicContractClient = Symbol("infra.qubicContractClient");
@@ -131,6 +134,29 @@ export function createQubicContractClient(client: UndiciClient, bobUrl: string):
         return body.data;
       }
       throw new Error(`querySmartContract func=${funcNumber}: still pending after ${MAX_RETRIES} retries`);
+    },
+
+    async getBobStatus() {
+      const body = await client.getJson<Record<string, unknown>>(origin, "/status");
+      const fetchingTick = Number(body.currentFetchingTick ?? body.tick ?? 0);
+      const indexingTick = Number(body.currentIndexingTick ?? body.tick ?? 0);
+      return {
+        epoch: Number(body.currentProcessingEpoch ?? body.epoch ?? 0),
+        tick: fetchingTick,
+        fetchingTick,
+        indexingTick,
+      };
+    },
+
+    async broadcastTransaction(hexData: string) {
+      try {
+        await client.postJson<unknown>(origin, "/broadcastTransaction", { data: hexData });
+      } catch (err) {
+        if (err instanceof HttpError) {
+          throw new Error(`Qubic broadcast failed: HTTP ${err.statusCode} — ${JSON.stringify(err.body)}`);
+        }
+        throw err;
+      }
     },
   };
 }

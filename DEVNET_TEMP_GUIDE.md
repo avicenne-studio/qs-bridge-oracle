@@ -100,91 +100,122 @@ Notes:
 - You can override the signature count: `SIGNATURE_COUNT=4 npm run solana:send-inbound-order -- ...`
 - The script will create missing recipient/relayer ATAs automatically.
 
-## 7) Send an outbound order (unlock/burn)
+## 7) Send an outbound order (Solana → Qubic)
 
-Create a minimal outbound order payload (Qubic destination uses 32-byte hex):
+Create the outbound order payload. `toAddress` is the Qubic recipient encoded as 32-byte hex.
+`relayerFee` must be ≥ `RELAYER_FEE_QUBIC` (500). The nonce is a random 32-byte value.
 
 ```bash
-node <<'NODE'
-const fs = require('fs');
-const { randomBytes } = require('crypto');
+node --env-file=.env.local <<'NODE'
+import { randomBytes } from 'crypto';
+import { writeFileSync } from 'fs';
+// qubic-user: QVIYOOAIJABIGFTCMYKWJODOXBJCBJEMGTSKOZGYQFFKPSYZFFJEAOQBTPMH
+const QUBIC_USER_HEX = '0xb2e985bf2c2585b457b05bc0e9c8e1501b409ca3651797c255fd914734f95538';
+// Amounts are in raw wQubic units (9 decimals). Divide by 1e9 to get QU.
+// relayerFee must be >= RELAYER_FEE_QUBIC (500 QU = 500_000_000_000 raw).
 const order = {
-  networkOut: 1, // Qubic
-  tokenOut: "0x" + "00".repeat(32), // Qubic token address (hex)
-  toAddress: '0x' + '44'.repeat(32), // Qubic destination (hex)
-  amount: '500000', // in token base units
-  relayerFee: '1000',
+  networkOut: 1,
+  tokenOut: '0x' + '00'.repeat(32),
+  toAddress: QUBIC_USER_HEX,
+  amount: '2000000000000',      // 2_000 QU (must fit within user's wQubic balance)
+  relayerFee: '600000000000',   // 600 QU (>= RELAYER_FEE_QUBIC=500 QU)
   nonce: '0x' + randomBytes(32).toString('hex'),
-  orderEra: 0, // query current era from Qubic GetConfig
+  orderEra: 0,
 };
-fs.writeFileSync('.temp/outbound-order.json', JSON.stringify(order, null, 2));
+writeFileSync('.temp/outbound-order.json', JSON.stringify(order, null, 2));
+console.log('Written .temp/outbound-order.json');
+console.log(order);
 NODE
 ```
 
-Then send (user signs with the key that received tokens):
+Then send — signer is whoever holds the wQubic on Solana (solana-admin = `CHEwXjhGHjeotYANJ4snWqpFLT6YG5Tu5JiFF2vB8EGe`):
 
 ```bash
-npm run solana:send-outbound-order -- .temp/outbound-order.json .temp/recipient.json
+node --env-file=.env.local scripts/solana/send-outbound-order.js \
+  .temp/outbound-order.json \
+  .temp/solana-admin.json
 ```
 
 Override an existing outbound order (update relayer fee and/or destination):
 
 ```bash
-npm run solana:override-outbound-order -- .temp/outbound-order.json .temp/recipient.json \
+npm run solana:override-outbound-order -- .temp/outbound-order.json .temp/solana-admin.json \
   --relayer-fee 2000 \
-  --to-address 0x5555444444444444444444444444444444444444444444444444444444444444
+  --to-address 0xb2e985bf2c2585b457b05bc0e9c8e1501b409ca3651797c255fd914734f95538
 ```
 
-## 8) Fake Qubic smart contract (local simulation) ⚠️ temporary
+## 8) Local Qubic testnet (Core Lite + Bob Node)
 
-> **This section is temporary.** The fake server and its helper scripts (`scripts/qubic/fake/`) will be removed once real Qubic local contract testing is in place.
+The local testnet uses a real Qubic node compiled with `TESTNET=ON` + the Bob Node indexer via Docker.
 
-The fake Qubic contract runs a local Fastify server with:
-
-- `POST /lock`
-- `POST /override-lock`
-- `POST /unlock`
-- `GET /config` (returns `{ orderEra }`)
-- `GET /events`
-- `GET /transactions/:trxHash`
-
-Start it:
+### Manage the stack (from repo root)
 
 ```bash
-# default: http://127.0.0.1:3015
-npm run qubic:fake
+../qs-bridge-infrastructure/scripts/local-testnet.sh start    # start Core Lite + Bob Node
+../qs-bridge-infrastructure/scripts/local-testnet.sh status   # show running state + current tick
+../qs-bridge-infrastructure/scripts/local-testnet.sh stop     # stop both (preserves state)
+../qs-bridge-infrastructure/scripts/local-testnet.sh reset    # full wipe: Bob volumes + genesis files
+../qs-bridge-infrastructure/scripts/local-testnet.sh logs-node  # tail Core Lite log
+../qs-bridge-infrastructure/scripts/local-testnet.sh logs-bob   # tail Bob Node Docker log
 ```
 
-Optional overrides:
+First run or after `reset`, always do `reset && start`.
+
+### Register oracles and pausers (once after reset)
+
+The admin key is `.temp/qubic-admin.keys.json`. This registers the 6 oracle Qubic IDs and all pausers on-chain:
 
 ```bash
-FAKE_QUBIC_HOST=0.0.0.0 FAKE_QUBIC_PORT=3015 npm run qubic:fake
+QUBIC_KEYS=.temp/qubic-admin.json \
+  node --env-file=.env.local scripts/qubic/setup-contract.js
 ```
 
-### Lock (Qubic -> Solana)
+Verify oracle registration:
 
 ```bash
-npm run qubic:fake-lock -- \
-  --from "ABCDEFGHIJKLMNOPQRSTUVWXABCDEFGHIJKLMNOPQRSTUVWX" \
-  --to "<SOLANA_RECIPIENT_ADDRESS>" \
-  --amount 1000000 \
-  --relayerFee 1000 \
+node --env-file=.env.local scripts/qubic/get-oracles.js
 ```
+
+### Fund qubic-user (testnet pre-fills admin; transfer to user)
+
+The testnet pre-seeds `qubic-admin` with QU on genesis. Transfer some to `qubic-user` if needed:
+
+```bash
+# Check balances
+QUBIC_KEYS=.temp/qubic-admin.keys.json node --env-file=.env.local scripts/qubic/get-config.js
+```
+
+### Lock (Qubic → Solana)
+
+Sender: `qubic-user` (`QVIYOOAIJABIGFTCMYKWJODOXBJCBJEMGTSKOZGYQFFKPSYZFFJEAOQBTPMH`).
+`relayerFee` must be ≥ `RELAYER_FEE_SOLANA` (1000) or the oracle won't relay.
+Recipient: Solana admin `CHEwXjhGHjeotYANJ4snWqpFLT6YG5Tu5JiFF2vB8EGe` (holds wQubic).
+
+```bash
+QUBIC_KEYS=.temp/qubic-user.keys.json \
+  node --env-file=.env.local scripts/qubic/send-lock.js \
+  --amount 10000 \
+  --to-address CHEwXjhGHjeotYANJ4snWqpFLT6YG5Tu5JiFF2vB8EGe \
+  --relayer-fee 1005
+```
+
+The script prints the order hash on success. Hub picks up the lock event within one poll interval,
+oracles sign, and the relay sends wQubic to the recipient on Solana devnet.
 
 ### Override lock
 
 ```bash
-npm run qubic:fake-override-lock -- \
-  --to "0xdef" \
-  --relayerFee 500 \
-  --nonce 42
+QUBIC_KEYS=.temp/qubic-user.keys.json \
+  node --env-file=.env.local scripts/qubic/override-lock.js \
+  --nonce <NONCE> \
+  --to-address <NEW_SOLANA_ADDR> \
+  --relayer-fee 1005
 ```
 
-Point the scripts to a non-default server:
+### Query a locked order (by nonce)
 
 ```bash
-FAKE_QUBIC_URL=http://127.0.0.1:3015 npm run qubic:fake-lock -- --from "id(1,2,3,4)" --to "0xabc" --amount 1000 --relayerFee 10 --nonce 1
-FAKE_QUBIC_URL=http://127.0.0.1:3015 npm run qubic:fake-override-lock -- --to "0xdef" --relayerFee 5 --nonce 1
+node --env-file=.env.local scripts/qubic/get-locked-order.js --nonce <NONCE>
 ```
 
 ## 9) Claim protocol fee (protocol fee recipient only)
