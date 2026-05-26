@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { QubicHelper } from "@qubic-lib/qubic-ts-library/dist/qubicHelper.js";
-import qubicCryptoModule from "@qubic-lib/qubic-ts-library";
+import { resolveQubicCrypto, QUBIC_FIXTURE_SEED } from "../../helpers/qubic-crypto.js";
 
 import {
   relayToQubic,
@@ -25,20 +25,6 @@ import { address, getAddressEncoder } from "@solana/kit";
 const addressEncoder = getAddressEncoder();
 const TOKEN_MINT_BYTES = new Uint8Array(addressEncoder.encode(address(DEFAULT_TEST_CONFIG.TOKEN_MINT)));
 
-type QubicCrypto = {
-  schnorrq: {
-    sign: (sk: Uint8Array, pk: Uint8Array, msg: Uint8Array) => Uint8Array;
-    verify: (pk: Uint8Array, msg: Uint8Array, sig: Uint8Array) => number;
-  };
-  K12: (input: Uint8Array, output: Uint8Array, outputLength: number) => void;
-};
-
-const resolvedCrypto = (
-  qubicCryptoModule as unknown as { default: { crypto: Promise<QubicCrypto> } }
-).default.crypto;
-
-// Fixture keys from test/fixtures/signer/qubic.keys.json
-const QUBIC_FIXTURE_SEED = "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl";
 
 const noopLogger = {
   info() {},
@@ -81,7 +67,7 @@ async function loadQubicIdentity() {
 
 async function signOrder(order: OracleOrder): Promise<string> {
   const { privateKey, publicKey } = await loadQubicIdentity();
-  const crypto = await resolvedCrypto;
+  const crypto = await resolveQubicCrypto();
 
   const fromBytes = Buffer.from(order.from.replace(/^0x/, ""), "hex");
   const toBytes = Buffer.from(order.to.replace(/^0x/, ""), "hex");

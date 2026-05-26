@@ -4,16 +4,7 @@ import { Buffer } from "node:buffer";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import Fastify from "fastify";
 import { QubicHelper } from "@qubic-lib/qubic-ts-library/dist/qubicHelper.js";
-import qubicCryptoModule from "@qubic-lib/qubic-ts-library";
-
-type QubicCryptoPrimitives = {
-  schnorrq: { sign: (sk: Uint8Array, pk: Uint8Array, msg: Uint8Array) => Uint8Array };
-  K12: (i: Uint8Array, o: Uint8Array, n: number) => void;
-};
-type QubicCryptoModule = { default: { crypto: Promise<QubicCryptoPrimitives> } };
-async function resolveQubicCrypto() {
-  return (qubicCryptoModule as unknown as QubicCryptoModule).default.crypto;
-}
+import { resolveQubicCrypto, QUBIC_FIXTURE_SEED } from "../../helpers/qubic-crypto.js";
 import {
   createKeyPairSignerFromBytes,
   getAddressEncoder,
@@ -1697,7 +1688,7 @@ describe("relayer plugin", () => {
   });
 
   it("marks qubic order as broadcasted first, then failed when deferred finalization expires", async () => {
-    const QUBIC_FIXTURE_SEED = "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl";
+
     const helper = new QubicHelper();
     const identity = await helper.createIdPackage(QUBIC_FIXTURE_SEED);
     const crypto = await resolveQubicCrypto();
@@ -1808,7 +1799,7 @@ describe("relayer plugin", () => {
   });
 
   it("stringifies non-Error update failures after deferred Qubic definitive failure", async () => {
-    const QUBIC_FIXTURE_SEED = "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl";
+
     const helper = new QubicHelper();
     const identity = await helper.createIdPackage(QUBIC_FIXTURE_SEED);
     const crypto = await resolveQubicCrypto();
@@ -1915,7 +1906,7 @@ describe("relayer plugin", () => {
   });
 
   it("logs error when order update fails after deferred Qubic definitive failure", async () => {
-    const QUBIC_FIXTURE_SEED = "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl";
+
     const helper = new QubicHelper();
     const identity = await helper.createIdPackage(QUBIC_FIXTURE_SEED);
     const crypto = await resolveQubicCrypto();
@@ -2022,7 +2013,7 @@ describe("relayer plugin", () => {
   });
 
   it("marks broadcasted qubic order as relayed when finalization succeeds", async () => {
-    const QUBIC_FIXTURE_SEED = "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl";
+
     const helper = new QubicHelper();
     const identity = await helper.createIdPackage(QUBIC_FIXTURE_SEED);
     const crypto = await resolveQubicCrypto();
@@ -2123,7 +2114,7 @@ describe("relayer plugin", () => {
   });
 
   it("stores null destination_trx_hash when confirmed relay has no trx hash", async () => {
-    const QUBIC_FIXTURE_SEED = "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl";
+
     const helper = new QubicHelper();
     const identity = await helper.createIdPackage(QUBIC_FIXTURE_SEED);
     const crypto = await resolveQubicCrypto();
