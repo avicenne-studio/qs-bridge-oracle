@@ -32,7 +32,6 @@ import {
 } from "../../../src/plugins/app/relayer/relayer.js";
 import type { SolanaRelayDeps } from "../../../src/plugins/app/relayer/relay-solana.js";
 import {
-  QubicDefinitiveRelayFailure,
   type QubicRelayDeps,
 } from "../../../src/plugins/app/relayer/relay-qubic.js";
 import { type QubicContractClient } from "../../../src/plugins/infra/qubic-contract-client.js";
@@ -2008,5 +2007,396 @@ describe("relayer plugin", () => {
         args[1].includes("Failed to update order after broadcasted Qubic definitive failure"),
     );
     assert.ok(updateFailLog, "expected a log about update failure after Qubic definitive failure");
+  });
+
+  it("marks broadcasted qubic order as relayed when finalization succeeds", async () => {
+    const QUBIC_FIXTURE_SEED = "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl";
+    const helper = new QubicHelper();
+    const identity = await helper.createIdPackage(QUBIC_FIXTURE_SEED);
+    const crypto = await resolveQubicCrypto();
+
+    const orderData: OracleOrder = {
+      id: makeId(94),
+      source: "solana",
+      dest: "qubic",
+      from: "00".repeat(32),
+      to: "01".repeat(32),
+      amount: "1000",
+      relayerFee: "10",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "transaction-broadcasted",
+      oracle_accept_to_relay: true,
+      relay_attempts: 1,
+      source_nonce: "02".repeat(32),
+      source_payload: "{}",
+      order_era: 0,
+      destination_trx_hash: "qubic-tx-94",
+      destination_order_hash: "44".repeat(32),
+      destination_target_tick: 105,
+    };
+
+    const serialized = serializeQsbOrderMessage({
+      protocolName: PROTOCOL_NAME,
+      protocolVersion: PROTOCOL_VERSION,
+      contractAddress: QUBIC_CONTRACT_ADDRESS_BYTES,
+      networkIn: 2,
+      networkOut: 1,
+      tokenIn: new Uint8Array(getAddressEncoder().encode(address(DEFAULT_TEST_CONFIG.TOKEN_MINT))),
+      tokenOut: QUBIC_TOKEN_ADDRESS,
+      fromAddress: new Uint8Array(32),
+      toAddress: new Uint8Array(32).fill(0x01),
+      amount: 1000n,
+      relayerFee: 10n,
+      nonce: new Uint8Array(32).fill(0x02),
+      orderEra: 0,
+    });
+    const digest = new Uint8Array(32);
+    crypto.K12(serialized, digest, 32);
+    const signature = crypto.schnorrq.sign(identity.privateKey, identity.publicKey, digest);
+    const sigBase64 = Buffer.from(signature).toString("base64");
+
+    const oracleKeysBuf = Buffer.alloc(8 + 32);
+    oracleKeysBuf.writeUInt32LE(1, 0);
+    oracleKeysBuf.set(identity.publicKey, 8);
+    const oracleKeysHex = oracleKeysBuf.toString("hex");
+
+    const qubicDeps: QubicRelayDeps = {
+      config: DEFAULT_TEST_CONFIG,
+      contractClient: {
+        queryContractFunction: async (_funcNumber: number, input: string) => {
+          if (input.length === 64) return "01"; // order is filled
+          return oracleKeysHex;
+        },
+        getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+        broadcastTransaction: async () => {},
+      },
+      qubicSeed: QUBIC_FIXTURE_SEED,
+      qubicPublicKey: identity.publicKey,
+      pollIntervalMs: 0,
+      ordersRepository: {
+        findSignatures: async () => [sigBase64],
+      } as unknown as QubicRelayDeps["ordersRepository"],
+      logger: { info() {}, warn() {}, error() {} } as unknown as QubicRelayDeps["logger"],
+    };
+
+    const updates: Array<Record<string, unknown>> = [];
+    const { logger, logs } = makeRelayerLogger();
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findBroadcastedQubicOrders: async () => [orderData],
+        findReadyForRelay: async () => [],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updates.push(data);
+          return { ...orderData, ...data } as OracleOrder;
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      solanaDeps: makeSolanaDepsWithError(new Error("should not be called")),
+      qubicDeps,
+      logger,
+    });
+
+    await relayer.relayPending();
+
+    assert.strictEqual(updates.length, 1);
+    assert.strictEqual(updates[0].status, "relayed");
+    assert.ok(
+      logs.infoLogs.some(
+        (args) => typeof args[1] === "string" && args[1].includes("Qubic relay confirmed"),
+      ),
+      "expected info log for confirmed relay",
+    );
+  });
+
+  it("stores null destination_trx_hash when confirmed relay has no trx hash", async () => {
+    const QUBIC_FIXTURE_SEED = "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl";
+    const helper = new QubicHelper();
+    const identity = await helper.createIdPackage(QUBIC_FIXTURE_SEED);
+    const crypto = await resolveQubicCrypto();
+
+    const orderData: OracleOrder = {
+      id: makeId(98),
+      source: "solana",
+      dest: "qubic",
+      from: "00".repeat(32),
+      to: "01".repeat(32),
+      amount: "1000",
+      relayerFee: "10",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "transaction-broadcasted",
+      oracle_accept_to_relay: true,
+      relay_attempts: 1,
+      source_nonce: "02".repeat(32),
+      source_payload: "{}",
+      order_era: 0,
+      destination_order_hash: "88".repeat(32),
+      destination_target_tick: 105,
+    };
+
+    const serialized = serializeQsbOrderMessage({
+      protocolName: PROTOCOL_NAME,
+      protocolVersion: PROTOCOL_VERSION,
+      contractAddress: QUBIC_CONTRACT_ADDRESS_BYTES,
+      networkIn: 2,
+      networkOut: 1,
+      tokenIn: new Uint8Array(getAddressEncoder().encode(address(DEFAULT_TEST_CONFIG.TOKEN_MINT))),
+      tokenOut: QUBIC_TOKEN_ADDRESS,
+      fromAddress: new Uint8Array(32),
+      toAddress: new Uint8Array(32).fill(0x01),
+      amount: 1000n,
+      relayerFee: 10n,
+      nonce: new Uint8Array(32).fill(0x02),
+      orderEra: 0,
+    });
+    const digest = new Uint8Array(32);
+    crypto.K12(serialized, digest, 32);
+    const signature = crypto.schnorrq.sign(identity.privateKey, identity.publicKey, digest);
+    const sigBase64 = Buffer.from(signature).toString("base64");
+
+    const oracleKeysBuf = Buffer.alloc(8 + 32);
+    oracleKeysBuf.writeUInt32LE(1, 0);
+    oracleKeysBuf.set(identity.publicKey, 8);
+    const oracleKeysHex = oracleKeysBuf.toString("hex");
+
+    const qubicDeps: QubicRelayDeps = {
+      config: DEFAULT_TEST_CONFIG,
+      contractClient: {
+        queryContractFunction: async (_funcNumber: number, input: string) => {
+          if (input.length === 64) return "01"; // order is filled
+          return oracleKeysHex;
+        },
+        getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+        broadcastTransaction: async () => {},
+      },
+      qubicSeed: QUBIC_FIXTURE_SEED,
+      qubicPublicKey: identity.publicKey,
+      pollIntervalMs: 0,
+      ordersRepository: {
+        findSignatures: async () => [sigBase64],
+      } as unknown as QubicRelayDeps["ordersRepository"],
+      logger: { info() {}, warn() {}, error() {} } as unknown as QubicRelayDeps["logger"],
+    };
+
+    const updates: Array<Record<string, unknown>> = [];
+    const { logger } = makeRelayerLogger();
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findBroadcastedQubicOrders: async () => [orderData],
+        findReadyForRelay: async () => [],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updates.push(data);
+          return { ...orderData, ...data } as OracleOrder;
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      solanaDeps: makeSolanaDepsWithError(new Error("should not be called")),
+      qubicDeps,
+      logger,
+    });
+
+    await relayer.relayPending();
+
+    assert.strictEqual(updates.length, 1);
+    assert.strictEqual(updates[0].status, "relayed");
+    assert.strictEqual(updates[0].destination_trx_hash, null);
+  });
+
+  it("logs a warning when broadcasted qubic order finalization is still pending", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(95),
+      source: "solana",
+      dest: "qubic",
+      from: "00".repeat(32),
+      to: "01".repeat(32),
+      amount: "1000",
+      relayerFee: "10",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "transaction-broadcasted",
+      oracle_accept_to_relay: true,
+      relay_attempts: 1,
+      source_nonce: "02".repeat(32),
+      source_payload: "{}",
+      order_era: 0,
+      destination_trx_hash: "qubic-tx-95",
+      destination_order_hash: "55".repeat(32),
+      destination_target_tick: 105,
+    };
+
+    const qubicDeps: QubicRelayDeps = {
+      config: DEFAULT_TEST_CONFIG,
+      contractClient: {
+        queryContractFunction: async () => "00", // never filled
+        getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }), // tick never advances
+        broadcastTransaction: async () => {},
+      },
+      qubicSeed: "a".repeat(55),
+      qubicPublicKey: new Uint8Array(32),
+      pollIntervalMs: 0,
+      pollMaxAttempts: 1,
+      ordersRepository: {
+        findSignatures: async () => [],
+      } as unknown as QubicRelayDeps["ordersRepository"],
+      logger: { info() {}, warn() {}, error() {} } as unknown as QubicRelayDeps["logger"],
+    };
+
+    const updates: Array<Record<string, unknown>> = [];
+    const { logger, logs } = makeRelayerLogger();
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findBroadcastedQubicOrders: async () => [orderData],
+        findReadyForRelay: async () => [],
+        update: async (_id: string, data: Record<string, unknown>) => {
+          updates.push(data);
+          return { ...orderData, ...data } as OracleOrder;
+        },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      solanaDeps: makeSolanaDepsWithError(new Error("should not be called")),
+      qubicDeps,
+      logger,
+    });
+
+    await relayer.relayPending();
+
+    assert.strictEqual(updates.length, 1);
+    assert.ok(updates[0].last_relay_error);
+    assert.ok(
+      logs.warnLogs.some(
+        (args) => typeof args[1] === "string" && args[1].includes("still pending confirmation"),
+      ),
+      "expected warn log for still-pending confirmation",
+    );
+  });
+
+  it("logs error when order update fails after pending qubic confirmation", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(96),
+      source: "solana",
+      dest: "qubic",
+      from: "00".repeat(32),
+      to: "01".repeat(32),
+      amount: "1000",
+      relayerFee: "10",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "transaction-broadcasted",
+      oracle_accept_to_relay: true,
+      relay_attempts: 1,
+      source_nonce: "02".repeat(32),
+      source_payload: "{}",
+      order_era: 0,
+      destination_trx_hash: "qubic-tx-96",
+      destination_order_hash: "66".repeat(32),
+      destination_target_tick: 105,
+    };
+
+    const qubicDeps: QubicRelayDeps = {
+      config: DEFAULT_TEST_CONFIG,
+      contractClient: {
+        queryContractFunction: async () => "00", // never filled
+        getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+        broadcastTransaction: async () => {},
+      },
+      qubicSeed: "a".repeat(55),
+      qubicPublicKey: new Uint8Array(32),
+      pollIntervalMs: 0,
+      pollMaxAttempts: 1,
+      ordersRepository: {
+        findSignatures: async () => [],
+      } as unknown as QubicRelayDeps["ordersRepository"],
+      logger: { info() {}, warn() {}, error() {} } as unknown as QubicRelayDeps["logger"],
+    };
+
+    const { logger, logs } = makeRelayerLogger();
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findBroadcastedQubicOrders: async () => [orderData],
+        findReadyForRelay: async () => [],
+        update: async () => { throw new Error("db write failed"); },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      solanaDeps: makeSolanaDepsWithError(new Error("should not be called")),
+      qubicDeps,
+      logger,
+    });
+
+    await relayer.relayPending();
+
+    const updateFailLog = logs.errorLogs.find(
+      (args) =>
+        typeof args[1] === "string" &&
+        args[1].includes("Failed to update order after pending Qubic confirmation"),
+    );
+    assert.ok(updateFailLog, "expected error log for update failure after pending confirmation");
+  });
+
+  it("stringifies non-Error update failures after pending qubic confirmation", async () => {
+    const orderData: OracleOrder = {
+      id: makeId(97),
+      source: "solana",
+      dest: "qubic",
+      from: "00".repeat(32),
+      to: "01".repeat(32),
+      amount: "1000",
+      relayerFee: "10",
+      origin_trx_hash: "trx-hash",
+      signature: "sig",
+      status: "transaction-broadcasted",
+      oracle_accept_to_relay: true,
+      relay_attempts: 1,
+      source_nonce: "02".repeat(32),
+      source_payload: "{}",
+      order_era: 0,
+      destination_trx_hash: "qubic-tx-97",
+      destination_order_hash: "77".repeat(32),
+      destination_target_tick: 105,
+    };
+
+    const qubicDeps: QubicRelayDeps = {
+      config: DEFAULT_TEST_CONFIG,
+      contractClient: {
+        queryContractFunction: async () => "00",
+        getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+        broadcastTransaction: async () => {},
+      },
+      qubicSeed: "a".repeat(55),
+      qubicPublicKey: new Uint8Array(32),
+      pollIntervalMs: 0,
+      pollMaxAttempts: 1,
+      ordersRepository: {
+        findSignatures: async () => [],
+      } as unknown as QubicRelayDeps["ordersRepository"],
+      logger: { info() {}, warn() {}, error() {} } as unknown as QubicRelayDeps["logger"],
+    };
+
+    const { logger, logs } = makeRelayerLogger();
+
+    const relayer = createRelayerService({
+      ordersRepository: {
+        findBroadcastedQubicOrders: async () => [orderData],
+        findReadyForRelay: async () => [],
+        update: async () => { throw "raw string failure"; },
+      } as unknown as OrdersRepository,
+      config: { ...DEFAULT_TEST_CONFIG, RELAYER_MAX_ATTEMPTS: 3 },
+      solanaDeps: makeSolanaDepsWithError(new Error("should not be called")),
+      qubicDeps,
+      logger,
+    });
+
+    await relayer.relayPending();
+
+    const updateFailLog = logs.errorLogs.find(
+      (args) =>
+        typeof args[1] === "string" &&
+        args[1].includes("Failed to update order after pending Qubic confirmation"),
+    );
+    assert.ok(updateFailLog, "expected error log for non-Error update failure after pending confirmation");
   });
 });

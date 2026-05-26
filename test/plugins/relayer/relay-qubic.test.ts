@@ -311,9 +311,7 @@ describe("relay-qubic", () => {
       const sigBase64 = await signOrder(order);
 
       const contractClient = {
-        queryContractFunction: async (_funcNumber: number, input: string) => {
-          return buildOracleKeysHex(identity.publicKey);
-        },
+        queryContractFunction: async () => buildOracleKeysHex(identity.publicKey),
         getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
         broadcastTransaction: async () => {},
       };
@@ -344,9 +342,7 @@ describe("relay-qubic", () => {
       const deps: QubicRelayDeps = {
         config: DEFAULT_TEST_CONFIG,
         contractClient: {
-          queryContractFunction: async (_funcNumber: number, input: string) => {
-            return buildOracleKeysHex(identity.publicKey);
-          },
+          queryContractFunction: async () => buildOracleKeysHex(identity.publicKey),
           getBobStatus: async () => ({ epoch: 1, tick: 206, fetchingTick: 206, indexingTick: 206 }),
           broadcastTransaction: async () => {},
         },
@@ -476,6 +472,39 @@ describe("relay-qubic", () => {
       );
     });
 
+    it("returns empty trxHash when destination_trx_hash is absent", async () => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder({
+        destination_trx_hash: undefined,
+        destination_order_hash: "ab".repeat(32),
+        destination_target_tick: 105,
+        status: "transaction-broadcasted",
+      });
+      const sigBase64 = await signOrder(order);
+
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async (_funcNumber: number, input: string) => {
+            if (input.length === 64) return "01"; // order is filled
+            return buildOracleKeysHex(identity.publicKey);
+          },
+          getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        pollIntervalMs: 0,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      const result = await finalizeQubicRelay(order, deps);
+      assert.strictEqual(result.trxHash, "");
+    });
+
     it("throws QubicDefinitiveRelayFailure when target tick is passed without fill", async () => {
       const identity = await loadQubicIdentity();
       const order = makeQubicOrder({
@@ -513,6 +542,68 @@ describe("relay-qubic", () => {
       await assert.rejects(
         () => finalizeQubicRelay(order, deps),
         (err) => err instanceof QubicDefinitiveRelayFailure,
+      );
+    });
+
+    it("throws when destination_target_tick is missing", async () => {
+      const order = makeQubicOrder({
+        destination_trx_hash: "qubic-tx",
+        destination_order_hash: "ab".repeat(32),
+        destination_target_tick: undefined,
+        status: "transaction-broadcasted",
+      });
+
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async () => buildOracleKeysHex(),
+          getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: new Uint8Array(32),
+        pollIntervalMs: 0,
+        ordersRepository: {
+          findSignatures: async () => [],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      await assert.rejects(
+        () => finalizeQubicRelay(order, deps),
+        /Missing destination_target_tick/,
+      );
+    });
+
+    it("computes order hash when destination_order_hash is absent", async () => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder({
+        destination_trx_hash: "qubic-tx",
+        destination_order_hash: undefined,
+        destination_target_tick: undefined,
+        status: "transaction-broadcasted",
+      });
+      const sigBase64 = await signOrder(order);
+
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async () => buildOracleKeysHex(identity.publicKey),
+          getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        pollIntervalMs: 0,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      await assert.rejects(
+        () => finalizeQubicRelay(order, deps),
+        /Missing destination_target_tick/,
       );
     });
   });

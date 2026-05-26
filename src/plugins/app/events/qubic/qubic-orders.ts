@@ -252,13 +252,12 @@ export function createQubicOrderHandlers(deps: QubicOrderDependencies) {
 
     const sourceNonce = bytesToHex(event.nonce);
     const destinationOrderHash = meta?.signature;
-    const existing =
-      (destinationOrderHash
-        ? await ordersRepository.findByDestinationOrderHash(destinationOrderHash)
-        : null) ??
-      (sourceNonce.length > 0
-        ? await ordersRepository.findBySourceNonce(sourceNonce)
-        : null);
+    let existing = destinationOrderHash
+      ? await ordersRepository.findByDestinationOrderHash(destinationOrderHash)
+      : null;
+    if (!existing) {
+      existing = await ordersRepository.findBySourceNonce(sourceNonce);
+    }
     if (!existing) {
       logger.warn(
         { sourceNonce, destinationOrderHash },

@@ -80,24 +80,6 @@ export default fp(
           table.string("last_relay_error").nullable();
         });
       }
-      const hasDestinationOrderHash = await knexInstance.schema.hasColumn(
-        ORDERS_TABLE_NAME,
-        "destination_order_hash",
-      );
-      if (!hasDestinationOrderHash) {
-        await knexInstance.schema.alterTable(ORDERS_TABLE_NAME, (table) => {
-          table.string("destination_order_hash", 64).nullable();
-        });
-      }
-      const hasDestinationTargetTick = await knexInstance.schema.hasColumn(
-        ORDERS_TABLE_NAME,
-        "destination_target_tick",
-      );
-      if (!hasDestinationTargetTick) {
-        await knexInstance.schema.alterTable(ORDERS_TABLE_NAME, (table) => {
-          table.integer("destination_target_tick").nullable();
-        });
-      }
       const hasSignaturesTable = await knexInstance.schema.hasTable(
         ORDER_SIGNATURES_TABLE_NAME,
       );

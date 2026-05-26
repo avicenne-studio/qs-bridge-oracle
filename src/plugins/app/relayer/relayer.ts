@@ -184,27 +184,6 @@ async function relayOrder(
       }
       return;
     }
-    if (error instanceof QubicDefinitiveRelayFailure) {
-      logger.error(
-        { orderId: order.id, relayError: payload },
-        "Relay failed: Qubic transaction expired",
-      );
-      try {
-        await ordersRepository.update(order.id, {
-          relay_attempts: nextAttempts,
-          status: "failed",
-          failure_reason_public: "Qubic transaction expired",
-          last_relay_error: payload.message,
-        });
-      } catch (updateErr) {
-        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
-        logger.error(
-          { orderId: order.id, updateError: msg },
-          "Failed to update order after Qubic definitive failure",
-        );
-      }
-      return;
-    }
 
     logger.error({ orderId: order.id, relayError: payload }, "Relay failed");
     const shouldFail = nextAttempts >= config.RELAYER_MAX_ATTEMPTS;
@@ -240,7 +219,7 @@ async function finalizeBroadcastedQubicOrder(
     const result = await finalizeQubicRelay(order, qubicDeps);
     await ordersRepository.update(order.id, {
       status: "relayed",
-      destination_trx_hash: result.trxHash || order.destination_trx_hash || null,
+      destination_trx_hash: result.trxHash || null,
       destination_order_hash: result.orderHash,
       next_relay_at: null,
       last_relay_error: null,

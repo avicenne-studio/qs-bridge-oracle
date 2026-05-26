@@ -158,6 +158,26 @@ test("qubic event validator skips field checks for unlock events", async () => {
   assert.strictEqual(capturedInput, "ab".repeat(32));
 });
 
+test("qubic event validator rethrows contract query errors for unlock events", async () => {
+  const client: QubicContractClient = {
+    async queryContractFunction() {
+      throw new Error("unlock-query-boom");
+    },
+  };
+  const validator = createQubicEventValidator({ contractClient: client, logger });
+  await assert.rejects(
+    () =>
+      validator.validate({
+        ...baseEvent,
+        signature: "ef".repeat(32),
+        type: "unlock" as const,
+        nonce: "",
+        payload: { toAddress: "0".repeat(64), amount: "0", nonce: "" },
+      }),
+    /unlock-query-boom/,
+  );
+});
+
 test("qubic event validator throws when unlock order hash is not filled", async () => {
   const client: QubicContractClient = {
     async queryContractFunction() {
