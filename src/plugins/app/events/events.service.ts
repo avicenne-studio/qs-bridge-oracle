@@ -129,7 +129,7 @@ async function startHubEventsPolling(
 
       if (!validation.isValid(HubEventsResponseSchema, response)) {
         fastify.log.warn(
-          { hubUsed: context.used },
+          { hubUsed: context.used, event: response },
           "Invalid hub events payload"
         );
         return;

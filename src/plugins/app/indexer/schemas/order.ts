@@ -13,6 +13,7 @@ export const OracleChain = Type.Union([
 export const OracleOrderStatus = Type.Union([
   Type.Literal("pending"),
   Type.Literal("ready-for-relay"),
+  Type.Literal("transaction-broadcasted"),
   Type.Literal("relayed"),
   Type.Literal("failed"),
   Type.Literal("finalized"),
@@ -31,6 +32,10 @@ export const OracleOrderSchema = Type.Object({
   destination_trx_hash: Type.Optional(
     Type.String({ maxLength: 255 })
   ),
+  destination_order_hash: Type.Optional(
+    Type.String({ maxLength: 64 })
+  ),
+  destination_target_tick: Type.Optional(Type.Integer({ minimum: 0 })),
   created_at: Type.Optional(Type.String({ minLength: 1 })),
   next_relay_at: Type.Optional(Type.String({ minLength: 1 })),
   last_relay_error: Type.Optional(Type.String({ maxLength: 512 })),

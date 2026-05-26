@@ -20,7 +20,7 @@ export const DEFAULT_NODE_RPC_URL = "http://localhost:41841";
 export const DEFAULT_BOB_URL = "http://localhost:40420";
 
 export function resolveNodeRpcUrl() {
-  return process.env.QUBIC_BROADCAST_RPC_URL ?? DEFAULT_NODE_RPC_URL;
+  return process.env.QUBIC_NODE_URL ?? DEFAULT_NODE_RPC_URL;
 }
 
 export function resolveBobUrl() {
@@ -112,29 +112,37 @@ export function encodeOrderStruct(order) {
 }
 
 /**
- * Serializes QSBOrderMessage (245 bytes) — the K12 hash pre-image for
- * oracle signatures. Matches QSBOrderMessage struct in
- * core-lite/src/contracts/QubicSolanaBridge.h.
+ * Serializes QSBOrderMessage (256 bytes) — the K12 hash pre-image for
+ * oracle signatures. Matches sizeof(QSBOrderMessage) in
+ * core-lite/src/contracts/QubicSolanaBridge.h with natural C++ alignment.
  *
- * Layout (packed, little-endian):
+ * The C++ compiler inserts 3 bytes of padding after contractAddress (to
+ * align uint32 networkIn to 4 bytes) and 4 bytes after toAddress (to align
+ * uint64 amount to 8 bytes), plus 4 bytes of trailing struct padding, making
+ * the actual sizeof 256 instead of the "logical" 245.
+ *
+ * Layout (natural alignment, little-endian):
  *   [0..3]     uint32    protocolNameLen    (= 11)
  *   [4..19]    uint8[16] protocolName       ("QubicBridge" + 5 zero bytes)
  *   [20..23]   uint32    protocolVersionLen (= 1)
  *   [24]       uint8     protocolVersion    (= 49, ASCII '1')
  *   [25..56]   uint8[32] contractAddress
- *   [57..60]   uint32    networkIn
- *   [61..64]   uint32    networkOut
- *   [65..96]   uint8[32] tokenIn
- *   [97..128]  uint8[32] tokenOut
- *   [129..160] uint8[32] fromAddress
- *   [161..192] uint8[32] toAddress
- *   [193..200] uint64    amount
- *   [201..208] uint64    relayerFee
- *   [209..240] uint8[32] nonce
- *   [241..244] uint32    orderEra
+ *   [57..59]   ---       3 bytes padding (align uint32 to 4)
+ *   [60..63]   uint32    networkIn
+ *   [64..67]   uint32    networkOut
+ *   [68..99]   uint8[32] tokenIn
+ *   [100..131] uint8[32] tokenOut
+ *   [132..163] uint8[32] fromAddress
+ *   [164..195] uint8[32] toAddress
+ *   [196..199] ---       4 bytes padding (align uint64 to 8)
+ *   [200..207] uint64    amount
+ *   [208..215] uint64    relayerFee
+ *   [216..247] uint8[32] nonce
+ *   [248..251] uint32    orderEra
+ *   [252..255] ---       4 bytes trailing padding
  */
 export function encodeQsbOrderMessage(msg) {
-  const buf = new ArrayBuffer(245);
+  const buf = new ArrayBuffer(256);
   const view = new DataView(buf);
   const bytes = new Uint8Array(buf);
   const nameBytes = new TextEncoder().encode(msg.protocolName);
@@ -144,16 +152,19 @@ export function encodeQsbOrderMessage(msg) {
   view.setUint32(off, 1, true); off += 4;
   bytes[off] = msg.protocolVersion.charCodeAt(0); off += 1;
   bytes.set(msg.contractAddress, off); off += 32;
+  off += 3; // padding: align uint32 networkIn to 4 bytes
   view.setUint32(off, msg.networkIn, true); off += 4;
   view.setUint32(off, msg.networkOut, true); off += 4;
   bytes.set(msg.tokenIn, off); off += 32;
   bytes.set(msg.tokenOut, off); off += 32;
   bytes.set(msg.fromAddress, off); off += 32;
   bytes.set(msg.toAddress, off); off += 32;
+  off += 4; // padding: align uint64 amount to 8 bytes
   view.setBigUint64(off, BigInt(msg.amount), true); off += 8;
   view.setBigUint64(off, BigInt(msg.relayerFee), true); off += 8;
   bytes.set(msg.nonce, off); off += 32;
   view.setUint32(off, msg.orderEra, true);
+  // [252..255] trailing padding (zeros, already zeroed by ArrayBuffer)
   return bytes;
 }
 
@@ -400,6 +411,223 @@ export async function broadcastViaBob(bobUrl, txBytes) {
   return res.json();
 }
 
+// ── Bob log event constants ────────────────────────────────────────────────
+
+// Bob stores LOG_INFO() output as CONTRACT_INFORMATION_MESSAGE (type 6)
+const CONTRACT_INFO_LOG_TYPE = 6;
+
+// QSB contract log type IDs (matches QubicSolanaBridge.h constants)
+export const QSB_LOG_LOCK = 1;
+export const QSB_LOG_OVERRIDE_LOCK = 2;
+export const QSB_LOG_UNLOCK = 3;
+export const QSB_LOG_PAUSED = 4;
+export const QSB_LOG_UNPAUSED = 5;
+export const QSB_LOG_ADMIN_TRANSFERRED = 6;
+export const QSB_LOG_THRESHOLD_UPDATED = 7;
+export const QSB_LOG_ROLE_GRANTED = 8;
+export const QSB_LOG_ROLE_REVOKED = 9;
+export const QSB_LOG_FEE_PARAMETERS_UPDATED = 10;
+
+// Reason codes from QubicSolanaBridge.h
+export const QSB_REASON = {
+  NONE: 0, PAUSED: 1, INVALID_AMOUNT: 2, INSUFFICIENT_REWARD: 3,
+  NONCE_USED: 4, NO_SPACE: 5, NOT_SENDER: 6, BAD_RELAYER_FEE: 7,
+  NO_ORACLES: 8, THRESHOLD_FAILED: 9, ALREADY_FILLED: 10,
+  INVALID_SIGNATURE: 11, DUPLICATE_SIGNER: 12, NOT_ADMIN: 13,
+  NOT_ADMIN_OR_PAUSER: 14, INVALID_THRESHOLD: 15, ROLE_EXISTS: 16,
+  ROLE_MISSING: 17, INVALID_FEE_PARAMS: 18, TRANSFER_FAILED: 19,
+  ERA_MISMATCH: 20,
+};
+
+// ── Bob log API helpers ────────────────────────────────────────────────────
+
+/** Fetch transaction info from Bob Node (found, executed, logIdFrom, logIdTo, tick). */
+export async function getTxInfo(bobUrl, txHash) {
+  const res = await fetch(`${bobUrl}/tx/${encodeURIComponent(txHash)}`);
+  if (!res.ok) throw new Error(`GET /tx/${txHash} HTTP ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Fetch current sync status from Bob Node.
+ * Returns { epoch, currentIndexingTick, currentFetchingTick, isSyncing, ... }.
+ * Bob's actual field name is `currentProcessingEpoch`; normalised to `epoch` here.
+ */
+export async function getBobStatus(bobUrl) {
+  const res = await fetch(`${bobUrl}/status`);
+  if (!res.ok) throw new Error(`GET /status HTTP ${res.status}`);
+  const body = await res.json();
+  return { epoch: body.currentProcessingEpoch ?? body.epoch ?? 0, ...body };
+}
+
+/**
+ * Fetch raw log entries for a log-ID range in a given epoch.
+ * Returns a JSON array of Bob log entry objects.
+ * Each entry has: ok, type, epoch, tick, logId, body.{scIndex, scLogType, content}.
+ */
+export async function fetchLogRange(bobUrl, epoch, logIdFrom, logIdTo) {
+  const res = await fetch(`${bobUrl}/log/${epoch}/${logIdFrom}/${logIdTo}`);
+  if (!res.ok) throw new Error(`GET /log/${epoch}/${logIdFrom}/${logIdTo} HTTP ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Search ticks containing QSB log events using Bob's POST /findLog.
+ * Returns an array of tick numbers. Note: Bob may only index logType >= 100000;
+ * if this returns empty, fall back to state polling via queryContractFunction.
+ *
+ * @param {string} bobUrl
+ * @param {number} fromTick
+ * @param {number} toTick
+ * @param {number} logType  QSB_LOG_LOCK (1), QSB_LOG_UNLOCK (3), etc.
+ * @param {string} [topic1]  Wildcard identity (default: null identity)
+ * @param {string} [topic2]
+ * @param {string} [topic3]
+ */
+export async function findQSBLogTicks(
+  bobUrl,
+  fromTick,
+  toTick,
+  logType,
+  topic1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaafxib",
+  topic2 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaafxib",
+  topic3 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaafxib",
+) {
+  const res = await fetch(`${bobUrl}/findLog`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fromTick,
+      toTick,
+      scIndex: QSB_CONTRACT_INDEX,
+      logType,
+      topic1,
+      topic2,
+      topic3,
+    }),
+  });
+  if (!res.ok) throw new Error(`POST /findLog HTTP ${res.status}`);
+  return res.json();
+}
+
+// ── QSB log content parsers ────────────────────────────────────────────────
+
+/**
+ * Parse Lock or OverrideLock log content bytes (168B after the 8-byte header).
+ *
+ * Bob strips the first 8 bytes (_contractIndex + _type) into scIndex/scLogType.
+ * The remaining content reflects QSBLogLockMessage offset 8 onward:
+ *   [0..31]    id        from      (Qubic public key, 32B)
+ *   [32..95]   u8[64]    to        (Solana address ASCII, zero-padded)
+ *   [96..103]  u64 LE    amount
+ *   [104..111] u64 LE    relayerFee
+ *   [112..115] u32 LE    networkOut
+ *   [116..119] u32 LE    nonce
+ *   [120..151] u8[32]    orderHash
+ *   [152]      u8        success
+ *   [153]      u8        reasonCode
+ *   [154..155] --        padding (align u32)
+ *   [156..159] u32 LE    orderEra
+ */
+function parseLockContent(contentHex) {
+  const buf = Buffer.from(contentHex, "hex");
+  return {
+    from: buf.slice(0, 32),
+    to: buf.slice(32, 96),
+    amount: buf.readBigUInt64LE(96),
+    relayerFee: buf.readBigUInt64LE(104),
+    networkOut: buf.readUInt32LE(112),
+    nonce: buf.readUInt32LE(116),
+    orderHash: buf.slice(120, 152),
+    success: buf.readUInt8(152) !== 0,
+    reasonCode: buf.readUInt8(153),
+    orderEra: buf.readUInt32LE(156),
+  };
+}
+
+/**
+ * Parse Unlock log content bytes (128B after the 8-byte header).
+ *
+ * QSBLogUnlockMessage offset 8 onward:
+ *   [0..31]    u8[32]    orderHash
+ *   [32..63]   id        toAddress (Qubic public key, 32B)
+ *   [64..71]   u64 LE    amount
+ *   [72..79]   u64 LE    relayerFee
+ *   [80..111]  id        relayer   (oracle that submitted Unlock)
+ *   [112]      u8        success
+ *   [113]      u8        reasonCode
+ *   [114..115] --        padding (align u32)
+ *   [116..119] u32 LE    orderEra
+ */
+function parseUnlockContent(contentHex) {
+  const buf = Buffer.from(contentHex, "hex");
+  return {
+    orderHash: buf.slice(0, 32),
+    toAddress: buf.slice(32, 64),
+    amount: buf.readBigUInt64LE(64),
+    relayerFee: buf.readBigUInt64LE(72),
+    relayer: buf.slice(80, 112),
+    success: buf.readUInt8(112) !== 0,
+    reasonCode: buf.readUInt8(113),
+    orderEra: buf.readUInt32LE(116),
+  };
+}
+
+/**
+ * Parse a single Bob log entry into a typed QSB event object.
+ *
+ * Returns null if the entry is not a QSB CONTRACT_INFORMATION_MESSAGE.
+ * The returned `data` field for Lock/OverrideLock has: from, to, amount,
+ * relayerFee, networkOut, nonce, orderHash, success, reasonCode, orderEra.
+ * For Unlock: orderHash, toAddress, amount, relayerFee, relayer, success,
+ * reasonCode, orderEra.
+ *
+ * Tip: convert raw id buffers to strings with bytesToQubicId(); convert
+ * the `to` buffer with Buffer.from(data.to).toString("ascii").replace(/\0+$/, "").
+ *
+ * @param {object} entry  A Bob log entry from fetchLogRange() or GET /log/…
+ * @returns {{ event, logType, logId, tick, epoch, data } | null}
+ */
+export function parseQSBLogEntry(entry) {
+  if (!entry?.ok || entry.type !== CONTRACT_INFO_LOG_TYPE) return null;
+  const { scIndex, scLogType, content } = entry.body ?? {};
+  if (scIndex !== QSB_CONTRACT_INDEX || typeof content !== "string") return null;
+
+  const base = { logType: scLogType, logId: entry.logId, tick: entry.tick, epoch: entry.epoch };
+
+  switch (scLogType) {
+    case QSB_LOG_LOCK:          return { ...base, event: "lock", data: parseLockContent(content) };
+    case QSB_LOG_OVERRIDE_LOCK: return { ...base, event: "override-lock", data: parseLockContent(content) };
+    case QSB_LOG_UNLOCK:        return { ...base, event: "unlock", data: parseUnlockContent(content) };
+    default:                    return { ...base, event: "unknown", data: { contentHex: content } };
+  }
+}
+
+/**
+ * Fetch and parse all QSB log events for a single transaction.
+ *
+ * @param {string}   bobUrl   Bob Node base URL
+ * @param {string}   txHash   Transaction hash
+ * @param {number}   epoch    Epoch that contains this transaction (required for GET /log)
+ * @param {function} [onEvent]  Optional callback(event) called for each parsed QSB event
+ * @returns {Promise<Array>}  All parsed QSB events (Lock, OverrideLock, Unlock, unknown)
+ */
+export async function fetchQSBLogsForTx(bobUrl, txHash, epoch, onEvent) {
+  const txInfo = await getTxInfo(bobUrl, txHash);
+  if (!txInfo.found || !txInfo.executed) return [];
+  if (txInfo.logIdFrom < 0 || txInfo.logIdTo < 0) return [];
+
+  const rawEntries = await fetchLogRange(bobUrl, epoch, txInfo.logIdFrom, txInfo.logIdTo);
+  const events = [];
+  for (const entry of rawEntries) {
+    const parsed = parseQSBLogEntry(entry);
+    if (!parsed) continue;
+    if (onEvent) onEvent(parsed);
+    events.push(parsed);
+  }
+  return events;
+}
+
 // ── Script helpers ─────────────────────────────────────────────────────────
 
 /** Load QUBIC_KEYS and derive publicKey/publicId; exit with an error if not set. */
@@ -487,4 +715,127 @@ export async function pollUntil(check, { maxRetries = 10, interval = 1500 } = {}
   }
   process.stdout.write("\n");
   return result;
+}
+
+// ── Oracle signing helpers ─────────────────────────────────────────────────
+
+/**
+ * Lazy-load the Qubic WASM crypto module (SchnorrQ + K12).
+ * Cached after first call; the dynamic import is module-level cached by Node.
+ */
+let _qubicCryptoCache = null;
+async function getQubicCrypto() {
+  if (!_qubicCryptoCache) {
+    const mod = await import("@qubic-lib/qubic-ts-library/dist/index.js");
+    _qubicCryptoCache = await mod.default.default.crypto;
+  }
+  return _qubicCryptoCache;
+}
+
+/**
+ * Compute the canonical QSB order hash off-chain.
+ *
+ * Pre-image: 245-byte QSBOrderMessage → K12 → 32-byte digest (= OrderHash).
+ * Result matches on-chain FUNC_COMPUTE_ORDER_HASH.
+ *
+ * @param {object} order  Same shape as encodeOrderStruct input.
+ * @returns {Promise<Uint8Array>} 32-byte order hash.
+ */
+export async function computeQsbOrderHashOffchain(order) {
+  const msgBytes = encodeQsbOrderMessage({
+    protocolName: PROTOCOL_NAME,
+    protocolVersion: PROTOCOL_VERSION,
+    contractAddress: contractAddressBytes(),
+    networkIn: order.networkIn,
+    networkOut: order.networkOut,
+    tokenIn: order.tokenIn,
+    tokenOut: order.tokenOut,
+    fromAddress: order.fromAddress,
+    toAddress: order.toAddress,
+    amount: BigInt(order.amount),
+    relayerFee: BigInt(order.relayerFee),
+    nonce: order.nonce,
+    orderEra: order.orderEra,
+  });
+  const { K12 } = await getQubicCrypto();
+  const digest = new Uint8Array(32);
+  K12(msgBytes, digest, 32);
+  return digest;
+}
+
+/**
+ * Sign a QSB Order with a single oracle key (SchnorrQ over K12 digest).
+ *
+ * Flow: K12(QSBOrderMessage, 32) → digest → schnorrq.sign(sk, pk, digest)
+ * Matches qpi.signatureValidity(signer, digest, signature) in the contract.
+ *
+ * @param {object} order  Same shape as encodeOrderStruct input.
+ * @param {string} sKey   55-char Qubic seed (oracle's private seed).
+ * @returns {Promise<{signerPublicKey: Uint8Array, signature: Uint8Array}>}
+ */
+export async function signQsbOrder(order, sKey) {
+  const msgBytes = encodeQsbOrderMessage({
+    protocolName: PROTOCOL_NAME,
+    protocolVersion: PROTOCOL_VERSION,
+    contractAddress: contractAddressBytes(),
+    networkIn: order.networkIn,
+    networkOut: order.networkOut,
+    tokenIn: order.tokenIn,
+    tokenOut: order.tokenOut,
+    fromAddress: order.fromAddress,
+    toAddress: order.toAddress,
+    amount: BigInt(order.amount),
+    relayerFee: BigInt(order.relayerFee),
+    nonce: order.nonce,
+    orderEra: order.orderEra,
+  });
+  const helper = new QubicHelper();
+  const { privateKey, publicKey } = await helper.createIdPackage(sKey);
+  const { schnorrq, K12 } = await getQubicCrypto();
+  const digest = new Uint8Array(32);
+  K12(msgBytes, digest, 32);
+  const signature = schnorrq.sign(privateKey, publicKey, digest);
+  return {
+    signerPublicKey: new Uint8Array(publicKey),
+    signature: new Uint8Array(signature),
+  };
+}
+
+/**
+ * Encode Unlock_input matching sizeof(Unlock_input) C++ layout (natural alignment).
+ *
+ * sizeof(Order) = 192 (188 bytes data + 4 bytes trailing padding for id align-8).
+ * numSignatures (uint32) sits at offset 192.
+ * 4 bytes of padding follow to align Array<SignatureData,64> to 8 bytes.
+ * SignatureData entries (id:32 + sig:64 = 96 bytes each) start at offset 200.
+ *
+ * Layout:
+ *   [0..187]   Order struct data (encodeOrderStruct)
+ *   [188..191] 4 bytes trailing padding (zeros)
+ *   [192..195] uint32 numSignatures LE
+ *   [196..199] 4 bytes padding (zeros, align Array<SignatureData,64> to 8)
+ *   [200..]    SignatureData entries: id(32) + sig(64) each
+ *
+ * @param {object}   order       Same shape as encodeOrderStruct input.
+ * @param {Array<{signerPublicKey: Uint8Array, signature: Uint8Array}>} signatures
+ * @returns {Uint8Array}
+ */
+export function encodeUnlockInput(order, signatures) {
+  const SIG_ENTRY_SIZE = 96;
+  const SIG_START = 200;
+  const buf = new ArrayBuffer(SIG_START + signatures.length * SIG_ENTRY_SIZE);
+  const view = new DataView(buf);
+  const bytes = new Uint8Array(buf);
+  bytes.set(encodeOrderStruct(order), 0);
+  // [188..191] trailing padding of Order — already zero from ArrayBuffer
+  view.setUint32(192, signatures.length, true);
+  // [196..199] padding — already zero
+  let offset = SIG_START;
+  for (const sig of signatures) {
+    bytes.set(sig.signerPublicKey, offset);
+    offset += 32;
+    bytes.set(sig.signature, offset);
+    offset += 64;
+  }
+  return bytes;
 }

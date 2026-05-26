@@ -37,6 +37,8 @@ async function buildEnvApp(overrides: EnvOverrides = {}) {
       HUB_KEYS_FILE: validHubKeys,
       SOLANA_RPC_URL: "http://localhost:8899",
       QUBIC_RPC_URL: "http://127.0.0.1:3015",
+      QUBIC_NODE_URL: "http://127.0.0.1:41841",
+      QUBIC_INVOCATION_REWARD: 1,
       TOKEN_MINT: "4bbjhGLSYwku6Y44dqwcroRfj2vHCdiHJ9SUmndc4FVg",
       RELAYER_FEE_SOLANA: "1000",
       RELAYER_FEE_QUBIC: "500",

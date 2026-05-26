@@ -11,9 +11,26 @@ export function createInMemoryOrders(initial: OracleOrder[] = []) {
     async findById(id: string) {
       return store.get(id) ?? null;
     },
+    async findBroadcastedQubicOrders() {
+      const results: OracleOrder[] = [];
+      for (const order of store.values()) {
+        if (order.dest === "qubic" && order.status === "transaction-broadcasted") {
+          results.push(order);
+        }
+      }
+      return results;
+    },
     async findBySourceNonce(sourceNonce: string) {
       for (const order of store.values()) {
         if (order.source_nonce === sourceNonce) {
+          return order;
+        }
+      }
+      return null;
+    },
+    async findByDestinationOrderHash(destinationOrderHash: string) {
+      for (const order of store.values()) {
+        if (order.destination_order_hash === destinationOrderHash) {
           return order;
         }
       }

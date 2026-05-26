@@ -122,16 +122,17 @@ function makeUnlockStoredEvent(overrides: Partial<{
   toAddress: string;
   amount: string;
   nonce: string;
+  signature: string;
 }> = {}) {
   const payload = {
-    toAddress: hex32(2),
-    amount: "100",
-    nonce: hex32(3),
+    toAddress: "0".repeat(64),
+    amount: "0",
+    nonce: "",
     ...overrides,
   };
   return {
     id: 3,
-    signature: "trx-unlock",
+    signature: overrides.signature ?? "order-hash-1",
     chain: "qubic" as const,
     type: "unlock" as const,
     nonce: payload.nonce,
@@ -268,20 +269,38 @@ describe("qubic order handlers", () => {
     );
   });
 
-  it("updates destination transaction hash for unlock events", async () => {
-    const { repo, handleLockEvent, handleUnlockEvent } = createHandlers();
-    const lock_event = makeLockStoredEvent();
+  it("finalizes qubic-destination orders by destination order hash", async () => {
+    const { repo, handleUnlockEvent } = createHandlers();
     const unlock_event = makeUnlockStoredEvent();
-    const mappedLock = mapStoredEventToQubicPayload(lock_event);
     const mappedUnlock = mapStoredEventToQubicPayload(unlock_event);
 
-    await handleLockEvent(mappedLock.event as never, { signature: "trx-lock" });
-    await handleUnlockEvent(mappedUnlock.event as never, { signature: "trx-unlock" });
+    await repo.create({
+      id: "00000000-0000-4000-8000-000000000123",
+      source: "solana",
+      dest: "qubic",
+      from: hex32(91),
+      to: hex32(92),
+      amount: "10",
+      relayerFee: "1",
+      origin_trx_hash: "trx-lock",
+      destination_trx_hash: "qubic-tx-123",
+      destination_order_hash: "order-hash-1",
+      destination_target_tick: 12345,
+      signature: "sig",
+      status: "relayed",
+      oracle_accept_to_relay: true,
+      relay_attempts: 1,
+      source_nonce: hex32(90),
+      source_payload: JSON.stringify({ v: 1 }),
+      order_era: 0,
+    });
 
-    const stored = await repo.findBySourceNonce(normalizeNonce(lock_event.nonce));
+    await handleUnlockEvent(mappedUnlock.event as never, { signature: "order-hash-1" });
+
+    const stored = await repo.findByDestinationOrderHash("order-hash-1");
     assert.ok(stored);
-    assert.strictEqual(stored?.destination_trx_hash, "trx-unlock");
     assert.strictEqual(stored?.status, "finalized");
+    assert.strictEqual(stored?.destination_trx_hash, "qubic-tx-123");
   });
 
   it("warns when unlock events have no matching order", async () => {
@@ -296,10 +315,14 @@ describe("qubic order handlers", () => {
     );
   });
 
-  it("warns when unlock events are missing signatures", async () => {
-    const { repo, handleLockEvent, handleUnlockEvent, entries } = createHandlers();
+  it("can still finalize unlock events by source nonce as a fallback", async () => {
+    const { repo, handleLockEvent, handleUnlockEvent } = createHandlers();
     const lock_event = makeLockStoredEvent();
-    const unlock_event = makeUnlockStoredEvent();
+    const unlock_event = makeUnlockStoredEvent({
+      toAddress: hex32(2),
+      amount: "100",
+      nonce: hex32(3),
+    });
     const mappedLock = mapStoredEventToQubicPayload(lock_event);
     const mappedUnlock = mapStoredEventToQubicPayload(unlock_event);
 
@@ -308,10 +331,7 @@ describe("qubic order handlers", () => {
 
     const stored = await repo.findBySourceNonce(normalizeNonce(lock_event.nonce));
     assert.ok(stored);
-    assert.strictEqual(stored?.destination_trx_hash, undefined);
-    assert.ok(
-      entries.some((entry) => entry.message?.includes("missing signature"))
-    );
+    assert.strictEqual(stored?.status, "finalized");
   });
 
   it("builds failed orders without a signature fallback", () => {

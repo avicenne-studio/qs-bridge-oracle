@@ -1,16 +1,20 @@
 import fp from "fastify-plugin";
+import { Buffer } from "node:buffer";
 import { FastifyInstance } from "fastify";
 import type { FastifyBaseLogger } from "fastify";
-import { Type } from "@sinclair/typebox";
 import {
-  kUndiciClient,
-  type UndiciClient,
-  type UndiciClientService,
-} from "../../../infra/undici-client.js";
-import { kEnvConfig, type EnvConfig } from "../../../infra/env.js";
-import { kValidation, type ValidationService } from "../../common/validation.js";
-import { StringSchema } from "../../common/schemas/common.js";
-import { type QubicStoredEvent } from "./schemas/qubic-event.js";
+  kQubicContractClient,
+  type QubicContractClient,
+  FUNC_GET_LOCKED_ORDER,
+  FUNC_IS_ORDER_FILLED,
+  encodeGetLockedOrderInput,
+  decodeGetLockedOrder,
+} from "../../../infra/qubic-contract-client.js";
+import { Network } from "../../common/schemas/common.js";
+import {
+  type QubicStoredEvent,
+  type QubicLockEventPayload,
+} from "./schemas/qubic-event.js";
 
 export interface QubicEventValidator {
   validate(event: QubicStoredEvent): Promise<void>;
@@ -20,87 +24,66 @@ export const kQubicEventValidator = Symbol("app.qubicEventValidator");
 
 type Logger = FastifyBaseLogger;
 
-type QubicExpected = {
-  type: QubicStoredEvent["type"];
-  nonce: string;
-  payload: QubicStoredEvent["payload"];
-};
-
-export type QubicTransactionResponse = {
-  trxHash: string;
-  matches: boolean;
-  logs?: unknown[];
-};
-
-export type QubicTransactionFetcher = (
-  signature: string,
-  expected: QubicExpected
-) => Promise<QubicTransactionResponse>;
-
-const QubicTransactionResponseSchema = Type.Object(
-  {
-    trxHash: StringSchema,
-    matches: Type.Boolean(),
-  },
-  { additionalProperties: true }
-);
-
-function buildTransactionsPath(basePath: string, signature: string, expected: QubicExpected) {
-  const normalized = basePath.endsWith("/")
-    ? basePath.slice(0, -1)
-    : basePath;
-  const params = new URLSearchParams();
-  params.set("expected", JSON.stringify(expected));
-  return `${normalized}/transactions/${encodeURIComponent(signature)}?${params.toString()}`;
-}
-
-export function createDefaultQubicTransactionFetcher(
-  client: UndiciClient,
-  rpcUrl: string
-): QubicTransactionFetcher {
-  const url = new URL(rpcUrl);
-  const origin = url.origin;
-  const basePath = url.pathname === "/" ? "" : url.pathname;
-
-  return async (signature, expected) => {
-    const path = buildTransactionsPath(basePath, signature, expected);
-    return client.getJson<QubicTransactionResponse>(origin, path);
-  };
-}
-
 export function createQubicEventValidator(deps: {
-  fetchTransaction: QubicTransactionFetcher;
+  contractClient: QubicContractClient;
   logger: Logger;
-  validation?: ValidationService;
 }): QubicEventValidator {
-  const { fetchTransaction, logger, validation } = deps;
+  const { contractClient, logger } = deps;
 
   return {
     async validate(event: QubicStoredEvent) {
-      const expected: QubicExpected = {
-        type: event.type,
-        nonce: event.nonce,
-        payload: event.payload,
-      };
-
-      let response: QubicTransactionResponse;
-      try {
-        response = await fetchTransaction(event.signature, expected);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "";
-        if (message.includes("404")) {
-          throw new Error("Transaction not found");
+      if (event.type === "unlock") {
+        let hex: string;
+        try {
+          hex = await contractClient.queryContractFunction(
+            FUNC_IS_ORDER_FILLED,
+            event.signature,
+          );
+        } catch (error) {
+          logger.warn({ err: error }, "Qubic contract query failed");
+          throw error;
         }
-        logger.warn({ err: error }, "Qubic transaction fetch failed");
+
+        const filled = Buffer.from(hex, "hex")[0] !== 0;
+        if (!filled) {
+          throw new Error("Order not filled");
+        }
+        return;
+      }
+
+      const nonce = Number(event.nonce);
+      let hex: string;
+      try {
+        hex = await contractClient.queryContractFunction(
+          FUNC_GET_LOCKED_ORDER,
+          encodeGetLockedOrderInput(nonce),
+        );
+      } catch (error) {
+        logger.warn({ err: error }, "Qubic contract query failed");
         throw error;
       }
 
-      if (validation && !validation.isValid(QubicTransactionResponseSchema, response)) {
-        throw new Error("Transaction response invalid");
+      const order = decodeGetLockedOrder(hex);
+      if (order === null) {
+        throw new Error("Order not found");
       }
 
-      if (!response.matches) {
-        throw new Error("Transaction events do not match hub payload");
+      if (event.type === "lock" || event.type === "override-lock") {
+        const payload = event.payload as QubicLockEventPayload;
+
+        if (order.amount !== BigInt(payload.amount)) {
+          throw new Error("Order amount mismatch");
+        }
+        if (order.relayerFee !== BigInt(payload.relayerFee)) {
+          throw new Error("Order relayerFee mismatch");
+        }
+        if (order.networkOut !== Network.Solana) {
+          throw new Error("Order networkOut mismatch");
+        }
+        const actualSenderHex = Buffer.from(order.sender).toString("hex");
+        if (actualSenderHex !== payload.fromAddress) {
+          throw new Error("Order sender mismatch");
+        }
       }
     },
   };
@@ -111,25 +94,16 @@ export default fp(
     if (fastify.hasDecorator(kQubicEventValidator)) {
       return;
     }
-    const config = fastify.getDecorator<EnvConfig>(kEnvConfig);
-    const undiciClient =
-      fastify.getDecorator<UndiciClientService>(kUndiciClient);
-    const validation = fastify.getDecorator<ValidationService>(kValidation);
-    const client = undiciClient.create();
-
+    const contractClient =
+      fastify.getDecorator<QubicContractClient>(kQubicContractClient);
     const validator = createQubicEventValidator({
-      fetchTransaction: createDefaultQubicTransactionFetcher(
-        client,
-        config.QUBIC_RPC_URL
-      ),
+      contractClient,
       logger: fastify.log,
-      validation,
     });
-
     fastify.decorate(kQubicEventValidator, validator);
   },
   {
     name: "qubic-events-validator",
-    dependencies: ["env", "undici-client", "validation"],
-  }
+    dependencies: ["qubic-contract-client"],
+  },
 );

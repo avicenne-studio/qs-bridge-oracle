@@ -6,7 +6,7 @@ import process from "node:process";
 import { DEFAULT_RPC_URL } from "./utils.js";
 import dotenv from "dotenv";
 
-const ROOT_DIR = resolve(import.meta.dirname, "..");
+const ROOT_DIR = resolve(import.meta.dirname, "../..");
 dotenv.config({ path: join(ROOT_DIR, ".env.local") });
 dotenv.config({ path: join(ROOT_DIR, ".env") });
 
@@ -55,8 +55,8 @@ const baseEnv = {
   SOLANA_TX_RETRY_MAX_ATTEMPTS: "6",
   SOLANA_TX_RETRY_BASE_MS: "500",
   SOLANA_TX_RETRY_MAX_MS: "4000",
-  RELAYER_FEE_SOLANA: "1000",
-  RELAYER_FEE_QUBIC: "500",
+  RELAYER_FEE_SOLANA: "1",
+  RELAYER_FEE_QUBIC: "1",
   SOLANA_KEYS: "./.temp/oracle-1.keys.json",
   QUBIC_KEYS: "./.temp/oracle-1.qubic.keys.json",
   TOKEN_MINT: process.env.TOKEN_MINT ?? "4bbjhGLSYwku6Y44dqwcroRfj2vHCdiHJ9SUmndc4FVg",

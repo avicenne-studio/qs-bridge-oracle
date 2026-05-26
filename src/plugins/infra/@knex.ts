@@ -62,6 +62,8 @@ export default fp(
           table.string("relayerFee").notNullable().defaultTo("0");
           table.string("origin_trx_hash", 255).notNullable();
           table.string("destination_trx_hash", 255).nullable();
+          table.string("destination_order_hash", 64).nullable();
+          table.integer("destination_target_tick").nullable();
           table.string("source_nonce").notNullable().unique();
           table.string("source_payload").notNullable();
           table.integer("order_era").notNullable().defaultTo(0);

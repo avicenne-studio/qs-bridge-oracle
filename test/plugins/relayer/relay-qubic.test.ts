@@ -1,13 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
-import Fastify from "fastify";
 import { QubicHelper } from "@qubic-lib/qubic-ts-library/dist/qubicHelper.js";
-import qubicCryptoModule from "@qubic-lib/qubic-ts-library";
+import { resolveQubicCrypto, QUBIC_FIXTURE_SEED } from "../../helpers/qubic-crypto.js";
 
 import {
   relayToQubic,
+  finalizeQubicRelay,
   buildQubicRelayDeps,
+  QubicDefinitiveRelayFailure,
   type QubicRelayDeps,
 } from "../../../src/plugins/app/relayer/relay-qubic.js";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../../src/plugins/app/common/protocol.js";
@@ -17,26 +18,13 @@ import {
 } from "../../../src/plugins/app/common/qubic/encoding.js";
 import { serializeQsbOrderMessage } from "../../../src/plugins/app/common/qubic/qsb-message.js";
 import type { OracleOrder } from "../../../src/plugins/app/indexer/schemas/order.js";
+import type { QubicContractClient } from "../../../src/plugins/infra/qubic-contract-client.js";
 import { build, DEFAULT_TEST_CONFIG } from "../../helpers/build.js";
 import { address, getAddressEncoder } from "@solana/kit";
 
 const addressEncoder = getAddressEncoder();
 const TOKEN_MINT_BYTES = new Uint8Array(addressEncoder.encode(address(DEFAULT_TEST_CONFIG.TOKEN_MINT)));
 
-type QubicCrypto = {
-  schnorrq: {
-    sign: (sk: Uint8Array, pk: Uint8Array, msg: Uint8Array) => Uint8Array;
-    verify: (pk: Uint8Array, msg: Uint8Array, sig: Uint8Array) => number;
-  };
-  K12: (input: Uint8Array, output: Uint8Array, outputLength: number) => void;
-};
-
-const resolvedCrypto = (
-  qubicCryptoModule as unknown as { default: { crypto: Promise<QubicCrypto> } }
-).default.crypto;
-
-// Fixture keys from test/fixtures/signer/qubic.keys.json
-const QUBIC_FIXTURE_SEED = "aoftkmcshcjliulcifkpojwhxpmagekmxygsdiqdlwtgkxqsymsyovl";
 
 const noopLogger = {
   info() {},
@@ -71,62 +59,6 @@ function makeQubicOrder(overrides: Partial<OracleOrder> = {}): OracleOrder {
   };
 }
 
-/**
- * Starts a custom mock Qubic RPC server that returns the given oracle public key
- * in the querySmartContract response.
- */
-async function startCustomRpcMock(
-  t: import("node:test").TestContext,
-  opts: {
-    oraclePublicKey?: Uint8Array;
-    broadcastResult?: "success" | "fail";
-    broadcastStatusCode?: number;
-    tickInfoResult?: "success" | "fail";
-    querySmartContractResult?: "success" | "fail";
-  } = {},
-) {
-  const { broadcastResult = "success", broadcastStatusCode = 500 } = opts;
-  const { tickInfoResult = "success", querySmartContractResult = "success" } = opts;
-  const server = Fastify({ logger: false });
-
-  server.get("/live/v1/tick-info", async (_req, reply) => {
-    if (tickInfoResult === "fail") {
-      return reply.code(503).send("service unavailable");
-    }
-    return { tick: 100, epoch: 1 };
-  });
-
-  server.post("/live/v1/querySmartContract", async (_req, reply) => {
-    if (querySmartContractResult === "fail") {
-      return reply.code(502).send("bad gateway");
-    }
-    const buf = Buffer.alloc(4 + 64 * 32);
-    if (opts.oraclePublicKey) {
-      buf.writeUInt32LE(1, 0);
-      buf.set(opts.oraclePublicKey, 4);
-    } else {
-      buf.writeUInt32LE(0, 0);
-    }
-    return { responseData: buf.toString("base64") };
-  });
-
-  server.post("/broadcastTransaction", async (_req, reply) => {
-    if (broadcastResult === "fail") {
-      return reply.code(broadcastStatusCode).send("broadcast failed");
-    }
-    return { transactionId: "qubic-tx-1", peersBroadcasted: 3 };
-  });
-
-  await server.listen({ port: 0, host: "127.0.0.1" });
-  const address = server.server.address();
-  if (!address || typeof address === "string") {
-    throw new Error("Unable to determine server address");
-  }
-  const url = `http://127.0.0.1:${address.port}`;
-  t.after(() => server.close());
-  return { url };
-}
-
 async function loadQubicIdentity() {
   const helper = new QubicHelper();
   const idPackage = await helper.createIdPackage(QUBIC_FIXTURE_SEED);
@@ -135,7 +67,7 @@ async function loadQubicIdentity() {
 
 async function signOrder(order: OracleOrder): Promise<string> {
   const { privateKey, publicKey } = await loadQubicIdentity();
-  const crypto = await resolvedCrypto;
+  const crypto = await resolveQubicCrypto();
 
   const fromBytes = Buffer.from(order.from.replace(/^0x/, ""), "hex");
   const toBytes = Buffer.from(order.to.replace(/^0x/, ""), "hex");
@@ -169,22 +101,58 @@ async function signOrder(order: OracleOrder): Promise<string> {
   return Buffer.from(signature).toString("base64");
 }
 
+// GetOracles response: u32 count (4B) + u32 padding (4B) + key (32B each)
+function buildOracleKeysHex(key?: Uint8Array): string {
+  const buf = Buffer.alloc(8 + 32);
+  if (key) {
+    buf.writeUInt32LE(1, 0);
+    buf.set(key, 8);
+  }
+  return buf.toString("hex");
+}
+
+function makeContractClient(opts: {
+  oraclePublicKey?: Uint8Array;
+  broadcastResult?: "fail";
+  tickResult?: "fail";
+  queryResult?: "fail";
+  isOrderFilledResult?: "filled" | "not-filled";
+} = {}): QubicContractClient {
+  return {
+    queryContractFunction: async (_funcNumber: number, input: string) => {
+      if (opts.queryResult === "fail") throw new Error("GetOracles HTTP 502");
+      // FUNC_IS_ORDER_FILLED has a 32-byte input; FUNC_GET_ORACLES has empty input
+      if (input.length === 64) {
+        if (opts.isOrderFilledResult === "not-filled") return "00".repeat(1);
+        return buildOracleKeysHex(opts.oraclePublicKey); // first byte = count = 1 = filled
+      }
+      return buildOracleKeysHex(opts.oraclePublicKey);
+    },
+    getBobStatus: async () => {
+      if (opts.tickResult === "fail") throw new Error("getBobStatus failed: HTTP 503");
+      return { epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 };
+    },
+    broadcastTransaction: async () => {
+      if (opts.broadcastResult === "fail") {
+        throw new Error("Qubic broadcast failed: HTTP 500 — \"broadcast failed\"");
+      }
+    },
+  };
+}
+
 describe("relay-qubic", () => {
   describe("relayToQubic", () => {
-    it("succeeds with a valid oracle signature and broadcast", async (t) => {
+    it("succeeds with a valid oracle signature and broadcast", async () => {
       const identity = await loadQubicIdentity();
       const order = makeQubicOrder();
       const sigBase64 = await signOrder(order);
 
-      const { url } = await startCustomRpcMock(t, {
-        oraclePublicKey: identity.publicKey,
-        broadcastResult: "success",
-      });
-
       const deps: QubicRelayDeps = {
-        config: { ...DEFAULT_TEST_CONFIG, QUBIC_BROADCAST_RPC_URL: url, QUBIC_RPC_URL: url },
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: makeContractClient({ oraclePublicKey: identity.publicKey }),
         qubicSeed: QUBIC_FIXTURE_SEED,
         qubicPublicKey: identity.publicKey,
+        pollIntervalMs: 0,
         ordersRepository: {
           findSignatures: async () => [sigBase64],
         } as unknown as QubicRelayDeps["ordersRepository"],
@@ -195,20 +163,17 @@ describe("relay-qubic", () => {
       assert.ok(result.trxHash.length > 0, "trxHash should be non-empty");
     });
 
-    it("does not reuse an oracle for duplicate signatures", async (t) => {
+    it("does not reuse an oracle for duplicate signatures", async () => {
       const identity = await loadQubicIdentity();
       const order = makeQubicOrder();
       const sigBase64 = await signOrder(order);
 
-      const { url } = await startCustomRpcMock(t, {
-        oraclePublicKey: identity.publicKey,
-        broadcastResult: "success",
-      });
-
       const deps: QubicRelayDeps = {
-        config: { ...DEFAULT_TEST_CONFIG, QUBIC_BROADCAST_RPC_URL: url, QUBIC_RPC_URL: url },
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: makeContractClient({ oraclePublicKey: identity.publicKey }),
         qubicSeed: QUBIC_FIXTURE_SEED,
         qubicPublicKey: identity.publicKey,
+        pollIntervalMs: 0,
         ordersRepository: {
           findSignatures: async () => [sigBase64, sigBase64],
         } as unknown as QubicRelayDeps["ordersRepository"],
@@ -219,17 +184,13 @@ describe("relay-qubic", () => {
       assert.ok(result.trxHash.length > 0, "trxHash should be non-empty");
     });
 
-    it("throws when no signatures match any oracle", async (t) => {
+    it("throws when no signatures match any oracle", async () => {
       const identity = await loadQubicIdentity();
       const order = makeQubicOrder();
 
-      const { url } = await startCustomRpcMock(t, {
-        oraclePublicKey: identity.publicKey,
-        broadcastResult: "success",
-      });
-
       const deps: QubicRelayDeps = {
-        config: { ...DEFAULT_TEST_CONFIG, QUBIC_BROADCAST_RPC_URL: url, QUBIC_RPC_URL: url },
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: makeContractClient({ oraclePublicKey: identity.publicKey }),
         qubicSeed: QUBIC_FIXTURE_SEED,
         qubicPublicKey: identity.publicKey,
         ordersRepository: {
@@ -244,19 +205,14 @@ describe("relay-qubic", () => {
       );
     });
 
-    it("throws on broadcast failure", async (t) => {
+    it("throws on broadcast failure", async () => {
       const identity = await loadQubicIdentity();
       const order = makeQubicOrder();
       const sigBase64 = await signOrder(order);
 
-      const { url } = await startCustomRpcMock(t, {
-        oraclePublicKey: identity.publicKey,
-        broadcastResult: "fail",
-        broadcastStatusCode: 500,
-      });
-
       const deps: QubicRelayDeps = {
-        config: { ...DEFAULT_TEST_CONFIG, QUBIC_BROADCAST_RPC_URL: url, QUBIC_RPC_URL: url },
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: makeContractClient({ oraclePublicKey: identity.publicKey, broadcastResult: "fail" }),
         qubicSeed: QUBIC_FIXTURE_SEED,
         qubicPublicKey: identity.publicKey,
         ordersRepository: {
@@ -271,18 +227,14 @@ describe("relay-qubic", () => {
       );
     });
 
-    it("throws when tick-info endpoint returns an error", async (t) => {
+    it("throws when getBobStatus throws", async () => {
       const identity = await loadQubicIdentity();
       const order = makeQubicOrder();
       const sigBase64 = await signOrder(order);
 
-      const { url } = await startCustomRpcMock(t, {
-        oraclePublicKey: identity.publicKey,
-        tickInfoResult: "fail",
-      });
-
       const deps: QubicRelayDeps = {
-        config: { ...DEFAULT_TEST_CONFIG, QUBIC_BROADCAST_RPC_URL: url, QUBIC_RPC_URL: url },
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: makeContractClient({ oraclePublicKey: identity.publicKey, tickResult: "fail" }),
         qubicSeed: QUBIC_FIXTURE_SEED,
         qubicPublicKey: identity.publicKey,
         ordersRepository: {
@@ -293,19 +245,16 @@ describe("relay-qubic", () => {
 
       await assert.rejects(
         () => relayToQubic(order, deps),
-        /tick-info HTTP 503/,
+        /getBobStatus failed/,
       );
     });
 
-    it("throws when querySmartContract endpoint returns an error", async (t) => {
+    it("throws when queryContractFunction throws", async () => {
       const order = makeQubicOrder();
 
-      const { url } = await startCustomRpcMock(t, {
-        querySmartContractResult: "fail",
-      });
-
       const deps: QubicRelayDeps = {
-        config: { ...DEFAULT_TEST_CONFIG, QUBIC_BROADCAST_RPC_URL: url, QUBIC_RPC_URL: url },
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: makeContractClient({ queryResult: "fail" }),
         qubicSeed: QUBIC_FIXTURE_SEED,
         qubicPublicKey: new Uint8Array(32),
         ordersRepository: {
@@ -320,20 +269,14 @@ describe("relay-qubic", () => {
       );
     });
 
-    it("skips signatures with invalid length", async (t) => {
+    it("skips signatures with invalid length", async () => {
       const identity = await loadQubicIdentity();
       const order = makeQubicOrder();
-
-      // A signature that is not 64 bytes (too short)
       const shortSig = Buffer.from(new Uint8Array(32)).toString("base64");
 
-      const { url } = await startCustomRpcMock(t, {
-        oraclePublicKey: identity.publicKey,
-        broadcastResult: "success",
-      });
-
       const deps: QubicRelayDeps = {
-        config: { ...DEFAULT_TEST_CONFIG, QUBIC_BROADCAST_RPC_URL: url, QUBIC_RPC_URL: url },
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: makeContractClient({ oraclePublicKey: identity.publicKey }),
         qubicSeed: QUBIC_FIXTURE_SEED,
         qubicPublicKey: identity.publicKey,
         ordersRepository: {
@@ -347,10 +290,312 @@ describe("relay-qubic", () => {
         { message: "No valid oracle signatures could be matched" },
       );
     });
+
+    it("returns orderHash and targetTick for deferred confirmation", async () => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder();
+      const sigBase64 = await signOrder(order);
+
+      const contractClient = {
+        queryContractFunction: async () => buildOracleKeysHex(identity.publicKey),
+        getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+        broadcastTransaction: async () => {},
+      };
+
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient,
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        pollIntervalMs: 0,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      const result = await relayToQubic(order, deps);
+      assert.ok(result.trxHash.length > 0);
+      assert.strictEqual(result.targetTick, 105);
+      assert.strictEqual(result.orderHash.length, 64);
+    });
+
+    it("uses the node tick provider for target tick when available", async () => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder();
+      const sigBase64 = await signOrder(order);
+
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async () => buildOracleKeysHex(identity.publicKey),
+          getBobStatus: async () => ({ epoch: 1, tick: 206, fetchingTick: 206, indexingTick: 206 }),
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        getCurrentTick: async () => 200,
+        pollIntervalMs: 0,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      const result = await relayToQubic(order, deps);
+      assert.strictEqual(result.targetTick, 205);
+    });
+  });
+
+  describe("finalizeQubicRelay", () => {
+    it("does not fail early when fetching passes target before indexing catches up", async () => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder({
+        destination_trx_hash: "qubic-tx",
+        destination_order_hash: "ab".repeat(32),
+        destination_target_tick: 105,
+        status: "transaction-broadcasted",
+      });
+      const sigBase64 = await signOrder(order);
+
+      let bobCallCount = 0;
+      let fillQueryCount = 0;
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async (_funcNumber: number, input: string) => {
+            if (input.length !== 64) return buildOracleKeysHex(identity.publicKey);
+            fillQueryCount++;
+            return fillQueryCount >= 2 ? "01" : "00";
+          },
+          getBobStatus: async () => {
+            bobCallCount++;
+            if (bobCallCount === 1) return { epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 };
+            return { epoch: 1, tick: 106, fetchingTick: 106, indexingTick: 105 };
+          },
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        pollIntervalMs: 0,
+        pollMaxAttempts: 2,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      const result = await finalizeQubicRelay(order, deps);
+      assert.strictEqual(result.trxHash, "qubic-tx");
+      assert.strictEqual(result.orderHash, "ab".repeat(32));
+    });
+
+    it("exercises the poll sleep and throws timeout when Bob stalls (pollIntervalMs:1)", async () => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder({
+        destination_trx_hash: "qubic-tx",
+        destination_order_hash: "cd".repeat(32),
+        destination_target_tick: 105,
+        status: "transaction-broadcasted",
+      });
+      const sigBase64 = await signOrder(order);
+
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async (_funcNumber: number, input: string) => {
+            if (input.length === 64) return "00"; // never filled
+            return buildOracleKeysHex(identity.publicKey);
+          },
+          getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }), // tick never advances past targetTick
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        pollIntervalMs: 1,
+        pollMaxAttempts: 1,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      await assert.rejects(
+        () => finalizeQubicRelay(order, deps),
+        /timed out/,
+      );
+    });
+
+    it("uses default pollIntervalMs when not set (pollMaxAttempts:0 causes instant timeout)", async () => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder({
+        destination_trx_hash: "qubic-tx",
+        destination_order_hash: "ef".repeat(32),
+        destination_target_tick: 105,
+        status: "transaction-broadcasted",
+      });
+      const sigBase64 = await signOrder(order);
+
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async () => buildOracleKeysHex(identity.publicKey),
+          getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        pollMaxAttempts: 0,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      await assert.rejects(
+        () => finalizeQubicRelay(order, deps),
+        /timed out after 0 attempts/,
+      );
+    });
+
+    it("returns empty trxHash when destination_trx_hash is absent", async () => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder({
+        destination_trx_hash: undefined,
+        destination_order_hash: "ab".repeat(32),
+        destination_target_tick: 105,
+        status: "transaction-broadcasted",
+      });
+      const sigBase64 = await signOrder(order);
+
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async (_funcNumber: number, input: string) => {
+            if (input.length === 64) return "01"; // order is filled
+            return buildOracleKeysHex(identity.publicKey);
+          },
+          getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        pollIntervalMs: 0,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      const result = await finalizeQubicRelay(order, deps);
+      assert.strictEqual(result.trxHash, "");
+    });
+
+    it("throws QubicDefinitiveRelayFailure when target tick is passed without fill", async () => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder({
+        destination_trx_hash: "qubic-tx",
+        destination_order_hash: "12".repeat(32),
+        destination_target_tick: 105,
+        status: "transaction-broadcasted",
+      });
+      const sigBase64 = await signOrder(order);
+
+      let bobCallCount = 0;
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async (_funcNumber: number, input: string) => {
+            if (input.length === 64) return "00";
+            return buildOracleKeysHex(identity.publicKey);
+          },
+          getBobStatus: async () => {
+            bobCallCount++;
+            const tick = bobCallCount === 1 ? 100 : 200;
+            return { epoch: 1, tick, fetchingTick: tick, indexingTick: tick };
+          },
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        pollIntervalMs: 0,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      await assert.rejects(
+        () => finalizeQubicRelay(order, deps),
+        (err) => err instanceof QubicDefinitiveRelayFailure,
+      );
+    });
+
+    it("throws when destination_target_tick is missing", async () => {
+      const order = makeQubicOrder({
+        destination_trx_hash: "qubic-tx",
+        destination_order_hash: "ab".repeat(32),
+        destination_target_tick: undefined,
+        status: "transaction-broadcasted",
+      });
+
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async () => buildOracleKeysHex(),
+          getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: new Uint8Array(32),
+        pollIntervalMs: 0,
+        ordersRepository: {
+          findSignatures: async () => [],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      await assert.rejects(
+        () => finalizeQubicRelay(order, deps),
+        /Missing destination_target_tick/,
+      );
+    });
+
+    it("computes order hash when destination_order_hash is absent", async () => {
+      const identity = await loadQubicIdentity();
+      const order = makeQubicOrder({
+        destination_trx_hash: "qubic-tx",
+        destination_order_hash: undefined,
+        destination_target_tick: undefined,
+        status: "transaction-broadcasted",
+      });
+      const sigBase64 = await signOrder(order);
+
+      const deps: QubicRelayDeps = {
+        config: DEFAULT_TEST_CONFIG,
+        contractClient: {
+          queryContractFunction: async () => buildOracleKeysHex(identity.publicKey),
+          getBobStatus: async () => ({ epoch: 1, tick: 100, fetchingTick: 100, indexingTick: 100 }),
+          broadcastTransaction: async () => {},
+        },
+        qubicSeed: QUBIC_FIXTURE_SEED,
+        qubicPublicKey: identity.publicKey,
+        pollIntervalMs: 0,
+        ordersRepository: {
+          findSignatures: async () => [sigBase64],
+        } as unknown as QubicRelayDeps["ordersRepository"],
+        logger: noopLogger,
+      };
+
+      await assert.rejects(
+        () => finalizeQubicRelay(order, deps),
+        /Missing destination_target_tick/,
+      );
+    });
   });
 
   describe("buildQubicRelayDeps", () => {
-    it("returns deps with config, seed, publicKey and ordersRepository", async (t) => {
+    it("returns deps with config, seed, publicKey, ordersRepository and contractClient", async (t) => {
       const app = await build(t, { config: { RELAYER_ENABLED: false } });
 
       const mockOrdersRepository = {
@@ -366,7 +611,100 @@ describe("relay-qubic", () => {
       assert.ok(deps.qubicPublicKey instanceof Uint8Array, "qubicPublicKey should be a Uint8Array");
       assert.strictEqual(deps.qubicPublicKey.length, 32);
       assert.strictEqual(deps.ordersRepository, mockOrdersRepository);
+      assert.ok(deps.contractClient, "contractClient should be set");
       assert.ok(deps.logger, "logger should be set");
+    });
+
+    it("reads the current tick from QUBIC_NODE_URL", async (t) => {
+      const app = await build(t, { config: { RELAYER_ENABLED: false } });
+      const mockOrdersRepository = {
+        findSignatures: async () => [],
+      } as unknown as QubicRelayDeps["ordersRepository"];
+
+      const deps = await buildQubicRelayDeps(app, DEFAULT_TEST_CONFIG, mockOrdersRepository);
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ tickInfo: { tick: 321 } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })) as typeof fetch;
+      t.after(() => {
+        globalThis.fetch = originalFetch;
+      });
+
+      const tick = await deps.getCurrentTick?.();
+      assert.strictEqual(tick, 321);
+    });
+
+    it("reads the current tick from the top-level tick field", async (t) => {
+      const app = await build(t, { config: { RELAYER_ENABLED: false } });
+      const mockOrdersRepository = {
+        findSignatures: async () => [],
+      } as unknown as QubicRelayDeps["ordersRepository"];
+
+      const deps = await buildQubicRelayDeps(app, DEFAULT_TEST_CONFIG, mockOrdersRepository);
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ tick: 654 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })) as typeof fetch;
+      t.after(() => {
+        globalThis.fetch = originalFetch;
+      });
+
+      const tick = await deps.getCurrentTick?.();
+      assert.strictEqual(tick, 654);
+    });
+
+    it("throws when QUBIC_NODE_URL returns an invalid tick payload", async (t) => {
+      const app = await build(t, { config: { RELAYER_ENABLED: false } });
+      const mockOrdersRepository = {
+        findSignatures: async () => [],
+      } as unknown as QubicRelayDeps["ordersRepository"];
+
+      const deps = await buildQubicRelayDeps(app, DEFAULT_TEST_CONFIG, mockOrdersRepository);
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ nope: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })) as typeof fetch;
+      t.after(() => {
+        globalThis.fetch = originalFetch;
+      });
+
+      await assert.rejects(
+        () => deps.getCurrentTick?.() ?? Promise.reject(new Error("missing getCurrentTick")),
+        /tick-info: unexpected response/,
+      );
+    });
+
+    it("throws when QUBIC_NODE_URL returns an HTTP error", async (t) => {
+      const app = await build(t, { config: { RELAYER_ENABLED: false } });
+      const mockOrdersRepository = {
+        findSignatures: async () => [],
+      } as unknown as QubicRelayDeps["ordersRepository"];
+
+      const deps = await buildQubicRelayDeps(app, DEFAULT_TEST_CONFIG, mockOrdersRepository);
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () =>
+        new Response("boom", {
+          status: 503,
+          headers: { "content-type": "text/plain" },
+        })) as typeof fetch;
+      t.after(() => {
+        globalThis.fetch = originalFetch;
+      });
+
+      await assert.rejects(
+        () => deps.getCurrentTick?.() ?? Promise.reject(new Error("missing getCurrentTick")),
+        /tick-info HTTP 503/,
+      );
     });
   });
 });

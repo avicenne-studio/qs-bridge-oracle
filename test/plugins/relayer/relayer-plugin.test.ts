@@ -10,7 +10,7 @@ describe("relayerPlugin", () => {
       config: {
         RELAYER_ENABLED: true,
         RELAYER_PROCESS_INTERVAL_MS: 60_000,
-        QUBIC_BROADCAST_RPC_URL: "http://127.0.0.1:1",
+        QUBIC_RPC_URL: "http://127.0.0.1:1",
       },
     });
     const relayer = app.getDecorator(kRelayerService);

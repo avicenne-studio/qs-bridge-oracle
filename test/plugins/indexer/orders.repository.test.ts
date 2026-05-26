@@ -606,4 +606,35 @@ describe("ordersRepository", () => {
     const missing = await repo.findBySourceNonce("missing");
     assert.strictEqual(missing, null);
   });
+
+  it("should find orders by destination order hash", async (t) => {
+    const app = await build(t);
+    const repo: OrdersRepository = app.getDecorator(kOrdersRepository);
+
+    const created = await repo.create({
+      id: makeId(802),
+      source: "solana",
+      dest: "qubic",
+      from: "HashA",
+      to: "HashB",
+      amount: "13",
+      relayerFee: "0",
+      origin_trx_hash: "trx-hash",
+      destination_order_hash: "ab".repeat(32),
+      destination_target_tick: 12345,
+      signature: "sig-hash",
+      status: "transaction-broadcasted",
+      oracle_accept_to_relay: true,
+      relay_attempts: 1,
+      source_nonce: "beadfeed",
+      source_payload: "{}",
+      order_era: 0,
+    });
+
+    const found = await repo.findByDestinationOrderHash("ab".repeat(32));
+    assert.deepStrictEqual(found, created);
+
+    const missing = await repo.findByDestinationOrderHash("cd".repeat(32));
+    assert.strictEqual(missing, null);
+  });
 });

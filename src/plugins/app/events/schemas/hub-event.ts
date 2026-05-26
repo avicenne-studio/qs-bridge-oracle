@@ -25,6 +25,7 @@ export const HubEventTypeSchema = Type.Union([
 export const HubEventNonceSchema = Type.Union([
   SolanaHex32Schema,
   StringSchema,
+  Type.Literal(""),
 ]);
 
 export const HubEventPayloadSchema = Type.Union([
