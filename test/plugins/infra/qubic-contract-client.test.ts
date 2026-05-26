@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
+import type { AddressInfo } from "node:net";
 import Fastify from "fastify";
 
 import { UndiciClient } from "../../../src/plugins/infra/undici-client.js";
@@ -62,7 +63,7 @@ async function startGetServer(
   const server = Fastify({ logger: false });
   server.get(route, async () => handler());
   await server.listen({ port: 0, host: "127.0.0.1" });
-  const addr = server.server.address() as import("node:net").AddressInfo;
+  const addr = server.server.address() as AddressInfo;
   t.after(() => server.close());
   return `http://127.0.0.1:${addr.port}`;
 }
@@ -180,7 +181,7 @@ describe("queryContractFunction", () => {
     await server.listen({ port: 0, host: "127.0.0.1" });
     const addr = server.server.address();
     if (!addr || typeof addr === "string") throw new Error("no address");
-    const url = `http://127.0.0.1:${(addr as import("node:net").AddressInfo).port}`;
+    const url = `http://127.0.0.1:${(addr as AddressInfo).port}`;
     t.after(() => server.close());
 
     const client = new UndiciClient();
@@ -227,7 +228,7 @@ describe("queryContractFunction", () => {
   it("re-throws non-HTTP errors unchanged", async (t) => {
     const server = Fastify({ logger: false });
     await server.listen({ port: 0, host: "127.0.0.1" });
-    const addr = server.server.address() as import("node:net").AddressInfo;
+    const addr = server.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${addr.port}`;
     await server.close();
 
@@ -280,7 +281,7 @@ describe("broadcastTransaction", () => {
     const server = Fastify({ logger: false });
     server.post("/broadcastTransaction", async () => ({ transactionId: "abc", peersBroadcasted: 3 }));
     await server.listen({ port: 0, host: "127.0.0.1" });
-    const addr = server.server.address() as import("node:net").AddressInfo;
+    const addr = server.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${addr.port}`;
     t.after(() => server.close());
 
@@ -293,7 +294,7 @@ describe("broadcastTransaction", () => {
     const server = Fastify({ logger: false });
     server.post("/broadcastTransaction", async (_req, reply) => reply.code(500).send("error"));
     await server.listen({ port: 0, host: "127.0.0.1" });
-    const addr = server.server.address() as import("node:net").AddressInfo;
+    const addr = server.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${addr.port}`;
     t.after(() => server.close());
 
@@ -308,7 +309,7 @@ describe("broadcastTransaction", () => {
   it("re-throws non-HTTP errors unchanged", async (t) => {
     const server = Fastify({ logger: false });
     await server.listen({ port: 0, host: "127.0.0.1" });
-    const addr = server.server.address() as import("node:net").AddressInfo;
+    const addr = server.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${addr.port}`;
     await server.close();
 
