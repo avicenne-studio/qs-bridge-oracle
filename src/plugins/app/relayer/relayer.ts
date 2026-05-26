@@ -281,14 +281,7 @@ export function createRelayerService(deps: {
 
   return {
     async relayPending() {
-      const broadcastedFinder = (
-        ordersRepository as OrdersRepository & {
-          findBroadcastedQubicOrders?: (limit?: number) => Promise<OracleOrder[]>;
-        }
-      ).findBroadcastedQubicOrders;
-      const broadcasted = broadcastedFinder
-        ? await broadcastedFinder.call(ordersRepository)
-        : [];
+      const broadcasted = await ordersRepository.findBroadcastedQubicOrders();
       for (const order of broadcasted) {
         await finalizeBroadcastedQubicOrder(order, {
           ordersRepository,

@@ -207,6 +207,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [order1, order2],
         update: async (_id: string, data: Record<string, unknown>) => {
           return { ...order1, ...data };
@@ -383,6 +384,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [orderData],
         update: async () => {
           throw new Error("db write failed");
@@ -435,6 +437,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [orderData],
         update: async () => {
           throw "raw string db failure";
@@ -693,6 +696,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [solanaOrder],
         update: async (_id: string, data: Record<string, unknown>) => {
           updatedWith = data;
@@ -944,6 +948,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [orderData],
         update: async () => {
           throw new Error("db write failed");
@@ -988,6 +993,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [orderData],
         update: async () => {
           throw "raw string db failure";
@@ -1089,6 +1095,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [solanaOrder],
         update: async (_id: string, data: Record<string, unknown>) => {
           updatedWith = data;
@@ -1137,6 +1144,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [solanaOrder],
         update: async (_id: string, data: Record<string, unknown>) => {
           updatedWith = data;
@@ -1239,6 +1247,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [orderData],
         update: async () => {
           throw new Error("db write failed");
@@ -1288,6 +1297,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [orderData],
         update: async () => {
           throw "raw string db failure";
@@ -1460,6 +1470,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [orderData],
         update: async () => {
           throw new Error("db write failed");
@@ -1507,6 +1518,7 @@ describe("relayer plugin", () => {
 
     const relayer = createRelayerService({
       ordersRepository: {
+        findBroadcastedQubicOrders: async () => [],
         findReadyForRelay: async () => [orderData],
         update: async () => {
           throw "raw string db failure";
