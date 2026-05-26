@@ -160,15 +160,17 @@ async function matchSignaturesToOracles(
   return { matched, orderHash };
 }
 
-async function resolveQubicRelayMaterial(
-  order: OracleOrder,
-  deps: QubicRelayDeps,
-): Promise<{
+type QubicRelayMaterial = {
   matchedSigs: Array<{ signerPublicKey: Uint8Array; signature: Uint8Array }>;
   orderHashHex: string;
   currentTick: number;
   orderFields: OrderFields;
-}> {
+};
+
+async function resolveQubicRelayMaterial(
+  order: OracleOrder,
+  deps: QubicRelayDeps,
+): Promise<QubicRelayMaterial> {
   const { contractClient } = deps;
   const sigs = await deps.ordersRepository.findSignatures(order.id);
   const orderFields = orderFromOracleOrder(order, deps.config.TOKEN_MINT);
