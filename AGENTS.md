@@ -8,6 +8,7 @@ Responsibilities:
 - Poll the Hub for new chain events and for aggregated order signatures.
 - Validate and process events into orders; sign valid orders.
 - Relay orders on-chain with exponential backoff once the signature threshold is reached.
+- For Solana → Qubic, finalize relays asynchronously from contract state after broadcast.
 
 Entry point `src/server.ts` registers `src/app.ts`, which autoloads infra plugins, then app plugins, then routes.
 
@@ -27,9 +28,13 @@ Entry point `src/server.ts` registers `src/app.ts`, which autoloads infra plugin
 - **Events pipeline**:
   1. `events.service.ts` — polls Hub `/api/orders/events` using per-Hub cursors stored in `hub_event_cursors`; appends new events to `hub_events`.
   2. `events-processor.ts` — validates and maps pending events into order records; retries up to `EVENT_MAX_RETRIES`; creates failed orders for irrecoverable `outbound`/`lock` events. Chain-specific validators live under `events/solana/` and `events/qubic/`.
+     - Qubic `lock` / `override-lock` remain nonce-based.
+     - Qubic `unlock` is order-hash-based: validator checks `IsOrderFilled(orderHash)` and the handler resolves the local order by `destination_order_hash` (with nonce fallback for compatibility).
 - **Signer**: `signer.service.ts` — loads Solana + Qubic keys from files and signs bridge orders; `schemas/keys.ts` validates key file structure.
 - **Hub signatures**: `hub-signatures.service.ts` — polls Hub `/api/orders/signatures`, stores new signatures in `order_signatures`, marks orders `ready-for-relay` once `ORACLE_SIGNATURE_THRESHOLD` is met.
 - **Relayer**: `relayer.ts` — processes `ready-for-relay` orders via `relay-solana.ts` / `relay-qubic.ts` with exponential backoff and per-order retry tracking; `relayer-fee-acceptance.ts` enforces minimum relayer fee floors before accepting relay.
+  - Solana → Qubic orders are first marked `transaction-broadcasted` with `destination_trx_hash`, `destination_order_hash`, and `destination_target_tick`.
+  - `relay-qubic.ts` then confirms fills from contract state and moves the order to `relayed` or `failed`.
 - **Common utilities** (`src/plugins/app/common/`): `bytes.ts`, `decimals.ts`, `order-id.ts`, `protocol.ts` — shared primitive helpers; `qubic/encoding.ts`, `qubic/order-struct.ts`, `qubic/qsb-message.ts` — Qubic binary codec; `solana/errors.ts`, `solana/program.ts` — Solana RPC error handling; `schemas/common.ts` — shared TypeBox fragments; `validation.ts` — TypeBox `ValidationService`.
 
 ## Hub → Oracle Authentication
@@ -43,7 +48,7 @@ Every Hub → Oracle API request is verified by the oracle's `preValidation` hoo
 
 ## Data Model (SQLite)
 Tables auto-created by `src/plugins/infra/@knex.ts`:
-- `orders` — core fields + relay state: `status`, `oracle_accept_to_relay`, `relay_attempts`, `next_relay_at`, `last_relay_error`, `failure_reason_public`.
+- `orders` — core fields + relay state: `status`, `oracle_accept_to_relay`, `relay_attempts`, `next_relay_at`, `last_relay_error`, `failure_reason_public`, plus Qubic relay metadata `destination_order_hash` and `destination_target_tick`.
 - `order_signatures` — `(order_id, signature)` unique pairs.
 - `hub_nonces` — `(hubId, kid, nonce, ts)` for replay protection.
 - `hub_events` — persisted Hub events with retry and failure metadata.
@@ -62,8 +67,14 @@ flowchart TD
     F -->|"threshold met"| G["ready-for-relay"]
     G --> H["relayer.ts"]
     H --> I["relay-solana.ts"]
-    H --> J["relay-qubic.ts"]
+    H --> J["relay-qubic.ts\nbroadcast => transaction-broadcasted"]
+    J --> K["deferred fill confirmation\n(IsOrderFilled / target tick)"]
 ```
+
+Status flow for Solana → Qubic:
+- `ready-for-relay` → `transaction-broadcasted` after Qubic broadcast
+- `transaction-broadcasted` → `relayed` after contract-state confirmation
+- `relayed` → `finalized` once the Hub-originated Qubic `unlock` event is processed
 
 ## Routes
 
@@ -76,7 +87,7 @@ flowchart TD
 All `/api/*` routes require valid `X-Hub-*` signed headers.
 
 ## Config & Ops
-Required env vars (see `src/plugins/infra/env.ts`): `HOST`, `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`, `HUB_URLS`, `HUB_KEYS_FILE`, `SOLANA_RPC_URL`, `SOLANA_WS_URL`, `QUBIC_RPC_URL`, `TOKEN_MINT`, `SOLANA_TX_COMMITMENT`, `SOLANA_LOOKUP_TABLE_ADDRESS`, `RELAYER_FEE_SOLANA`, `RELAYER_FEE_QUBIC`.
+Required env vars (see `src/plugins/infra/env.ts`): `HOST`, `PORT`, `SQLITE_DB_FILE`, `SOLANA_KEYS`, `QUBIC_KEYS`, `HUB_URLS`, `HUB_KEYS_FILE`, `SOLANA_RPC_URL`, `SOLANA_WS_URL`, `QUBIC_RPC_URL`, `QUBIC_NODE_URL`, `QUBIC_BROADCAST_RPC_URL`, `TOKEN_MINT`, `SOLANA_TX_COMMITMENT`, `SOLANA_LOOKUP_TABLE_ADDRESS`, `RELAYER_FEE_SOLANA`, `RELAYER_FEE_QUBIC`.
 
 Key tunables: `RELAYER_ENABLED`, `RELAYER_PROCESS_INTERVAL_MS`, `RELAYER_PER_ORDER_DELAY_MS`, `RELAYER_MAX_ATTEMPTS`, `RELAYER_BACKOFF_BASE_MS`, `RELAYER_BACKOFF_MAX_MS`, `EVENT_MAX_RETRIES`, `EVENTS_LOOKBACK_DAYS`, `EVENTS_PROCESS_INTERVAL_MS`, `ORACLE_SIGNATURE_THRESHOLD`, `ORACLE_ID`, `SOLANA_MAX_PRIORITY_FEE`, `SOLANA_TX_RETRY_MAX_ATTEMPTS`, `SOLANA_TX_RETRY_BASE_MS`, `SOLANA_TX_RETRY_MAX_MS`.
 

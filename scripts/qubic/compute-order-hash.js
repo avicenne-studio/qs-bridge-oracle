@@ -9,6 +9,10 @@
  * The JSON object supports these fields (all optional except amount):
  *   fromAddress  Qubic ID or 64-char hex  (default: all-zero id)
  *   toAddress    Qubic ID or 64-char hex  (default: all-zero id / NULL_ID)
+ *                NOTE: for outbound Qubic→Solana orders created via Lock, this
+ *                field must be omitted (NULL_ID). The contract stores NULL_ID in
+ *                Order.toAddress during Lock; the Solana address lives separately
+ *                in LockedOrderEntry.toAddress and is NOT part of the hash input.
  *   tokenIn      32-byte hex              (default: zeros)
  *   tokenOut     32-byte hex              (default: zeros)
  *   amount       uint64 (string or number)
