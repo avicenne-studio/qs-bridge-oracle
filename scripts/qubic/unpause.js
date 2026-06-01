@@ -1,14 +1,14 @@
 /**
  * QSB Unpause — resumes the contract after a pause.
- * Can be called by admin or any registered pauser.
+ * Must be called from the admin identity (pausers can pause but not unpause).
  *
  * Usage:
  *   node scripts/qubic/unpause.js [--dry-run]
  *
  * Env:
  *   QUBIC_NODE_URL  Core Lite node  (default: http://localhost:41841)
- *   QUBIC_RPC_URL            Bob Node        (default: http://localhost:40420)
- *   QUBIC_KEYS               path to { sKey } JSON (admin or pauser)
+ *   QUBIC_RPC_URL   Bob Node        (default: http://localhost:40420)
+ *   QUBIC_KEYS      path to admin { sKey } JSON
  */
 
 import process from "node:process";
@@ -32,7 +32,7 @@ const nodeRpcUrl = resolveNodeRpcUrl();
 const bobUrl = resolveBobUrl();
 
 const { seed, publicKey, publicId } =
-  await requireQubicKeys("QUBIC_KEYS env var must point to a keys file (admin or pauser).");
+  await requireQubicKeys("QUBIC_KEYS env var must point to the admin keys file.");
 
 console.log(`\n=== QSB Unpause ===`);
 console.log(`  Caller   : ${publicId}`);
@@ -79,4 +79,4 @@ await pollUntil(async () => {
   return !paused;
 });
 
-console.log(`  paused : ${paused} ${!paused ? "✓" : "✗ (tx may have failed — caller may not be admin or pauser)"}`);
+console.log(`  paused : ${paused} ${!paused ? "✓" : "✗ (tx may have failed — caller may not be admin)"}`);

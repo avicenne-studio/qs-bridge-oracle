@@ -1,20 +1,11 @@
 services:
   oracle:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: production
-    environment:
-      # Set up env variables on your server
-      # NODE_ENV: production
-      # FASTIFY_CLOSE_GRACE_DELAY: 1000
-      # LOG_LEVEL: info
-      # RATE_LIMIT_MAX: 4
-      # SQLITE_DB_FILE: /data/oracle.sqlite3
-      # HOST: 0.0.0.0
-      # PORT: 3000
+    image: europe-west9-docker.pkg.dev/qubic-485810/${WORKSPACE}/oracle:latest
+    env_file:
+      - .env.prod
     volumes:
       - oracle-sqlite:/data
+      - /opt/oracle/keys:/opt/oracle/keys:ro
     ports:
       - "3000:3000"
     restart: unless-stopped
