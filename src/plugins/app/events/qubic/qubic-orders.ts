@@ -3,12 +3,12 @@ import type { FastifyBaseLogger } from "fastify";
 import type { OrdersRepository } from "../../indexer/orders.repository.js";
 import type { RelayerFeeAcceptance } from "../../relayer/relayer-fee-acceptance.js";
 import { type SignerService, type OrderInput } from "../../signer/signer.service.js";
-import { bytesToHex, nonceToBytes } from "../../common/bytes.js";
+import { bytesToHex, nonceToBytes, solanaAddressToBytes } from "../../common/bytes.js";
 import { orderIdFromSignature } from "../../common/order-id.js";
 import { quToRawWqubic } from "../../common/decimals.js";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "../../common/protocol.js";
 import { Network } from "../../common/schemas/common.js";
-import { QUBIC_TOKEN_ADDRESS } from "../../common/qubic/encoding.js";
+import { QUBIC_TOKEN_ADDRESS, qubicAddressToBytes } from "../../common/qubic/encoding.js";
 import { address, getAddressEncoder } from "@solana/kit";
 import { type QubicLockEvent, type QubicOverrideLockEvent, type QubicUnlockEvent } from "./qubic-event-mapper.js";
 import { type QubicLockEventPayload } from "./schemas/qubic-event.js";
@@ -113,8 +113,8 @@ export function createFailedOrderFromLockEvent(
     id: orderId,
     source: "qubic",
     dest: "solana",
-    from: event.fromAddress,
-    to: event.toAddress,
+    from: bytesToHex(qubicAddressToBytes(event.fromAddress)),
+    to: bytesToHex(solanaAddressToBytes(event.toAddress)),
     amount: event.amount,
     relayerFee: event.relayerFee,
     origin_trx_hash: signatureSeed,
@@ -126,7 +126,7 @@ export function createFailedOrderFromLockEvent(
     source_payload: serializeSourcePayload({
       v: 1,
       nonce: normalizeNonce(event.nonce),
-      fromAddress: event.fromAddress,
+      fromAddress: bytesToHex(qubicAddressToBytes(event.fromAddress)),
       protocol: PROTOCOL_NAME,
       version: PROTOCOL_VERSION,
       orderEra: Number(event.orderEra),
