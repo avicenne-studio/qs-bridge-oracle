@@ -48,10 +48,7 @@
     "qubic:edit-oracle-threshold": "node scripts/qubic/edit-oracle-threshold.js",
     "qubic:edit-fee-parameters": "node scripts/qubic/edit-fee-parameters.js",
     "qubic:setup-contract": "node scripts/qubic/setup-contract.js",
-    "qubic:test-utils": "node --test scripts/qubic/utils.test.js",
-    "qubic:fake": "node scripts/qubic/fake/smart-contract.js",
-    "qubic:fake-lock": "node scripts/qubic/fake/lock.js",
-    "qubic:fake-override-lock": "node scripts/qubic/fake/override-lock.js"
+    "qubic:test-utils": "node --test scripts/qubic/utils.test.js"
   },
   "keywords": [],
   "author": "Michelet Jean <jean.antoine.michelet@gmail.com>",
