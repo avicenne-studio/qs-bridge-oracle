@@ -28,9 +28,7 @@ export type EnvConfig = {
   SOLANA_MAX_PRIORITY_FEE: number;
   SOLANA_LOOKUP_TABLE_ADDRESS: string;
   TOKEN_MINT: string;
-  /** Minimum relayer fee (in QU) accepted for Qubic→Solana orders. */
   RELAYER_FEE_TO_SOLANA: string;
-  /** Minimum relayer fee (in QU) accepted for Solana→Qubic orders. */
   RELAYER_FEE_TO_QUBIC: string;
   RELAYER_ENABLED: boolean;
   RELAYER_PROCESS_INTERVAL_MS: number;
