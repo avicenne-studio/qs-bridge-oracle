@@ -20,12 +20,12 @@ function parseRelayerFee(value: string, label: string): bigint {
 
 function createRelayerFeeAcceptance(config: EnvConfig): RelayerFeeAcceptance {
   const solanaFee = parseRelayerFee(
-    config.RELAYER_FEE_SOLANA,
-    "RELAYER_FEE_SOLANA"
+    config.RELAYER_FEE_TO_SOLANA,
+    "RELAYER_FEE_TO_SOLANA"
   );
   const qubicFee = parseRelayerFee(
-    config.RELAYER_FEE_QUBIC,
-    "RELAYER_FEE_QUBIC"
+    config.RELAYER_FEE_TO_QUBIC,
+    "RELAYER_FEE_TO_QUBIC"
   );
   return {
     acceptRelayToSolana(amount, relayerFee) {
