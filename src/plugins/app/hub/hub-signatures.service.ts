@@ -13,6 +13,7 @@ import {
   kOrdersRepository,
   type OrdersRepository,
 } from "../indexer/orders.repository.js";
+import { computeRequiredSignatures } from "../common/maths.js";
 
 type OrderSignature = {
   orderId: string;
@@ -82,9 +83,9 @@ function startHubSignaturePolling(
         return;
       }
 
-      const threshold = Math.max(
-        1,
-        Math.floor(config.ORACLE_SIGNATURE_THRESHOLD)
+      const threshold = computeRequiredSignatures(
+        config.ORACLE_SIGNATURE_THRESHOLD,
+        config.ORACLE_COUNT,
       );
 
       const results = await Promise.all(
