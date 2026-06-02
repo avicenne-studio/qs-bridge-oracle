@@ -28,8 +28,8 @@ export type EnvConfig = {
   SOLANA_MAX_PRIORITY_FEE: number;
   SOLANA_LOOKUP_TABLE_ADDRESS: string;
   TOKEN_MINT: string;
-  RELAYER_FEE_SOLANA: string;
-  RELAYER_FEE_QUBIC: string;
+  RELAYER_FEE_TO_SOLANA: string;
+  RELAYER_FEE_TO_QUBIC: string;
   RELAYER_ENABLED: boolean;
   RELAYER_PROCESS_INTERVAL_MS: number;
   RELAYER_PER_ORDER_DELAY_MS: number;
@@ -60,8 +60,8 @@ const schema = {
     "QUBIC_INVOCATION_REWARD",
     "TOKEN_MINT",
     "SOLANA_TX_COMMITMENT",
-    "RELAYER_FEE_SOLANA",
-    "RELAYER_FEE_QUBIC",
+    "RELAYER_FEE_TO_SOLANA",
+    "RELAYER_FEE_TO_QUBIC",
     "SOLANA_LOOKUP_TABLE_ADDRESS",
   ],
   properties: {
@@ -165,11 +165,11 @@ const schema = {
     TOKEN_MINT: {
       type: "string",
     },
-    RELAYER_FEE_SOLANA: {
+    RELAYER_FEE_TO_SOLANA: {
       type: "string",
       pattern: "^[0-9]+$",
     },
-    RELAYER_FEE_QUBIC: {
+    RELAYER_FEE_TO_QUBIC: {
       type: "string",
       pattern: "^[0-9]+$",
     },

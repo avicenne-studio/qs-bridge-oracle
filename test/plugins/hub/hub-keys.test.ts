@@ -44,8 +44,8 @@ async function buildHubKeysApp(overrides: HubKeysEnvOverrides = {}) {
       QUBIC_NODE_URL: "http://127.0.0.1:41841",
       QUBIC_INVOCATION_REWARD: 1,
       TOKEN_MINT: "4bbjhGLSYwku6Y44dqwcroRfj2vHCdiHJ9SUmndc4FVg",
-      RELAYER_FEE_SOLANA: "1000",
-      RELAYER_FEE_QUBIC: "500",
+      RELAYER_FEE_TO_SOLANA: "1000",
+      RELAYER_FEE_TO_QUBIC: "500",
     },
   };
 

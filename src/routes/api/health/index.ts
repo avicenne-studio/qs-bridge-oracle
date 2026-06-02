@@ -14,8 +14,8 @@ import {
 const HealthResponseSchema = Type.Object({
   status: Type.Literal("ok"),
   timestamp: Type.String({ format: "date-time" }),
-  relayerFeeSolana: Type.String({ pattern: "^[0-9]+$" }),
-  relayerFeeQubic: Type.String({ pattern: "^[0-9]+$" }),
+  relayerFeeToSolana: Type.String({ pattern: "^[0-9]+$" }),
+  relayerFeeToQubic: Type.String({ pattern: "^[0-9]+$" }),
 });
 
 const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
@@ -44,8 +44,8 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
       return {
         status: "ok" as const,
         timestamp: new Date().toISOString(),
-        relayerFeeSolana: config.RELAYER_FEE_SOLANA,
-        relayerFeeQubic: config.RELAYER_FEE_QUBIC,
+        relayerFeeToSolana: config.RELAYER_FEE_TO_SOLANA,
+        relayerFeeToQubic: config.RELAYER_FEE_TO_QUBIC,
       };
     }
   );

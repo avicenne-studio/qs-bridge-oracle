@@ -24,8 +24,8 @@ test("GET /api/health success", async (t) => {
   assert.strictEqual(body.status, "ok");
   assert.ok(typeof body.timestamp === "string");
   assert.ok(!Number.isNaN(Date.parse(body.timestamp)));
-  assert.strictEqual(body.relayerFeeSolana, "1000");
-  assert.strictEqual(body.relayerFeeQubic, "500");
+  assert.strictEqual(body.relayerFeeToSolana, "1000");
+  assert.strictEqual(body.relayerFeeToQubic, "500");
 });
 
 test("GET /api/health handles knex failure", async (t) => {

@@ -15,8 +15,8 @@ async function buildAcceptanceApp(
 ) {
   return build(t, {
     config: {
-      RELAYER_FEE_SOLANA: solanaFee,
-      RELAYER_FEE_QUBIC: qubicFee,
+      RELAYER_FEE_TO_SOLANA: solanaFee,
+      RELAYER_FEE_TO_QUBIC: qubicFee,
     },
   });
 }
@@ -59,19 +59,19 @@ describe("relayerFeeAcceptance", () => {
       build(undefined, {
         config: {
           ...baseConfig,
-          RELAYER_FEE_SOLANA: "10.5",
+          RELAYER_FEE_TO_SOLANA: "10.5",
         },
       }),
-      /RELAYER_FEE_SOLANA/
+      /RELAYER_FEE_TO_SOLANA/
     );
     await assert.rejects(
       build(undefined, {
         config: {
           ...baseConfig,
-          RELAYER_FEE_QUBIC: "10.5",
+          RELAYER_FEE_TO_QUBIC: "10.5",
         },
       }),
-      /RELAYER_FEE_QUBIC/
+      /RELAYER_FEE_TO_QUBIC/
     );
   });
 
