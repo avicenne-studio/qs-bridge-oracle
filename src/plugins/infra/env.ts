@@ -13,6 +13,7 @@ export type EnvConfig = {
   SOLANA_KEYS: string;
   QUBIC_KEYS: string;
   ORACLE_SIGNATURE_THRESHOLD: number;
+  ORACLE_COUNT: number;
   ORACLE_ID?: string;
   HUB_URLS: string;
   HUB_KEYS_FILE: string;
@@ -97,8 +98,13 @@ const schema = {
     },
     ORACLE_SIGNATURE_THRESHOLD: {
       type: "number",
+      minimum: 0.1,
+      default: 0.6,
+    },
+    ORACLE_COUNT: {
+      type: "integer",
       minimum: 1,
-      default: 2,
+      default: 6,
     },
     SOLANA_KEYS: {
       type: "string",

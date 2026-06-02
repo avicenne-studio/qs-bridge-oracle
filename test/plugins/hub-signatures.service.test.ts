@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { build } from "../helpers/build.js";
@@ -9,6 +9,7 @@ import {
   kOrdersRepository,
   type OrdersRepository,
 } from "../../src/plugins/app/indexer/orders.repository.js";
+import { computeRequiredSignatures } from "../../src/plugins/app/common/maths.js";
 import {
   kKnex,
   type KnexAccessor,
@@ -30,6 +31,23 @@ async function startHubServer(
   t.after(() => server.close());
   return server;
 }
+
+test("computeRequiredSignatures — ratio mode", (t) => {
+  t.assert.strictEqual(computeRequiredSignatures(0.6, 3), 2);  // ceil(3 * 0.6) = ceil(1.8) = 2
+  t.assert.strictEqual(computeRequiredSignatures(0.6, 5), 3);  // ceil(5 * 0.6) = ceil(3.0) = 3
+  t.assert.strictEqual(computeRequiredSignatures(1, 5), 5);    // ratio=1 means all oracles
+});
+
+test("computeRequiredSignatures — integer mode", (t) => {
+  t.assert.strictEqual(computeRequiredSignatures(3, 6), 3);
+  t.assert.strictEqual(computeRequiredSignatures(2, 10), 2);
+});
+
+test("computeRequiredSignatures — edge cases", (t) => {
+  t.assert.strictEqual(computeRequiredSignatures(0, 5), 1);    // zero → min 1
+  t.assert.strictEqual(computeRequiredSignatures(-1, 0), 1);   // negative → min 1
+  t.assert.strictEqual(computeRequiredSignatures(1.5, 5), 1);  // integer mode, floor(1.5) = 1
+});
 
 describe("hub signatures polling", { concurrency: 1 }, () => {
   it("starts polling on app startup", async (t) => {
