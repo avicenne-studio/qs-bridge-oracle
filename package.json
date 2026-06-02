@@ -77,7 +77,7 @@
     "@sinclair/typebox": "^0.34.49",
     "@solana-program/address-lookup-table": "^0.10.0",
     "@solana-program/system": "^0.10.0",
-    "@solana-program/token": "^0.9.0",
+    "@solana-program/token": "^0.13.0",
     "@solana/kit": "^5.5.1",
     "@solana/web3.js": "^1.98.4",
     "better-sqlite3": "^12.6.2",
