@@ -346,5 +346,25 @@ describe("qubic order handlers", () => {
     assert.strictEqual(failed.signature, failed.source_nonce);
     assert.strictEqual(failed.origin_trx_hash, failed.source_nonce);
     assert.strictEqual(failed.failure_reason_public, "Transaction failed");
+    assert.strictEqual(failed.from, hex32(1));
+    assert.strictEqual(failed.to, hex32(2));
+    const sourcePayload = JSON.parse(failed.source_payload);
+    assert.strictEqual(sourcePayload.fromAddress, hex32(1));
+  });
+
+  it("stores from and to in the same hex format for both successful and failed lock orders", async () => {
+    const { repo, handleLockEvent } = createHandlers();
+    const stored_event = makeLockStoredEvent();
+    const { event } = mapStoredEventToQubicPayload(stored_event) as { type: "lock"; event: ReturnType<typeof mapStoredEventToQubicPayload>["event"] };
+    await handleLockEvent(event as never, { signature: "trx-lock" });
+
+    const successful = await repo.findBySourceNonce(normalizeNonce(stored_event.nonce));
+    assert.ok(successful);
+
+    const failedPayload = createLockPayload();
+    const failed = createFailedOrderFromLockEvent(failedPayload, { signature: "trx-failed" }, "Invalid amount");
+
+    assert.strictEqual(successful.from, failed.from, "successful and failed orders must store from in the same format");
+    assert.strictEqual(successful.to, failed.to, "successful and failed orders must store to in the same format");
   });
 });
