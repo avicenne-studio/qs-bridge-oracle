@@ -44,6 +44,11 @@ async function main() {
   const [globalStatePda] = await findGlobalStatePda();
   const [oraclePda] = await findOraclePda({ oracle: oracleAddress });
 
+  process.stderr.write(`Admin:          ${adminSigner.address}\n`);
+  process.stderr.write(`Oracle pubkey:  ${oracleAddress}\n`);
+  process.stderr.write(`Oracle PDA:     ${oraclePda}\n`);
+  process.stderr.write(`GlobalState:    ${globalStatePda}\n`);
+
   const instruction = getAddOracleInstruction({
     admin: adminSigner,
     globalState: globalStatePda,
@@ -71,7 +76,22 @@ async function main() {
   const signedTransaction = await signTransactionMessageWithSigners(message);
   const signature = getSignatureFromTransaction(signedTransaction);
 
-  await sendAndConfirmTransaction(signedTransaction, { commitment: "confirmed" });
+  try {
+    await sendAndConfirmTransaction(signedTransaction, { commitment: "confirmed" });
+  } catch (error) {
+    process.stderr.write(`Transaction failed: ${error?.message || error}\n`);
+    const ctx = error?.context ?? error?.cause?.context;
+    if (ctx?.logs?.length) {
+      process.stderr.write(`Program logs:\n${ctx.logs.join("\n")}\n`);
+    } else if (ctx) {
+      process.stderr.write(`Error context: ${JSON.stringify(ctx, null, 2)}\n`);
+    }
+    const cause = error?.cause;
+    if (cause && cause !== error) {
+      process.stderr.write(`Caused by: ${cause?.message || cause}\n`);
+    }
+    process.exit(1);
+  }
 
   process.stdout.write(
     `Oracle added. Transaction signature: ${signature}\n` +

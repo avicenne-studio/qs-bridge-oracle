@@ -81,7 +81,7 @@ async function main() {
     address(QS_BRIDGE_PROGRAM_ADDRESS),
   ];
 
-  const slot = await rpc.getSlot().send();
+  const slot = await rpc.getSlot({ commitment: "confirmed" }).send();
 
   const lutPda = await findAddressLookupTablePda({
     authority: adminSigner.address,

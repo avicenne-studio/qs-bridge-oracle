@@ -51,7 +51,7 @@ export function createQubicEventValidator(deps: {
         return;
       }
 
-      const nonce = Number(event.nonce);
+      const nonce = parseInt(event.nonce, 16);
       let hex: string;
       try {
         hex = await contractClient.queryContractFunction(

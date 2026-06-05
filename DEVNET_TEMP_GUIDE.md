@@ -38,16 +38,33 @@ Each oracle needs a Qubic identity (55-char seed, publicId) for future Qubic sig
 # NODE
 ```
 
-## 3) Add the 6 oracles on-chain
+## 3) Initialize GlobalState on-chain
+
+Must be done once after every fresh deployment (same program ID or new). Fails if already initialized.
 
 ```bash
-# for i in 1 2 3 4 5 6; do
-#   PUB=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.temp/oracle-${i}.keys.json','utf8')).pKey)")
-#   npm run solana:add-oracle -- "$PUB"
-# done
+npm run solana:init-global-state
 ```
 
-## 4) Create the Address Lookup Table
+This creates the GlobalState PDA and the wQubic token mint. Copy the printed `TOKEN_MINT` address into `.env.local`.
+
+Optional env overrides (read from `.env.local` automatically):
+- `SOLANA_BPS_FEE` — bridge fee in basis points (default: 25)
+- `PROTOCOL_FEE_BPS_OF_BPS` — protocol fee share (default: 0)
+- `TOKEN_NAME` / `TOKEN_SYMBOL` / `TOKEN_URI` — token metadata
+
+Admin key: `.temp/solana-admin.json`. Protocol fee recipient: `.temp/recipient.json`. Both must exist.
+
+## 4) Add the 6 oracles on-chain
+
+```bash
+for i in 1 2 3 4 5 6; do
+  PUB=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.temp/oracle-${i}.keys.json','utf8')).pKey)")
+  npm run solana:add-oracle -- "$PUB"
+done
+```
+
+## 5) Create the Address Lookup Table
 
 The inbound relay transaction exceeds the legacy 1232-byte limit. An Address Lookup Table (ALT) compresses account addresses into 1-byte indices. The script reads `SOLANA_RPC_URL` and `TOKEN_MINT` from `.env.local`, detects registered oracles on-chain automatically, and creates + extends the LUT in a single transaction.
 
@@ -63,7 +80,7 @@ SOLANA_LOOKUP_TABLE_ADDRESS=<address from output>
 
 Note: if you add/remove oracles later, you need to create a new lookup table.
 
-## 5) Create/Override `.temp/order.json`
+## 6) Create/Override `.temp/order.json`
 
 ```bash
 node <<'NODE'
@@ -75,7 +92,7 @@ const order = {
   tokenIn: '0x' + '11'.repeat(32),
   fromAddress: '0x' + '22'.repeat(32),
   // Add an address you possess
-  toAddress: '46F9i1Bzv8kwShyG8xbtdkA7nEoYmzyueKwjXyDgtAQV',
+  toAddress: 'CHEwXjhGHjeotYANJ4snWqpFLT6YG5Tu5JiFF2vB8EGe',
   amount: '1000000',
   relayerFee: '1000',
   nonce: '0x' + randomBytes(32).toString('hex'),
@@ -88,7 +105,7 @@ fs.writeFileSync('.temp/order.json', JSON.stringify(order, null, 2));
 NODE
 ```
 
-## 6) Send an inbound order
+## 7) Send an inbound order
 
 ```bash
 npm run solana:send-inbound-order -- .temp/order.json .temp/oracle-keys.json .temp/oracle-1.json
@@ -100,7 +117,7 @@ Notes:
 - You can override the signature count: `SIGNATURE_COUNT=4 npm run solana:send-inbound-order -- ...`
 - The script will create missing recipient/relayer ATAs automatically.
 
-## 7) Send an outbound order (Solana → Qubic)
+## 8) Send an outbound order (Solana → Qubic)
 
 Create the outbound order payload. `toAddress` is the Qubic recipient encoded as 32-byte hex.
 `relayerFee` must be ≥ `RELAYER_FEE_QUBIC` (500). The nonce is a random 32-byte value.
@@ -144,7 +161,7 @@ npm run solana:override-outbound-order -- .temp/outbound-order.json .temp/solana
   --to-address 0xb2e985bf2c2585b457b05bc0e9c8e1501b409ca3651797c255fd914734f95538
 ```
 
-## 8) Local Qubic testnet (Core Lite + Bob Node)
+## 9) Local Qubic testnet (Core Lite + Bob Node)
 
 The local testnet uses a real Qubic node compiled with `TESTNET=ON` + the Bob Node indexer via Docker.
 
@@ -218,15 +235,15 @@ QUBIC_KEYS=.temp/qubic-user.keys.json \
 node --env-file=.env.local scripts/qubic/get-locked-order.js --nonce <NONCE>
 ```
 
-## 9) Claim protocol fee (protocol fee recipient only)
+## 10) Claim protocol fee (protocol fee recipient only)
 
 ```bash
-npm run solana:claim-protocol-fee -- .temp/protocol-fee-recipient.json
+npm run solana:claim-protocol-fee -- .temp/recipient.json
 ```
 
 Note: this claims **protocol fee**, not oracle claimable balances.
 
-## 10) Re-run with a new nonce
+## 11) Re-run with a new nonce
 
 Inbound orders are one-time per nonce. To submit a new one, update the nonce:
 
