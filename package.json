@@ -20,6 +20,7 @@
     "simulation": "npm run build && node scripts/shared/simulation.js",
     "solana:generate-keypair": "node scripts/solana/generate-keypair.js",
     "solana:airdrop": "node scripts/solana/airdrop.js",
+    "solana:init-global-state": "node --env-file=.env.local scripts/solana/init-global-state.js",
     "solana:add-oracle": "node scripts/solana/add-oracle.js",
     "solana:delete-oracle": "node scripts/solana/delete-oracle.js",
     "solana:claim-oracle-fee": "node scripts/solana/claim-oracle-fee.js",

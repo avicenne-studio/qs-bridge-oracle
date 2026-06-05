@@ -180,7 +180,7 @@ async function handleFailure(opts: {
     }
     await ordersRepository.create(failedOrder);
     logger.info(
-      { orderId: failedOrder.id, eventId: event.id },
+      { orderId: failedOrder.id, eventId: event.id, error: failureReasonInternal },
       "Stored failed order from outbound event"
     );
   }

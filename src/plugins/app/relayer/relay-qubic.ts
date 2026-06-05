@@ -144,7 +144,9 @@ async function matchSignaturesToOracles(
 
   for (const sigBase64 of signatures) {
     const sigBytes = new Uint8Array(Buffer.from(sigBase64, "base64"));
-    if (sigBytes.length !== 64) continue;
+    if (sigBytes.length !== 64) {
+      continue;
+    }
 
     for (const oracleKey of oracleKeys) {
       const keyHex = Buffer.from(oracleKey).toString("hex");
